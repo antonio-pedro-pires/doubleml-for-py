@@ -9,7 +9,7 @@ from doubleml import DoubleMLData
 from doubleml.double_ml import DoubleML
 from doubleml.double_ml_score_mixins import LinearScoreMixin
 from doubleml.utils._checks import _check_finite_predictions, _check_score
-from doubleml.utils._estimation import _get_cond_smpls, _get_cond_smpls_2d, _dml_cv_predict, _cond_targets
+from doubleml.utils._estimation import _get_cond_smpls, _get_cond_smpls_2d, _dml_cv_predict, _cond_targets, _dml_tune
 
 
 class DoubleMLMED(LinearScoreMixin, DoubleML):
@@ -52,6 +52,8 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
             valid_scores = ["Y(0, M(0))", "Y(0, M(1))", "Y(1, M(0))", "Y(1, M(1))"]
             _check_score(self.score, valid_scores, allow_callable=False)
             self._multmed = multmed
+            self._treated = self._dml_data.d == 1
+            self._mediated = self._dml_data.m == 1
 
             #TODO: Check if methods can be classifiers or only regressors.
             self._learner = {
@@ -71,6 +73,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
             else:
                 self._learner["ml_m"] = clone(ml_m)
                 self._predict_method["ml_m"] = "predict"
+
     @property
     def normalize_ipw(self):
         """
@@ -113,25 +116,37 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         """
         return self.few_splits
 
-    def _fit_nuisance_and_score_elements(self, n_jobs_cv, store_predictions, external_predictions, store_models):
-        return super()._fit_nuisance_and_score_elements(n_jobs_cv, store_predictions, external_predictions,
-                                                        store_models)
-
-    def _solve_score_and_estimate_se(self):
-        super()._solve_score_and_estimate_se()
-
+    #TODO: Do I have to initialize the learners somewhere else(at init???)
     def _initialize_ml_nuisance_params(self):
         #TODO: See if I can estimate ml_m, ml_med_d0 and ml_med_d1 only once for meds.py
+        #TODO: Have to add predict methods for the conditional learners.
+        #   y0m1=((1-dte)*pmxte/((1-pmxte)*pdte)*(yte-eymx0te)+dte/pdte*(eymx0te-regweymx0te)+regweymx0te
+        #   y1m0=(dte*(1-pmxte)/(pmxte*(1-pdte))*(yte-eymx1te)+(1-dte)/(1-pdte)*(eymx1te-regweymx1te)+regweymx1te)
+        #   dte, pmxte, pxte=pdte, yte, eymx0te, regweymx0te, eyx0te, eymx1te, regweymx1te, eyx1te
+        #    1     2     3     4     5         6            7       8          9         10
+        # pmxte = Pr(D=1|M,X), pxte = Pr(D=1|X)
+        # eyx0te = E(Y|D=0, X), eyx1te = E(Y|D=1, X)
+        # eymx1te = E(Y|D=1, M, X), eymx0te = E(Y|D=0, M, X)
+        # regweymx1te = E[E(Y|M,X,D=1)|D=0,X], regweymx0te = E[E(Y|M,X,D=0)|D=1,X]
+
+        #Initialize just in case
+        valid_learner=None
         if self._score == "Y(0, M(0))":
             valid_learner = ["ml_g_d0", "ml_m"]
             self._params = {learner: {key: [None] * self.n_rep for key in self._dml_data.d_cols} for learner in
                             valid_learner}
         elif self._score == "Y(0, M(1))":
-            valid_learner = ["ml_g_d0_med0", "ml_g_d0_med1", "ml_m", "ml_med_d0", "ml_med_d1"]
+            if self.multmed:
+                valid_learner = ["ml_g_d0", "ml_g_d0_d1", "ml_m", "ml_m_med"]
+            else:
+                valid_learner = ["ml_g_d0_med0", "ml_g_d0_med1", "ml_m", "ml_med_d0", "ml_med_d1"]
             self._params = {learner: {key: [None] * self.n_rep for key in self._dml_data.d_cols} for learner in
                             valid_learner}
         elif self._score == "Y(1, M(0))":
-            valid_learner = ["ml_g_d1_med1", "ml_g_d1_med0", "ml_m", "ml_med_d0", "ml_med_d1"]
+            if self.multmed:
+                valid_learner = ["ml_g_d1", "ml_g_d1_d0", "ml_m", "ml_m_med"]
+            else:
+                valid_learner = ["ml_g_d1_med1", "ml_g_d1_med0", "ml_m", "ml_med_d0", "ml_med_d1"]
             self._params = {learner: {key: [None] * self.n_rep for key in self._dml_data.d_cols} for learner in
                             valid_learner}
         elif self._score == "Y(1, M(1))":
@@ -139,6 +154,8 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
             self._params = {learner: {key: [None] * self.n_rep for key in self._dml_data.d_cols} for learner in
                             valid_learner}
 
+    #TODO: Check which learners take which samples
+    #TODO: DON'T FORGET TO ADD NORMALISE!!!
     def _nuisance_est(self, smpls, n_jobs_cv, return_models, external_predictions):
         x, y = check_X_y(self._dml_data.x, self._dml_data.y, force_all_finite=False)
         x, d = check_X_y(x, self._dml_data.d, force_all_finite=False)
@@ -146,413 +163,695 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         _, m = check_consistent_length(x, self._dml_data[
             "z"])  # Check that the mediators have the same number of samples as X and
 
-        smpls_d0, smpls_d1 = _get_cond_smpls(smpls, d)
-        smpls_d0_med0, smpls_d0_med1, smpls_d1_med0, smpls_d1_med1 = _get_cond_smpls_2d(smpls, d, m)
         dx = np.column_stack((d, x))
         mdx = np.column_stack((m, dx))
 
         #TODO: Maybe create a function for the outcomes estimation.
         #TODO: Create options for multmed.
         #TODO: Idea, create functions that make outcomes and deal with multmed. This way it is easier to understand.
-        if self._score == "Y(0, M(0))":
-            m_external = external_predictions["ml_m"] is not None
-            g_d0_external = external_predictions["ml_g_d0"] is not None
+        if self._score == "Y(0, M(0))" or self._score == "Y(1, M(1))":
+            psi_elements, preds = self._est_potential(smpls, x, y, d, m, n_jobs_cv, return_models, external_predictions)
+        elif self._score == "Y(0, M(1))" or self._score == "Y(1, M(0))":
+            psi_elements, preds = self._est_counterfactual(smpls, x, y, d, m, n_jobs_cv, return_models, external_predictions)
 
-            # Compute the probability of treatment given the cofounders. Pr(D=1|X)
-            if m_external:
-                m_hat = {
-                    "preds": external_predictions["preds"],
-                    "targets": _cond_targets(d, cond_sample=smpls_d1),
-                    "models": None
-                }
-            else:
-                m_hat = _dml_cv_predict(
-                    self._learner["ml_m"],
-                    x,
-                    d,
-                    smpls=smpls_d1,
-                    n_jobs=n_jobs_cv,
-                    est_params=self._get_params("ml_m"),
-                    method=self._predict_method["ml_m"],
-                    return_models=return_models,
-                )
-                _check_finite_predictions(m_hat["preds"], self._learner["ml_m"], "ml_m", smpls_d1)
+        # TODO: Check for how to initialize external predictions.
 
-            # Compute the conditional expectation of outcome Y given non-treatment D=0 and co-founders X. E(Y|D=0,X)
-            if g_d0_external:
-                g_d0_hat = {
-                    "preds": external_predictions["preds"],
-                    "targets": _cond_targets(y, cond_sample=smpls_d0),
-                    "models": None
-                }
-            else:
-                g_d0_hat = _dml_cv_predict(
-                    self._learner["ml_g_d0"],
-                    x,
-                    y,
-                    smpls=smpls_d0,
-                    n_jobs=n_jobs_cv,
-                    est_params=self._get_params("ml_g_d0"),
-                    method=self._predict_method["ml_g_d0"],
-                    return_models=return_models,
-                )
-                _check_finite_predictions(g_d0_hat["preds"], self._learner["ml_g_d0"], "ml_g_d0", smpls_d0)
+        return psi_elements, preds
 
-                preds = {
-                    "predictions": {
-                        "ml_m": m_hat["preds"],
-                        "ml_g_d0": g_d0_hat["preds"],
-                    },
-                    "targets": {
-                        "ml_m": m_hat["targets"],
-                        "ml_g_d0": g_d0_hat["targets"],
-                    },
-                    "models": {
-                        "ml_m": m_hat["models"],
-                        "ml_g_d0": g_d0_hat["models"],
-                    },
-                }
-        elif self._score == "Y(0, M(1))":
-            m_external = external_predictions["ml_m"] is not None
-            g_d0_med0_external = external_predictions["ml_g_d0_m0"] is not None
-            g_d0_med1_external = external_predictions["ml_g_d0_m1"] is not None
-            med_d0_external = external_predictions["ml_med_d0"] is not None
-            med_d1_external = external_predictions["ml_med_d1"] is not None
+    #TODO: Check if these functions are needed or not.
+    #TODO: Check whether all parameters are useful or not.
+    def _est_counterfactual(self, smpls, x, y, d, m, n_jobs_cv, return_models, external_predictions):
+        #TODO: These functions might be wrong.
+        treated = self.treated
+        mediated = self.mediated
+        smpls_d0, smpls_d1 = _get_cond_smpls(smpls, treated)
+        smpls_d0_med0, smpls_d0_med1, smpls_d1_med0, smpls_d1_med1 = _get_cond_smpls_2d(smpls, treated, mediated)
 
-            # Compute the probability of treatment given the cofounders. Pr(D=1|X)
-            if m_external:
-                m_hat = {
-                    "preds": external_predictions["preds"],
-                    "targets": _cond_targets(d, cond_sample=smpls_d1),
-                    "models": None
-                }
-            else:
-                m_hat = _dml_cv_predict(
-                    self._learner["ml_m"],
-                    x,
-                    d,
-                    smpls=smpls_d1,
-                    n_jobs=n_jobs_cv,
-                    est_params=self._get_params("ml_m"),
-                    method=self._predict_method["ml_m"],
-                    return_models=return_models,
-                )
-                _check_finite_predictions(m_hat["preds"], self._learner["ml_m"], "ml_m", smpls_d1)
+        m_external = external_predictions["ml_m"] is not None
+        med_d0_external = external_predictions["ml_med_d0"] is not None
+        med_d1_external = external_predictions["ml_med_d1"] is not None
+        smpls_pot = None
+        smpls_counter = None
 
-            # Compute the conditional expectation of outcome Y given non-treatment D=0, non-mediation M=0 and co-founders X. E(Y|D=0,M=0,X)
-            if g_d0_med0_external:
-                med_d0_hat = {
-                    "preds": external_predictions["preds"],
-                    "targets": _cond_targets(y, cond_sample=smpls_d0_med0),
-                    "models": None
-                }
-            else:
-                g_d0_med0_hat = _dml_cv_predict(
-                    self._learner["ml_g_d0_med0"],
-                    x,
-                    y,
-                    smpls=smpls_d0_med0,
-                    n_jobs=n_jobs_cv,
-                    est_params=self._get_params("ml_g_d0_med0"),
-                    method=self._predict_method["ml_g_d0_med0"],
-                    return_models=return_models,
-                )
-                _check_finite_predictions(g_d0_med0_hat["preds"], self._learner["g_d0_med0_hat"], "g_d0_med0_hat",
-                                          smpls_d0_med0)
+        # Learner for E(Y|D=d, M=d, X)
+        g_pot_learner_name = self.params_names[0]
+        # Learner for E(Y|D=d, M=1-d, X)
+        g_counter_learner_name = self.params_names[1]
 
-            # Compute the conditional expectation of outcome Y given non-treatment D=0, mediation M=1 and co-founders X. E(Y|D=0,M=1,X)
-            if g_d0_med1_external:
-                g_d0_med1_hat = {
-                    "preds": external_predictions["preds"],
-                    "targets": _cond_targets(y, cond_sample=smpls_d0_med1),
-                    "models": None
-                }
-            else:
-                g_d0_med1_hat = _dml_cv_predict(
-                    self._learner["ml_g_d0_med1"],
-                    x,
-                    y,
-                    smpls=smpls_d0_med1,
-                    n_jobs=n_jobs_cv,
-                    est_params=self._get_params("ml_g_d0_med1"),
-                    method=self._predict_method["ml_g_d0_med1"],
-                    return_models=return_models,
-                )
-                _check_finite_predictions(g_d0_med1_hat["preds"], self._learner["ml_g_d0_med1"], "ml_g_d0_med1",
-                                          smpls_d0_med1)
+        if g_pot_learner_name == "ml_g_d0_m0":
+            g_pot_external = external_predictions["ml_g_d0_m0"] is not None
+            g_counter_external = external_predictions["ml_g_d0_med1"] is not None
+            smpls_pot = smpls_d0_med0
+            smpls_counter = smpls_d0_med1
+        else:
+            g_pot_external = external_predictions["ml_g_d1_med1"] is not None
+            g_counter_external = external_predictions["ml_g_d1_med0"] is not None
+            smpls_pot = smpls_d1_med1
+            smpls_counter = smpls_d1_med0
 
-            # Compute the mediator mean conditional on the treatment and cofounders. E[M|D=1, X]
-            if med_d1_external:
-                med_d1_hat = {
-                    "preds": external_predictions["preds"],
-                    "targets": _cond_targets(m, cond_sample=smpls_d1),
-                    "models": None
-                }
-            else:
-                med_d1_hat = _dml_cv_predict(
-                    self._learner["ml_med_d1"],
-                    x,
-                    m,
-                    smpls=smpls_d1,
-                    n_jobs=n_jobs_cv,
-                    est_params=self._get_params("ml_med_d1_hat"),
-                    method=self._predict_method["ml_med_d1_hat"],
-                    return_models=return_models,
-                )
-                _check_finite_predictions(med_d1_hat["preds"], self._learner["ml_med_d1"], "ml_med_d1",
-                                          smpls_d1)
+        # Compute the probability of treatment given the cofounders. Pr(D=1|X)
+        if m_external:
+            m_hat = {
+                "preds": external_predictions["preds"],
+                "targets": _cond_targets(d, cond_sample=smpls_d1),
+                "models": None
+            }
+        else:
+            m_hat = _dml_cv_predict(
+                self._learner["ml_m"],
+                x,
+                d,
+                smpls=smpls_d1,
+                n_jobs=n_jobs_cv,
+                est_params=self._get_params("ml_m"),
+                method=self._predict_method["ml_m"],
+                return_models=return_models,
+            )
+            _check_finite_predictions(m_hat["preds"], self._learner["ml_m"], "ml_m", smpls_d1)
 
-            # Compute the mediator mean conditional on  non-treatment and cofounders. E[M|D=0, X]
-            if med_d0_external:
-                med_d0_hat = {
-                    "preds": external_predictions["preds"],
-                    "targets": _cond_targets(m, cond_sample=smpls_d0),
-                    "models": None
-                }
-            else:
-                med_d0_hat = _dml_cv_predict(
-                    self._learner["ml_med_d0"],
-                    x,
-                    m,
-                    smpls=smpls_d0,
-                    n_jobs=n_jobs_cv,
-                    est_params=self._get_params("ml_med_d0"),
-                    method=self._predict_method["ml_med_d0"],
-                    return_models=return_models,
-                )
-                _check_finite_predictions(med_d0_hat["preds"], self._learner["ml_med_d0"], "ml_med_d0",
-                                          smpls_d0)
+        # Compute the conditional expectation of outcome Y given non-treatment D=0, non-mediation M=0 and co-founders X. E(Y|D=0,M=0,X)
+        if g_pot_external:
+            g_pot_hat = {
+                "preds": external_predictions["preds"],
+                "targets": _cond_targets(y, cond_sample=smpls_pot),
+                "models": None
+            }
+        else:
+            g_pot_hat = _dml_cv_predict(
+                self._learner[g_pot_learner_name],
+                x,
+                y,
+                smpls=smpls_pot,
+                n_jobs=n_jobs_cv,
+                est_params=self._get_params(g_pot_learner_name),
+                method=self._predict_method[g_pot_learner_name],
+                return_models=return_models,
+            )
+            _check_finite_predictions(g_pot_hat["preds"], self._learner[g_pot_learner_name], g_pot_learner_name,
+                                      smpls_pot)
 
-                preds = {
-                    "predictions": {
-                        "ml_m": m_hat["preds"],
-                        "ml_g_d0_med0": g_d0_med0_hat["preds"],
-                        "ml_g_d0_med1": g_d0_med1_hat["preds"],
-                        "ml_med_d0": med_d0_hat["preds"],
-                        "ml_med_d1": med_d1_hat["preds"],
-                    },
-                    "targets": {
-                        "ml_m": m_hat["targets"],
-                        "ml_g_d0_med0": g_d0_med0_hat["targets"],
-                        "ml_g_d0_med1": g_d0_med1_hat["targets"],
-                        "ml_med_d0": med_d0_hat["targets"],
-                        "ml_med_d1": med_d1_hat["targets"],
-                    },
-                    "models": {
-                        "ml_m": m_hat["models"],
-                        "ml_g_d0_med0": g_d0_med0_hat["models"],
-                        "ml_g_d0_med1": g_d0_med1_hat["models"],
-                        "ml_med_d0": med_d0_hat["models"],
-                        "ml_med_d1": med_d1_hat["models"],
-                    },
-                }
-        elif self._score == "Y(1, M(0))":
-            m_external = external_predictions["ml_m"] is not None
-            g_d1_med0_external = external_predictions["ml_g_d1_m0"] is not None
-            g_d1_med1_external = external_predictions["ml_g_d1_m1"] is not None
-            med_d0_external = external_predictions["ml_med_d0"] is not None
-            med_d1_external = external_predictions["ml_med_d1"] is not None
+        # Compute the conditional expectation of outcome Y given non-treatment D=0, mediation M=1 and co-founders X. E(Y|D=0,M=1,X)
+        if g_counter_external:
+            g_counter_hat = {
+                "preds": external_predictions["preds"],
+                "targets": _cond_targets(y, cond_sample=smpls_counter),
+                "models": None
+            }
+        else:
+            g_counter_hat = _dml_cv_predict(
+                self._learner[g_counter_learner_name],
+                x,
+                y,
+                smpls=smpls_d0_med1,
+                n_jobs=n_jobs_cv,
+                est_params=self._get_params(g_counter_learner_name),
+                method=self._predict_method[g_counter_learner_name],
+                return_models=return_models,
+            )
+            _check_finite_predictions(g_counter_hat["preds"], self._learner[g_counter_learner_name], g_counter_learner_name,
+                                      smpls_counter)
 
-            # Compute the probability of treatment given the cofounders. Pr(D=1|X)
-            if m_external:
-                m_hat = {
-                    "preds": external_predictions["preds"],
-                    "targets": _cond_targets(d, cond_sample=smpls_d1),
-                    "models": None
-                }
-            else:
-                m_hat = _dml_cv_predict(
-                    self._learner["ml_m"],
-                    x,
-                    d,
-                    smpls=smpls_d1,
-                    n_jobs=n_jobs_cv,
-                    est_params=self._get_params("ml_m"),
-                    method=self._predict_method["ml_m"],
-                    return_models=return_models,
-                )
-                _check_finite_predictions(m_hat["preds"], self._learner["ml_m"], "ml_m", smpls_d1)
+        # Compute the mediator mean conditional on the treatment and cofounders. E[M|D=1, X]
+        if med_d1_external:
+            med_d1_hat = {
+                "preds": external_predictions["preds"],
+                "targets": _cond_targets(m, cond_sample=smpls_d1),
+                "models": None
+            }
+        else:
+            med_d1_hat = _dml_cv_predict(
+                self._learner["ml_med_d1"],
+                x,
+                m,
+                smpls=smpls_d1,
+                n_jobs=n_jobs_cv,
+                est_params=self._get_params("ml_med_d1_hat"),
+                method=self._predict_method["ml_med_d1_hat"],
+                return_models=return_models,
+            )
+            _check_finite_predictions(med_d1_hat["preds"], self._learner["ml_med_d1"], "ml_med_d1",
+                                      smpls_d1)
 
-                # Compute the conditional expectation of outcome Y given treatment D=1, non-mediation M=0 and co-founders X. E(Y|D=1,M=0,X)
-            if g_d1_med0_external:
-                g_d1_med0_hat = {
-                    "preds": external_predictions["preds"],
-                    "targets": _cond_targets(y, cond_sample=smpls_d1_med0),
-                    "models": None
-                }
-            else:
-                g_d1_med0_hat = _dml_cv_predict(
-                    self._learner["ml_g_d1_med0"],
-                    x,
-                    y,
-                    smpls=smpls_d1_med0,
-                    n_jobs=n_jobs_cv,
-                    est_params=self._get_params("ml_g_d1_med0"),
-                    method=self._predict_method["ml_g_d1_med0"],
-                    return_models=return_models,
-                )
-                _check_finite_predictions(g_d1_med0_hat["preds"], self._learner["ml_g_d1_med0"], "ml_g_d1_med0",
-                                          smpls_d1_med0)
+        # Compute the mediator mean conditional on  non-treatment and cofounders. E[M|D=0, X]
+        if med_d0_external:
+            med_d0_hat = {
+                "preds": external_predictions["preds"],
+                "targets": _cond_targets(m, cond_sample=smpls_d0),
+                "models": None
+            }
+        else:
+            med_d0_hat = _dml_cv_predict(
+                self._learner["ml_med_d0"],
+                x,
+                m,
+                smpls=smpls_d0,
+                n_jobs=n_jobs_cv,
+                est_params=self._get_params("ml_med_d0"),
+                method=self._predict_method["ml_med_d0"],
+                return_models=return_models,
+            )
+            _check_finite_predictions(med_d0_hat["preds"], self._learner["ml_med_d0"], "ml_med_d0",
+                                      smpls_d0)
 
-            # Compute the conditional expectation of outcome Y given treatment D=1, mediation M=1 and co-founders X. E(Y|D=1,M=1,X)
-            if g_d1_med1_external:
-                g_d1_med1_hat = {
-                    "preds": external_predictions["preds"],
-                    "targets": _cond_targets(y, cond_sample=smpls_d1_med1),
-                    "models": None
-                }
-            else:
-                g_d1_med1_hat = _dml_cv_predict(
-                    self._learner["ml_g_d1_med1"],
-                    mdx,
-                    y,
-                    smpls=smpls_d1_med1,
-                    n_jobs=n_jobs_cv,
-                    est_params=self._get_params("ml_g_d1_med1"),
-                    method=self._predict_method["ml_g_d1_med1"],
-                    return_models=return_models,
-                )
-                _check_finite_predictions(g_d1_med1_hat["preds"], self._learner["ml_g_d1_med1"], "ml_g_d1_med1",
-                                          smpls_d1_med1)
-
-            # Compute the mediator mean conditional on the treatment and cofounders. E[M|D=1, X]
-            if med_d1_external:
-                med_d1_hat = {
-                    "preds": external_predictions["preds"],
-                    "targets": _cond_targets(m, cond_sample=smpls_d1),
-                    "models": None
-                }
-            else:
-                med_d1_hat = _dml_cv_predict(
-                    self._learner["ml_med_d1"],
-                    x,
-                    m,
-                    smpls=smpls_d1,
-                    n_jobs=n_jobs_cv,
-                    est_params=self._get_params("ml_med_d1_hat"),
-                    method=self._predict_method["ml_med_d1_hat"],
-                    return_models=return_models,
-                )
-                _check_finite_predictions(med_d1_hat["preds"], self._learner["ml_med_d1"], "ml_med_d1", smpls_d1)
-
-            # Compute the mediator mean conditional on  non-treatment and cofounders. E[M|D=0, X]
-            if med_d0_external:
-                med_d0_hat = {
-                    "preds": external_predictions["preds"],
-                    "targets": _cond_targets(m, cond_sample=smpls_d0),
-                    "models": None
-                }
-            else:
-                med_d0_hat = _dml_cv_predict(
-                    self._learner["ml_med_d0"],
-                    x,
-                    m,
-                    smpls=smpls_d0,
-                    n_jobs=n_jobs_cv,
-                    est_params=self._get_params("ml_med_d0"),
-                    method=self._predict_method["ml_med_d0"],
-                    return_models=return_models,
-                )
-                _check_finite_predictions(med_d0_hat["preds"], self._learner["ml_med_d0"], "ml_med_d0", smpls_d0)
-
-                preds = {
-                    "predictions": {
-                        "ml_m": m_hat["preds"],
-                        "ml_g_d0_med0": g_d1_med0_hat["preds"],
-                        "ml_g_d0_med1": g_d1_med1_hat["preds"],
-                        "ml_med_d0": med_d0_hat["preds"],
-                        "ml_med_d1": med_d1_hat["preds"],
-                    },
-                    "targets": {
-                        "ml_m": m_hat["targets"],
-                        "ml_g_d0_med0": g_d1_med0_hat["targets"],
-                        "ml_g_d0_med1": g_d1_med1_hat["targets"],
-                        "ml_med_d0": med_d0_hat["targets"],
-                        "ml_med_d1": med_d1_hat["targets"],
-                    },
-                    "models": {
-                        "ml_m": m_hat["models"],
-                        "ml_g_d0_med0": g_d1_med0_hat["models"],
-                        "ml_g_d0_med1": g_d1_med1_hat["models"],
-                        "ml_med_d0": med_d0_hat["models"],
-                        "ml_med_d1": med_d1_hat["models"],
-                    },
-                }
-        elif self._score == "Y(1, M(1))":
-            m_external = external_predictions["ml_m"] is not None
-            g_d1_external = external_predictions["ml_g_d1"] is not None
-
-            # Compute the conditional expectation of outcome Y given treatment D=1 and co-founders X. E(Y|D=1,X)
-            if g_d1_external:
-                g_d1_hat = {
-                    "preds": external_predictions["preds"],
-                    "targets": _cond_targets(y, cond_sample=smpls_d1),
-                    "models": None
-                }
-            else:
-                g_d1_hat = _dml_cv_predict(
-                    self._learner["ml_g_d1"],
-                    x,
-                    y,
-                    smpls=smpls_d1,
-                    n_jobs=n_jobs_cv,
-                    est_params=self._get_params("ml_g_d1"),
-                    method=self._predict_method["ml_g_d1"],
-                    return_models=return_models,
-                )
-                _check_finite_predictions(g_d1_hat["preds"], self._learner["ml_g_d1"], "ml_g_d1", smpls_d1)
-
-            # Compute the probability of treatment given the cofounders. Pr(D=1|X)
-            if m_external:
-                m_hat = {
-                    "preds": external_predictions["preds"],
-                    "targets": _cond_targets(d, cond_sample=smpls_d1),
-                    "models": None
-                }
-            else:
-                m_hat = _dml_cv_predict(
-                    self._learner["ml_m"],
-                    x,
-                    d,
-                    smpls=smpls_d1,
-                    n_jobs=n_jobs_cv,
-                    est_params=self._get_params("ml_m"),
-                    method=self._predict_method["ml_m"],
-                    return_models=return_models,
-                )
-                _check_finite_predictions(m_hat["preds"], self._learner["ml_m"], "ml_m", smpls_d1)
-
+            psi_a, psi_b = self._score_elements(y, d, m, x, m_hat = m_hat["preds"],
+                                                g_pot_hat = g_pot_hat["preds"],
+                                                g_counter_hat = g_counter_hat["preds"],
+                                                med_d0_hat = med_d0_hat["preds"],
+                                                med_d1_hat = med_d1_hat["preds"],
+                                                )
             preds = {
                 "predictions": {
                     "ml_m": m_hat["preds"],
-                    "ml_g_d1": g_d1_hat["preds"],
+                    g_pot_learner_name: g_pot_hat["preds"],
+                    g_counter_learner_name: g_counter_hat["preds"],
+                    "ml_med_d0": med_d0_hat["preds"],
+                    "ml_med_d1": med_d1_hat["preds"],
                 },
                 "targets": {
                     "ml_m": m_hat["targets"],
-                    "ml_g_d1": g_d1_hat["targets"],
+                    g_pot_learner_name: g_pot_hat["targets"],
+                    g_counter_learner_name: g_counter_hat["targets"],
+                    "ml_med_d0": med_d0_hat["targets"],
+                    "ml_med_d1": med_d1_hat["targets"],
                 },
                 "models": {
                     "ml_m": m_hat["models"],
-                    "ml_g_d1": g_d1_hat["models"],
+                    g_pot_learner_name: g_pot_hat["models"],
+                    g_counter_learner_name: g_counter_hat["models"],
+                    "ml_med_d0": med_d0_hat["models"],
+                    "ml_med_d1": med_d1_hat["models"],
                 },
             }
-        # TODO: Check for how to initialize external predictions.
 
-        return preds
+        psi_a, psi_b = self._score_elements(y, d, m, x, m_hat = m_hat,
+                                            g_pot = g_pot_hat,
+                                            g_counter = g_counter_hat,
+                                            med_d0 = med_d0_hat,
+                                            med_d1 = med_d1_hat)
+        psi_elements = {"psi_a": psi_a, "psi_b": psi_b}
 
-    #TODO: Check if these functions are needed or not.
-    def _est_counterfactual(self):
+        preds = {
+            "predictions": {
+                "ml_m": m_hat["preds"],
+                g_pot_learner_name: g_pot_hat["preds"],
+                g_counter_learner_name: g_counter_hat["preds"],
+                "ml_med_d0": med_d0_hat["preds"],
+                "ml_med_d1": med_d1_hat["preds"],
+            },
+            "targets": {
+                "ml_m": m_hat["targets"],
+                g_pot_learner_name: g_pot_hat["targets"],
+                g_counter_learner_name: g_counter_hat["targets"],
+                "ml_med_d0": med_d0_hat["targets"],
+                "ml_med_d1": med_d1_hat["targets"],
+            },
+            "models": {
+                "ml_m": m_hat["models"],
+                g_pot_learner_name: g_pot_hat["models"],
+                g_counter_learner_name: g_counter_hat["models"],
+                "ml_med_d0": med_d0_hat["models"],
+                "ml_med_d1": med_d1_hat["models"],
+            },
+        }
+        return psi_elements, preds
+
+    def _est_counterfactual_alt(self, smpls, x, y, d, m, n_jobs_cv, return_models, external_predictions):
+        # TODO: These functions might be wrong.
+        # TODO: Also, check if samples and regressors are right.
+        treated = self.treated
+        mediated = self.mediated
+        smpls_d0, smpls_d1 = _get_cond_smpls(smpls, treated)
+
+        m_external = external_predictions["ml_m"] is not None
+        m_med_external = external_predictions["ml_m_med"] is not None
+
+        # Learner for E(Y|D=d, M=d, X)
+        g_d_learner_name = self.params_names[0]
+        # Learner for E(Y|D=d, M=1-d, X)
+        g_nested_name = self.params_names[1]
+        # Prepare samples to be used
+        smpls_gd = None
+        smpls_nested = None
+
+        xm = np.concat((x, m))
+        #   y0m1=((1-dte)*pmxte/((1-pmxte)*pxte)*(yte-eymx0te)+dte/pxte*(eymx0te-regweymx0te)+regweymx0te
+        #   y1m0=(dte*(1-pmxte)/(pmxte*(1-pxte))*(yte-eymx1te)+(1-dte)/(1-pxte)*(eymx1te-regweymx1te)+regweymx1te)
+        #   dte, pmxte, pxte, yte, eymx0te, regweymx0te, eyx0te, eymx1te, regweymx1te, eyx1te
+        #    1     2     3     4     5         6            7       8          9         10
+        # pmxte = Pr(D=1|M,X), pxte = Pr(D=1|X)
+        # eyx0te = E(Y|D=0, X), eyx1te = E(Y|D=1, X)
+        # eymx1te = E(Y|D=1, M, X), eymx0te = E(Y|D=0, M, X)
+        # regweymx1te = E[E(Y|M,X,D=1)|D=0,X], regweymx0te = E[E(Y|M,X,D=0)|D=1,X]
+        if g_d_learner_name == "ml_g_d0":
+            g_d_external = external_predictions["ml_g_d0"] is not None
+            g_nested_external = external_predictions["ml_g_d0_d1"] is not None
+            smpls_gd = smpls_d0
+            smpls_nested = None
+        else:
+            g_d_external = external_predictions["ml_g_d1"] is not None
+            g_nested_external = external_predictions["ml_g_d1_d0"] is not None
+            smpls_gd = smpls_d1
+            smpls_nested = None
+
+        # Compute the probability of treatment given the cofounders. Pr(D=1|X)
+        if m_external:
+            m_hat = {
+                "preds": external_predictions["preds"],
+                "targets": _cond_targets(d, cond_sample=smpls_d1),
+                "models": None
+            }
+        else:
+            m_hat = _dml_cv_predict(
+                self._learner["ml_m"],
+                x,
+                d,
+                smpls=smpls_d1,
+                n_jobs=n_jobs_cv,
+                est_params=self._get_params("ml_m"),
+                method=self._predict_method["ml_m"],
+                return_models=return_models,
+            )
+            _check_finite_predictions(m_hat["preds"], self._learner["ml_m"], "ml_m", smpls_d1)
+
+        # Compute the conditional expectation of outcome Y given non-treatment D=0, non-mediation M=0 and co-founders X. E(Y|D=0,M=0,X)
+        if g_d_external:
+            g_d_hat = {
+                "preds": external_predictions["preds"],
+                "targets": _cond_targets(y, cond_sample=smpls_gd),
+                "models": None
+            }
+        else:
+            g_d_hat = _dml_cv_predict(
+                self._learner[g_d_learner_name],
+                x,
+                y,
+                smpls=smpls_gd,
+                n_jobs=n_jobs_cv,
+                est_params=self._get_params(g_d_learner_name),
+                method=self._predict_method[g_d_learner_name],
+                return_models=return_models,
+            )
+            _check_finite_predictions(g_d_hat["preds"], self._learner[g_d_learner_name], g_d_learner_name,
+                                      smpls_gd)
+
+        # Compute the conditional expectation of outcome Y given non-treatment D=0, mediation M=1 and co-founders X. E(Y|D=0,M=1,X)
+        #TODO: This is false. We need to first predict eymx1trte by predicting eymx1[E(Y|D=1, M, X)] on xm. Then we need to predict regweymx1
+        # by regressing eymx1trte on xtrte. Basically, this is not it.
+        if g_nested_external:
+            g_nested_hat = {
+                "preds": external_predictions["preds"],
+                "targets": _cond_targets(y, cond_sample=smpls_nested),
+                "models": None
+            }
+        else:
+            g_nested_hat = _dml_cv_predict(
+                self._learner[g_nested_name],
+                xm,
+                d,
+                smpls=smpls_nested,
+                n_jobs=n_jobs_cv,
+                est_params=self._get_params(g_nested_name),
+                method=self._predict_method[g_nested_name],
+                return_models=return_models,
+            )
+            _check_finite_predictions(g_nested_hat["preds"], self._learner[g_nested_name],
+                                      g_nested_name,
+                                      smpls_nested)
+
+        # Compute the mediator mean conditional on the treatment and cofounders. E[M|D=1, X]
+        if m_med_external:
+            m_med_hat = {
+                "preds": external_predictions["preds"],
+                "targets": _cond_targets(m, cond_sample=smpls),
+                "models": None
+            }
+        else:
+            m_med_hat = _dml_cv_predict(
+                self._learner["ml_m_med"],
+                x,
+                m,
+                smpls=smpls,
+                n_jobs=n_jobs_cv,
+                est_params=self._get_params("ml_m_med"),
+                method=self._predict_method["ml_m_med"],
+                return_models=return_models,
+            )
+            _check_finite_predictions(m_med_hat["preds"], self._learner["ml_m_med"], "ml_m_med",
+                                      smpls)
+
+
+            psi_a, psi_b = self._score_elements(y, d, m, x, m_hat=m_hat["preds"],
+                                                g_pot_hat=g_pot_hat["preds"],
+                                                g_counter_hat=g_counter_hat["preds"],
+                                                med_d0_hat=med_d0_hat["preds"],
+                                                med_d1_hat=med_d1_hat["preds"],
+                                                )
+            preds = {
+                "predictions": {
+                    "ml_m": m_hat["preds"],
+                    g_pot_learner_name: g_pot_hat["preds"],
+                    g_counter_learner_name: g_counter_hat["preds"],
+                    "ml_med_d0": med_d0_hat["preds"],
+                    "ml_med_d1": med_d1_hat["preds"],
+                },
+                "targets": {
+                    "ml_m": m_hat["targets"],
+                    g_pot_learner_name: g_pot_hat["targets"],
+                    g_counter_learner_name: g_counter_hat["targets"],
+                    "ml_med_d0": med_d0_hat["targets"],
+                    "ml_med_d1": med_d1_hat["targets"],
+                },
+                "models": {
+                    "ml_m": m_hat["models"],
+                    g_pot_learner_name: g_pot_hat["models"],
+                    g_counter_learner_name: g_counter_hat["models"],
+                    "ml_med_d0": med_d0_hat["models"],
+                    "ml_med_d1": med_d1_hat["models"],
+                },
+            }
+
+        psi_a, psi_b = self._score_elements(y, d, m, x, m_hat=m_hat,
+                                            g_pot=g_pot_hat,
+                                            g_counter=g_counter_hat,
+                                            med_d0=med_d0_hat,
+                                            med_d1=med_d1_hat)
+        psi_elements = {"psi_a": psi_a, "psi_b": psi_b}
+
+        preds = {
+            "predictions": {
+                "ml_m": m_hat["preds"],
+                g_pot_learner_name: g_pot_hat["preds"],
+                g_counter_learner_name: g_counter_hat["preds"],
+                "ml_med_d0": med_d0_hat["preds"],
+                "ml_med_d1": med_d1_hat["preds"],
+            },
+            "targets": {
+                "ml_m": m_hat["targets"],
+                g_pot_learner_name: g_pot_hat["targets"],
+                g_counter_learner_name: g_counter_hat["targets"],
+                "ml_med_d0": med_d0_hat["targets"],
+                "ml_med_d1": med_d1_hat["targets"],
+            },
+            "models": {
+                "ml_m": m_hat["models"],
+                g_pot_learner_name: g_pot_hat["models"],
+                g_counter_learner_name: g_counter_hat["models"],
+                "ml_med_d0": med_d0_hat["models"],
+                "ml_med_d1": med_d1_hat["models"],
+            },
+        }
+        return psi_elements, preds
+
+    def _est_potential(self, smpls, x, y, d, m, n_jobs_cv, return_models, external_predictions):
+        treated = self.treated
+        smpls_d0, smpls_d1 = _get_cond_smpls(smpls, treated)
+        #TODO: Erase this comment.
+        #Just so that we know the type of smpls_g
+        smpls_g = None
+        g_learner_name = self.params_names()[0]
+
+        g_d_external = external_predictions[g_learner_name] is not None
+        m_external = external_predictions["ml_m"] is not None
+
+        if g_learner_name == "ml_g_d0": smpls_g = smpls_d0
+        else: smpls_g = smpls_d1
+
+        # Compute the conditional expectation of outcome Y given non-treatment D=0 and co-founders X. E(Y|D=0,X)
+        if g_d_external:
+            g_d_hat = {
+                "preds": external_predictions["preds"],
+                "targets": _cond_targets(y, cond_sample=smpls_g),
+                "models": None
+            }
+        else:
+            g_d_hat = _dml_cv_predict(
+                self._learner[g_learner_name],
+                x,
+                y,
+                smpls=smpls_g,
+                n_jobs=n_jobs_cv,
+                est_params=self._get_params(g_learner_name),
+                method=self._predict_method[g_learner_name],
+                return_models=return_models,
+            )
+            _check_finite_predictions(g_d_hat["preds"], self._learner[g_learner_name], g_learner_name, smpls_g)
+
+        # Compute the probability of treatment given the cofounders. Pr(D=1|X)
+        if m_external:
+            m_hat = {
+                "preds": external_predictions["preds"],
+                "targets": _cond_targets(d, cond_sample=smpls_d1),
+                "models": None
+            }
+        else:
+            m_hat = _dml_cv_predict(
+                self._learner["ml_m"],
+                x,
+                d,
+                smpls=smpls_d1,
+                n_jobs=n_jobs_cv,
+                est_params=self._get_params("ml_m"),
+                method=self._predict_method["ml_m"],
+                return_models=return_models,
+            )
+            _check_finite_predictions(m_hat["preds"], self._learner["ml_m"], "ml_m", smpls_d1)
+
+        psi_a, psi_b = self._score_elements(y, d, m, x, g_d_hat["preds"], m_hat["preds"])
+        psi_elements = {"psi_a": psi_a, "psi_b": psi_b}
+
+        preds = {
+            "predictions": {
+                "ml_m": m_hat["preds"],
+                g_learner_name: g_d_hat["preds"],
+            },
+            "targets": {
+                "ml_m": m_hat["targets"],
+                g_learner_name: g_d_hat["targets"],
+            },
+            "models": {
+                "ml_m": m_hat["models"],
+                g_learner_name: g_d_hat["models"],
+            },
+        }
+        return psi_elements, preds
+
+    def _est_potential_alt(self):
+        #   y1m1=(eyx1te + dte *(yte-eyx1te)/pxte)
+        #   y0m0=(eyx0te + (1-dte)*(yte-eyx0te)/(1-pxte))
+
         pass
+    def _score_elements(self, smpls, y, d, m, x, g_d_hat, m_hat, g_pot, g_counter, med_d0, med_d1):
+        #TODO: Make sure that y, d, m, x are from the test parts of the samples
+        psi_a = -1.0
+        psi_b = None
 
-    def _est_counterfactual_alt(self):
-        pass
+        #TODO: test that this test_index method works, that test_inds["d"] gives the d columns in the test set
+        # Probably won't work. Need to see how it's all averaged.
+        test_inds = [test_index for (_, test_index) in smpls]
+        if self._score == "Y(0, M(0))":
+            psi_b = g_d_hat + test_inds["d"] * (test_inds["y"] - g_d_hat)/m_hat
 
-    def _est_potential(self):
-        pass
+        elif self._score == "Y(1, M(1))":
+            psi_b = g_d_hat + (1-test_inds["d"])*(test_inds["y"]-g_d_hat)/(1-m_hat)
+
+        elif self._score == "Y(0, M(1))":
+            # y0m1=(1-score[,1])*score[,4]/((1-score[,3])*score[,2])*(score[,5]-score[,9])+score[,1]/score[,3]*(score[,9]-score[,10]) +score[,10]
+            #    = (1 - dte)*med_d1_hat/((1-ml_m)*med_d0_hat)*(yte-eymx0te) + dte/ml_m * (eymx0te - eta01) + eta01
+            # eymx0te = mte * g_counter + (1-mte) * g_pot; eta01 = g_counter * med_d1 + g_pot * (1-med_d1)
+            eymx0te = m * g_counter + (1-m)*g_pot
+            eta01 = g_counter * med_d1 + g_pot * (1-med_d1)
+            psi_b = (1-test_inds["d"])*med_d1/((1-m_hat) * med_d0) * (test_inds["y"] - eymx0te) + test_inds["d"]/m_hat * (eymx0te - eta01) + eta01
+
+        elif self._score == "Y(1, M(0))":
+            # y1m0=score[,1]*score[,2]/(score[,3]*score[,4])*(score[,5]-score[,6])+(1-score[,1])/(1-score[,3])*(score[,6]-score[,7])
+            #     +score[,7]
+            #    = dte*med_d0_hat/(ml_m*med_d1_hat)*(yte-eymx1te) + (1-dte)/(1-ml_m) * (eymx1te - eta10) + eta10
+            # eymx1te = mte * g_pot + (1-mte) * g_counter; eta10 = g_pot * med_d0 + g_counter * (1-med_d0)
+            eymx1te = test_inds["m"] * g_pot + (1 - test_inds["m"]) * g_counter
+            eta10 = g_pot * med_d0 + g_counter * (1 - med_d0)
+            psi_b = test_inds["d"] * med_d0/(m_hat * med_d0) * (test_inds["y"] - eymx1te) + (1-test_inds["d"])/(1-m_hat) * (eymx1te - eta10) + eta10
+        return psi_a, psi_b
 
     def _nuisance_tuning(self, smpls, param_grids, scoring_methods, n_folds_tune, n_jobs_cv, search_mode,
                          n_iter_randomized_search):
-        pass
+        if self._score == "Y(0, M(0))" or self._score=="Y(1, M(1))":
+            res = self._potential_tuning()
+        if self._score == "Y(0, M(1))" or self._score=="Y(1, M(0))":
+            res = self._counterfactual_tuning()
+        return res
+
+    def _potential_tuning(self, smpls, param_grids, scoring_methods, n_folds_tune, n_jobs_cv, search_mode, n_iter_randomized_search):
+        x, y = check_X_y(self._dml_data.x, self._dml_data.y, force_all_finite=False)
+        x, d = check_X_y(x, self._dml_data.d, force_all_finite=False)
+        # TODO: Create new data class for mediation. Do not use z column for this.
+        _, m = check_consistent_length(x, self._dml_data[
+            "z"])  # Check that the mediators have the same number of samples as X and
+
+        dx = np.column_stack((d, x))
+
+        treated = self.treated
+        smpls_d0, smpls_d1 = _get_cond_smpls(smpls, treated)
+        ml_g_learner_name = self.params_names[0]
+
+        train_inds = [train_index for (train_index, _) in smpls]
+        train_inds_d1 = [train_index for (train_index, _) in smpls_d1]
+        train_inds_g = None
+        if ml_g_learner_name == "ml_g_d0":
+            train_inds_g = [train_index for (train_index, _) in smpls_d0]
+        else:
+            train_inds_g = train_inds_d1
+
+
+        #TODO: Check what this does
+        if scoring_methods is None:
+            scoring_methods = {ml_g_learner_name: None, "ml_m": None}
+
+        g_d_tune_res = _dml_tune(
+            y,
+            dx,  # used to obtain an estimation over several treatment levels (reduced variance in sensitivity)
+            train_inds_g,
+            self._learner[ml_g_learner_name],
+            param_grids[ml_g_learner_name],
+            scoring_methods[ml_g_learner_name],
+            n_folds_tune,
+            n_jobs_cv,
+            search_mode,
+            n_iter_randomized_search,
+        )
+        m_tune_res = _dml_tune(
+            treated,
+            x,
+            train_inds,
+            self._learner["ml_m"],
+            param_grids["ml_m"],
+            scoring_methods["ml_m"],
+            n_folds_tune,
+            n_jobs_cv,
+            search_mode,
+            n_iter_randomized_search,
+        )
+
+        g_d_best_params = [xx.best_params_ for xx in g_d_tune_res]
+        m_best_params = [xx.best_params_ for xx in m_tune_res]
+
+        params = {ml_g_learner_name: g_d_best_params, "ml_m": m_best_params}
+        tune_res = {ml_g_learner_name: g_d_tune_res, "ml_m": m_tune_res}
+
+        res = {"params": params, "tune_res": tune_res}
+        return res
+
+    def _counterfactual_tuning(self, smpls, param_grids, scoring_methods, n_folds_tune, n_jobs_cv, search_mode, n_iter_randomized_search):
+        #TODO: Apply counterfactual_tuning for multmed.
+        x, y = check_X_y(self._dml_data.x, self._dml_data.y, force_all_finite=False)
+        x, d = check_X_y(x, self._dml_data.d, force_all_finite=False)
+        # TODO: Create new data class for mediation. Do not use z column for this.
+        _, m = check_consistent_length(x, self._dml_data[
+            "z"])  # Check that the mediators have the same number of samples as X and
+
+        treated = self.treated
+        mediated = self.mediated
+        smpls_d0, smpls_d1 = _get_cond_smpls(smpls, treated)
+        smpls_d0_med0, smpls_d0_med1, smpls_d1_med0, smpls_d1_med1 = _get_cond_smpls_2d(smpls, treated, mediated)
+
+        dx = np.column_stack((d, x))
+
+        # Learner for E(Y|D=d, M=d, X)
+        g_pot_learner_name = self.params_names[0]
+        # Learner for E(Y|D=d, M=1-d, X)
+        g_counter_learner_name = self.params_names[1]
+
+        train_inds = [train_index for (train_index, _) in smpls]
+        train_inds_d_lvl0 = [train_index for (train_index, _) in smpls_d0]
+        train_inds_d_lvl1 = [train_index for (train_index, _) in smpls_d1]
+
+        if g_pot_learner_name == "ml_g_d0_m0":
+            smpls_pot = smpls_d0_med0
+            smpls_counter = smpls_d0_med1
+            train_inds_pot = [train_index for (train_index, _) in smpls_d0_med0]
+            train_inds_counter = [train_index for (train_index, _) in smpls_d0_med1]
+        else:
+            smpls_pot = smpls_d1_med1
+            smpls_counter = smpls_d1_med0
+            train_inds_pot = [train_index for (train_index, _) in smpls_d1_med1]
+            train_inds_counter = [train_index for (train_index, _) in smpls_d1_med0]
+
+        g_pot_tune_res =_dml_tune(
+            y,
+            dx,  # used to obtain an estimation over several treatment levels (reduced variance in sensitivity)
+            train_inds_pot,
+            self._learner[g_pot_learner_name],
+            param_grids[g_pot_learner_name],
+            scoring_methods[g_pot_learner_name],
+            n_folds_tune,
+            n_jobs_cv,
+            search_mode,
+            n_iter_randomized_search,
+        )
+        g_counter_tune_res =_dml_tune(
+            y,
+            dx,  # used to obtain an estimation over several treatment levels (reduced variance in sensitivity)
+            train_inds_counter,
+            self._learner[g_counter_learner_name],
+            param_grids[g_counter_learner_name],
+            scoring_methods[g_counter_learner_name],
+            n_folds_tune,
+            n_jobs_cv,
+            search_mode,
+            n_iter_randomized_search,
+        )
+
+        m_tune_res =_dml_tune(
+            y,
+            dx,  # used to obtain an estimation over several treatment levels (reduced variance in sensitivity)
+            train_inds,
+            self._learner["ml_m"],
+            param_grids["ml_m"],
+            scoring_methods["ml_m"],
+            n_folds_tune,
+            n_jobs_cv,
+            search_mode,
+            n_iter_randomized_search,
+        )
+
+        med_d0_tune_res =_dml_tune(
+            y,
+            dx,  # used to obtain an estimation over several treatment levels (reduced variance in sensitivity)
+            train_inds_d_lvl0,
+            self._learner["ml_med_d0"],
+            param_grids["ml_med_d0"],
+            scoring_methods["ml_med_d0"],
+            n_folds_tune,
+            n_jobs_cv,
+            search_mode,
+            n_iter_randomized_search,
+        )
+
+        med_d1_tune_res =_dml_tune(
+            y,
+            dx,  # used to obtain an estimation over several treatment levels (reduced variance in sensitivity)
+            train_inds_d_lvl1,
+            self._learner["ml_med_d1"],
+            param_grids["ml_med_d1"],
+            scoring_methods["ml_med_d1"],
+            n_folds_tune,
+            n_jobs_cv,
+            search_mode,
+            n_iter_randomized_search,
+        )
+
+        g_pot_best_params = [xx.best_params_ for xx in g_pot_tune_res]
+        g_counter_best_params = [xx.best_params_ for xx in g_counter_tune_res]
+        m_best_params = [xx.best_params_ for xx in m_tune_res]
+        med_d0_best_params = [xx.best_params_ for xx in med_d0_tune_res]
+        med_d1_best_params = [xx.best_params_ for xx in med_d1_tune_res]
+
+
+        params = {g_pot_learner_name: g_pot_best_params, g_counter_learner_name: g_counter_best_params, "ml_m": m_best_params, "ml_med_d0": med_d0_best_params, "ml_med_d1": med_d1_best_params}
+        tune_res = {g_pot_learner_name: g_pot_tune_res, g_counter_learner_name: g_counter_tune_res, "ml_m": m_tune_res, "ml_med_d0": med_d0_tune_res, "ml_med_d1": med_d1_tune_res}
+
+        res = {"params": params, "tune_res": tune_res}
+
+        return res
 
     def _sensitivity_element_est(self, preds):
         pass
