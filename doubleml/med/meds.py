@@ -16,7 +16,8 @@ from doubleml.utils._estimation import _get_cond_smpls, _get_cond_smpls_2d, _dml
 from doubleml.double_ml_framework import concat
 from joblib import Parallel, delayed
 
-
+#TODO: Add new data class for mediation analysis
+#TODO: Learn how sampling works.
 class DoubleMLMEDS:
     """Mediation analysis with double machine learning.
 
@@ -50,9 +51,12 @@ class DoubleMLMEDS:
         self._learner = None
         self._params = None
 
+        #Initialize framework constructed after the fit method is called.
+        self._framework = None
+
         #TODO: Add functionality to check if learners are good.
-        if multmed=True :
-            if fewsplits=True :
+        if multmed:
+            if fewsplits:
                 pass
             else:
                 pass
@@ -77,17 +81,40 @@ class DoubleMLMEDS:
         self._ci=None
         self.n_trimmed=None
 
-        _ = DoubleML._check_learner(ml_g, "ml_g", regressor=True, classifier=False)
-        _ = DoubleML._check_learner(ml_m, "ml_m", regressor=True, classifier=False)
-        _ = DoubleML._check_learner(ml_med, "ml_med", regressor=True, classifier=False)
-        if self._multmed:
-            _ = DoubleML._check_learner(ml_nested, "ml_nested", regressor=True, classifier=False)
+        #Check the learners are correctly specified.
+        ml_g_is_classifier = DoubleML._check_learner(ml_g, "ml_g", regressor=True, classifier=True)
+        _ = DoubleML._check_learner(ml_m, "ml_m", regressor=False, classifier=True)
+        ml_med_is_classifier = DoubleML._check_learner(ml_med, "ml_med", regressor=True, classifier=True)
 
-        #TODO: No need to create ml_nested and others. Create conditionals so that only necessary learners are created.
-        #TODO: Y. is binary, so maybe some of the learners are classifiers. Check with Huber.
-        self._learner = {"ml_g": clone(ml_g), "ml_m": clone(ml_m), "ml_med": clone(ml_med), "ml_nested": clone(ml_nested)}
-        self._predict_method = {"ml_g": "predict", "ml_m": "predict", "ml_med": "predict", "ml_nested": "predict"}
-        #Taken from DoubleMLAPOS
+        self._learner = {"ml_g": clone(ml_g), "ml_m": clone(ml_m), "ml_med": clone(ml_med)}
+
+        if obj_dml_data.binary_outcome:
+            if ml_g_is_classifier:
+                self._predict_method = {"ml_g": "predict_proba", "ml_m": "predict_proba"}
+            else:
+                raise ValueError(
+                    "The outcome variable has been identified as a binary variable with values 0 and 1."
+                    f"but The ml_g learner {str(ml_g)} is not a classifier."
+                )
+        else:
+            self._predict_method = {"ml_g": "predict", "ml_m": "predict_proba"}
+
+        if ml_med_is_classifier:
+            self._predict_method["ml_med"] = "predict_proba"
+        else:
+            self._predict_method["ml_med"] = "predict"
+
+        if self._multmed:
+            ml_nested_is_classifier = DoubleML._check_learner(ml_nested, "ml_nested", regressor=True, classifier=True)
+            self._learner["ml_nested"] = clone(ml_nested)
+            if ml_nested_is_classifier:
+                self._predict_method["ml_nested"] = "predict_proba"
+            else:
+                self._predict_method["ml_nested"] = "predict"
+
+        #TODO: erase following comment.
+        #Taken from DoubleMLAPOS.
+        #Perform sample splitting
         self._smpls = None
         if draw_sample_splitting:
             self.draw_sample_splitting()
@@ -112,13 +139,6 @@ class DoubleMLMEDS:
         Number of repetitions for the sample splitting.
         """
         return self.n_rep
-
-    @property
-    def score(self):
-        """
-        Specifies the score function(s) that are used.
-        """
-        return self.score
 
     @property
     def normalize_ipw(self):
@@ -168,6 +188,181 @@ class DoubleMLMEDS:
     def draw_sample_splitting(self):
         return self.draw_sample_splitting
 
+    @property
+    def n_folds(self):
+        """
+        Number of folds.
+        """
+        return self._n_folds
+
+    @property
+    def n_rep(self):
+        """
+        Number of repetitions for the sample splitting.
+        """
+        return self._n_rep
+
+    @property
+    def coef(self):
+        """
+        Estimates for the causal parameter(s) after calling :meth:`fit` (shape(4,)).
+        """
+        if self._framework is None:
+            coef = None
+        else:
+            coef = self.framework.thetas
+        return coef
+
+    @property
+    def all_coef(self):
+        """
+        Estimates of the causal parameter(s) for the ``n_rep`` different sample splits after calling :meth: `fit`
+        (shape (4, ``n_rep``))
+        """
+        if self._framework is None:
+            all_coef = None
+        else:
+            all_coef = self.framework.all_thetas
+        return all_coef
+
+    @property
+    def se(self):
+        """
+        Standard errors for the causal parameter(s) after calling :meth:`fit` (shape (4,)).
+        """
+        if self._framework is None:
+            se = None
+        else:
+            se = self.framework.ses
+        return se
+
+    @property
+    def all_se(self):
+        """
+        Standard errors for the causal parameter(s) of interest :meth:`fit` (shape (4,)).
+        """
+        if self._framework is None:
+            all_se = None
+        else:
+            all_se = self.framework.all_ses
+        return all_se
+
+    @property
+    def t_stat(self):
+        """
+        t-statistics for the causal parameter(s) after calling :meth:`fit` (shape (``n_treatment_levels``,)).
+        """
+        if self._framework is None:
+            t_stats = None
+        else:
+            t_stats = self.framework.t_stats
+        return t_stats
+
+    @property
+    def pval(self):
+        """
+        p-values for the causal parameter(s) (shape (``n_treatment_levels``,)).
+        """
+        if self._framework is None:
+            pvals = None
+        else:
+            pvals = self.framework.pvals
+        return pvals
+
+    @property
+    def smpls(self):
+        """
+        The partition used for cross-fitting.
+        """
+        if self._smpls is None:
+            err_msg = (
+                    "Sample splitting not specified. Draw samples via .draw_sample splitting(). "
+                    + "External samples not implemented yet."
+            )
+            raise ValueError(err_msg)
+        return self._smpls
+
+    @property
+    def framework(self):
+        """
+        The corresponding :class:`doubleml.DoubleMLFramework` object.
+        """
+        return self._framework
+
+    @property
+    def boot_t_stat(self):
+        """
+        Bootstrapped t-statistics for the causal parameter(s) after calling :meth:`fit` and :meth:`bootstrap`
+         (shape (``n_rep_boot``, ``n_treatment_levels``, ``n_rep``)).
+        """
+        if self._framework is None:
+            boot_t_stat = None
+        else:
+            boot_t_stat = self._framework.boot_t_stat
+        return boot_t_stat
+
+    @property
+    def modeldict(self):
+        """
+        The list of models for each level.
+        """
+        return self._modeldict
+
+    @property
+    def sensitivity_elements(self):
+        """
+        Values of the sensitivity components after calling :meth:`fit`;
+        If available (e.g., PLR, IRM) a dictionary with entries ``sigma2``, ``nu2``, ``psi_sigma2``, ``psi_nu2``
+        and ``riesz_rep``.
+        """
+        if self._framework is None:
+            sensitivity_elements = None
+        else:
+            sensitivity_elements = self._framework.sensitivity_elements
+        return sensitivity_elements
+
+    @property
+    def sensitivity_params(self):
+        """
+        Values of the sensitivity parameters after calling :meth:`sesitivity_analysis`;
+        If available (e.g., PLR, IRM) a dictionary with entries ``theta``, ``se``, ``ci``, ``rv``
+        and ``rva``.
+        """
+        if self._framework is None:
+            sensitivity_params = None
+        else:
+            sensitivity_params = self._framework.sensitivity_params
+        return sensitivity_params
+
+    @property
+    def summary(self):
+        """
+        A summary for the estimated causal effect after calling :meth:`fit`.
+        """
+        if self.framework is None:
+            col_names = ["coef", "std err", "t", "P>|t|"]
+            df_summary = pd.DataFrame(columns=col_names)
+        else:
+            ci = self.confint()
+            df_summary = generate_summary(self.coef, self.se, self.t_stat, self.pval, ci, self._treatment_levels)
+        return df_summary
+
+    @property
+    def sensitivity_summary(self):
+        """
+        Returns a summary for the sensitivity analysis after calling :meth:`sensitivity_analysis`.
+
+        Returns
+        -------
+        res : str
+            Summary for the sensitivity analysis.
+        """
+        if self._framework is None:
+            raise ValueError("Apply sensitivity_analysis() before sensitivity_summary.")
+        else:
+            sensitivity_summary = self._framework.sensitivity_summary
+        return sensitivity_summary
+
     def fit(self, n_jobs_models=None, n_jobs_cv=None, store_predictions=True, store_models=False, external_predictions=None):
         if external_predictions is not None:
             self._check_external_predictions(external_predictions)
@@ -197,6 +392,7 @@ class DoubleMLMEDS:
     def _fit_model(self, score, n_jobs_cv = None, store_predictions=True, store_models=False, external_predictions_dict=None):
         model = self._modeldict[score]
         #TODO: Add external predictions
+
         model.fit(
             n_jobs_cv=n_jobs_cv,
             store_predictions=store_predictions,
@@ -205,12 +401,30 @@ class DoubleMLMEDS:
         )
         return model
 
-    def confint(self):
-        pass
+    def confint(self, joint=False, level=0.95):
+        if self.framework is None:
+            raise ValueError("Apply fit() before confint().")
+        df_ci = self.framework.confint(joint=joint, level=level)
+        #TODO: Add the score function to the index for better readibility.
+        # df_ci.set_index(pd.Index(self._treatment_levels), inplace=True)
+        return df_ci
 
-    def bootstrap(self):
-        pass
+    def bootstrap(self, method="normal", n_rep_boot=500):
+        if self._framework is None:
+            raise ValueError("Apply fit() before calling bootstrap()")
+        self._framework.bootstrap(method=method, n_rep_boot=n_rep_boot)
+        return self
 
+    def evaluate_effects(self):
+        ate = self._modeldict["Y(1, M(1)"].framework - self._modeldict["Y(0, M(0)"].framework
+        dir_control = self._modeldict["Y(0, M(1)"].framework - self._modeldict["Y(0, M(0)"].framework
+        dir_treatment = self._modeldict["Y(1, M(1)"].framework - self._modeldict["Y(1, M(0)"].framework
+        indir_control = self._modeldict["Y(1, M(1)"].framework - self._modeldict["Y(1, M(0)"].framework
+        indir_treatment = self._modeldict["Y(0, M(1)"].framework - self._modeldict["Y(0, M(0)"].framework
+
+        return ate, dir_control, dir_treatment, indir_control, indir_treatment
+
+    #TODO: Check how to perform sensitivity analysis for causal mediation analysis.
     def sensitivity_analysis(self):
         pass
 
@@ -223,11 +437,14 @@ class DoubleMLMEDS:
     def draw_sample_benchmark(self):
         pass
 
-    def set_sample_splitting(self):
-        pass
+    def set_sample_splitting(self, all_smpls, all_smpls_cluster=None):
+        self._smpls, self._smpls_cluster, self._n_rep, self._n_folds = _check_sample_splitting(
+            all_smpls, all_smpls_cluster, self._dml_data, self._is_cluster_data
+        )
 
-    def _check_data(self):
-        pass
+        self._modeldict = self._initialize_models()
+
+        return self
 
     def _check_and_set_learner(self, ml_g, ml_m, ml_med, ml_nested):
         _ = DoubleML._check_learner(ml_g, "ml_g", regressor=True, classifier=False)

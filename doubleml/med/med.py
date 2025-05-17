@@ -8,6 +8,8 @@ from sklearn.utils import check_X_y, check_consistent_length
 from doubleml import DoubleMLData
 from doubleml.double_ml import DoubleML
 from doubleml.double_ml_score_mixins import LinearScoreMixin
+from doubleml.rdd.tests.test_rdd_classifier import n_obs
+from doubleml.tests.test_evaluate_learner import obj_dml_data
 from doubleml.utils._checks import _check_finite_predictions, _check_score
 from doubleml.utils._estimation import _get_cond_smpls, _get_cond_smpls_2d, _dml_cv_predict, _cond_targets, _dml_tune
 
@@ -119,15 +121,6 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
     #TODO: Do I have to initialize the learners somewhere else(at init???)
     def _initialize_ml_nuisance_params(self):
         #TODO: See if I can estimate ml_m, ml_med_d0 and ml_med_d1 only once for meds.py
-        #TODO: Have to add predict methods for the conditional learners.
-        #   y0m1=((1-dte)*pmxte/((1-pmxte)*pdte)*(yte-eymx0te)+dte/pdte*(eymx0te-regweymx0te)+regweymx0te
-        #   y1m0=(dte*(1-pmxte)/(pmxte*(1-pdte))*(yte-eymx1te)+(1-dte)/(1-pdte)*(eymx1te-regweymx1te)+regweymx1te)
-        #   dte, pmxte, pxte=pdte, yte, eymx0te, regweymx0te, eyx0te, eymx1te, regweymx1te, eyx1te
-        #    1     2     3     4     5         6            7       8          9         10
-        # pmxte = Pr(D=1|M,X), pxte = Pr(D=1|X)
-        # eyx0te = E(Y|D=0, X), eyx1te = E(Y|D=1, X)
-        # eymx1te = E(Y|D=1, M, X), eymx0te = E(Y|D=0, M, X)
-        # regweymx1te = E[E(Y|M,X,D=1)|D=0,X], regweymx0te = E[E(Y|M,X,D=0)|D=1,X]
 
         #Initialize just in case
         valid_learner=None
@@ -166,13 +159,16 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         dx = np.column_stack((d, x))
         mdx = np.column_stack((m, dx))
 
-        #TODO: Maybe create a function for the outcomes estimation.
-        #TODO: Create options for multmed.
-        #TODO: Idea, create functions that make outcomes and deal with multmed. This way it is easier to understand.
         if self._score == "Y(0, M(0))" or self._score == "Y(1, M(1))":
-            psi_elements, preds = self._est_potential(smpls, x, y, d, m, n_jobs_cv, return_models, external_predictions)
+            if self.multmed:
+                psi_elements, preds = self._est_potential_alt(smpls, x, y, d, m, n_jobs_cv, return_models, external_predictions)
+            else:
+                psi_elements, preds = self._est_potential(smpls, x, y, d, m, n_jobs_cv, return_models, external_predictions)
         elif self._score == "Y(0, M(1))" or self._score == "Y(1, M(0))":
-            psi_elements, preds = self._est_counterfactual(smpls, x, y, d, m, n_jobs_cv, return_models, external_predictions)
+            if self.multmed:
+                psi_elements, preds = self._est_counterfactual_alt(smpls, x, y, d, m, n_jobs_cv, return_models, external_predictions)
+            else:
+                psi_elements, preds = self._est_counterfactual_alt(smpls, x, y, d, m, n_jobs_cv, return_models, external_predictions)
 
         # TODO: Check for how to initialize external predictions.
 
@@ -343,7 +339,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
                 },
             }
 
-        psi_a, psi_b = self._score_elements(y, d, m, x, m_hat = m_hat,
+        psi_a, psi_b = self._score_elements(m_hat = m_hat,
                                             g_pot = g_pot_hat,
                                             g_counter = g_counter_hat,
                                             med_d0 = med_d0_hat,
@@ -378,6 +374,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
     def _est_counterfactual_alt(self, smpls, x, y, d, m, n_jobs_cv, return_models, external_predictions):
         # TODO: These functions might be wrong.
         # TODO: Also, check if samples and regressors are right.
+        # TODO: Verify that the samples gotten for multmed are musample, deltasample, psample, etc.
         treated = self.treated
         mediated = self.mediated
         smpls_d0, smpls_d1 = _get_cond_smpls(smpls, treated)
@@ -394,6 +391,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         smpls_nested = None
 
         xm = np.concat((x, m))
+        #TODO: Erase these comments
         #   y0m1=((1-dte)*pmxte/((1-pmxte)*pxte)*(yte-eymx0te)+dte/pxte*(eymx0te-regweymx0te)+regweymx0te
         #   y1m0=(dte*(1-pmxte)/(pmxte*(1-pxte))*(yte-eymx1te)+(1-dte)/(1-pxte)*(eymx1te-regweymx1te)+regweymx1te)
         #   dte, pmxte, pxte, yte, eymx0te, regweymx0te, eyx0te, eymx1te, regweymx1te, eyx1te
@@ -406,12 +404,12 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
             g_d_external = external_predictions["ml_g_d0"] is not None
             g_nested_external = external_predictions["ml_g_d0_d1"] is not None
             smpls_gd = smpls_d0
-            smpls_nested = None
+            smpls_nested = smpls_d1
         else:
             g_d_external = external_predictions["ml_g_d1"] is not None
             g_nested_external = external_predictions["ml_g_d1_d0"] is not None
             smpls_gd = smpls_d1
-            smpls_nested = None
+            smpls_nested = smpls_d0
 
         # Compute the probability of treatment given the cofounders. Pr(D=1|X)
         if m_external:
@@ -433,7 +431,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
             )
             _check_finite_predictions(m_hat["preds"], self._learner["ml_m"], "ml_m", smpls_d1)
 
-        # Compute the conditional expectation of outcome Y given non-treatment D=0, non-mediation M=0 and co-founders X. E(Y|D=0,M=0,X)
+        # Compute the conditional expectation of outcome Y given treatment level D=d, mediators M and co-founders X. E(Y|D=0,M,X)
         if g_d_external:
             g_d_hat = {
                 "preds": external_predictions["preds"],
@@ -455,8 +453,6 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
                                       smpls_gd)
 
         # Compute the conditional expectation of outcome Y given non-treatment D=0, mediation M=1 and co-founders X. E(Y|D=0,M=1,X)
-        #TODO: This is false. We need to first predict eymx1trte by predicting eymx1[E(Y|D=1, M, X)] on xm. Then we need to predict regweymx1
-        # by regressing eymx1trte on xtrte. Basically, this is not it.
         if g_nested_external:
             g_nested_hat = {
                 "preds": external_predictions["preds"],
@@ -466,8 +462,8 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         else:
             g_nested_hat = _dml_cv_predict(
                 self._learner[g_nested_name],
-                xm,
-                d,
+                x,
+                g_d_hat["preds"],
                 smpls=smpls_nested,
                 n_jobs=n_jobs_cv,
                 est_params=self._get_params(g_nested_name),
@@ -499,66 +495,29 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
             _check_finite_predictions(m_med_hat["preds"], self._learner["ml_m_med"], "ml_m_med",
                                       smpls)
 
-
-            psi_a, psi_b = self._score_elements(y, d, m, x, m_hat=m_hat["preds"],
-                                                g_pot_hat=g_pot_hat["preds"],
-                                                g_counter_hat=g_counter_hat["preds"],
-                                                med_d0_hat=med_d0_hat["preds"],
-                                                med_d1_hat=med_d1_hat["preds"],
-                                                )
-            preds = {
-                "predictions": {
-                    "ml_m": m_hat["preds"],
-                    g_pot_learner_name: g_pot_hat["preds"],
-                    g_counter_learner_name: g_counter_hat["preds"],
-                    "ml_med_d0": med_d0_hat["preds"],
-                    "ml_med_d1": med_d1_hat["preds"],
-                },
-                "targets": {
-                    "ml_m": m_hat["targets"],
-                    g_pot_learner_name: g_pot_hat["targets"],
-                    g_counter_learner_name: g_counter_hat["targets"],
-                    "ml_med_d0": med_d0_hat["targets"],
-                    "ml_med_d1": med_d1_hat["targets"],
-                },
-                "models": {
-                    "ml_m": m_hat["models"],
-                    g_pot_learner_name: g_pot_hat["models"],
-                    g_counter_learner_name: g_counter_hat["models"],
-                    "ml_med_d0": med_d0_hat["models"],
-                    "ml_med_d1": med_d1_hat["models"],
-                },
-            }
-
-        psi_a, psi_b = self._score_elements(y, d, m, x, m_hat=m_hat,
-                                            g_pot=g_pot_hat,
-                                            g_counter=g_counter_hat,
-                                            med_d0=med_d0_hat,
-                                            med_d1=med_d1_hat)
+        #TODO: See to change name of m_hat or parameter in _score_elements_alt
+        psi_a, psi_b = self._score_elements_alt(self,smpls, y, d, x, m_hat, m_med, g_d, g_nested)
         psi_elements = {"psi_a": psi_a, "psi_b": psi_b}
 
         preds = {
             "predictions": {
                 "ml_m": m_hat["preds"],
-                g_pot_learner_name: g_pot_hat["preds"],
-                g_counter_learner_name: g_counter_hat["preds"],
-                "ml_med_d0": med_d0_hat["preds"],
-                "ml_med_d1": med_d1_hat["preds"],
+                g_d_learner_name: g_d_hat["preds"],
+                g_nested_name: g_nested_hat["preds"],
+                "ml_m_med": m_med_hat["preds"]
             },
             "targets": {
                 "ml_m": m_hat["targets"],
-                g_pot_learner_name: g_pot_hat["targets"],
-                g_counter_learner_name: g_counter_hat["targets"],
-                "ml_med_d0": med_d0_hat["targets"],
-                "ml_med_d1": med_d1_hat["targets"],
+                g_d_learner_name: g_d_hat["targets"],
+                g_nested_name: g_nested_hat["targets"],
+                "ml_m_med": m_med_hat["targets"]
             },
             "models": {
                 "ml_m": m_hat["models"],
-                g_pot_learner_name: g_pot_hat["models"],
-                g_counter_learner_name: g_counter_hat["models"],
-                "ml_med_d0": med_d0_hat["models"],
-                "ml_med_d1": med_d1_hat["models"],
-            },
+                g_d_learner_name: g_d_hat["models"],
+                g_nested_name: g_nested_hat["models"],
+                "ml_m_med": m_med_hat["targets"]
+            }
         }
         return psi_elements, preds
 
@@ -640,36 +599,121 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         #   y0m0=(eyx0te + (1-dte)*(yte-eyx0te)/(1-pxte))
 
         pass
-    def _score_elements(self, smpls, y, d, m, x, g_d_hat, m_hat, g_pot, g_counter, med_d0, med_d1):
+
+    def _score_elements(self, g_d_hat, m_hat, g_pot, g_counter, med_d0, med_d1):
         #TODO: Make sure that y, d, m, x are from the test parts of the samples
         psi_a = -1.0
         psi_b = None
+        d = obj_dml_data.d
+        y = obj_dml_data.y
+        #TODO: Create data class for mediator.
+        m = obj_dml_data.m
 
-        #TODO: test that this test_index method works, that test_inds["d"] gives the d columns in the test set
-        # Probably won't work. Need to see how it's all averaged.
-        test_inds = [test_index for (_, test_index) in smpls]
-        if self._score == "Y(0, M(0))":
-            psi_b = g_d_hat + test_inds["d"] * (test_inds["y"] - g_d_hat)/m_hat
+        if self.normalize_ipw:
+            #TODO: Erase these comments
+            # nobs=nrow(score)
+            #     sumscores1=sum(score[,1]*score[,2]/(score[,3]*score[,4]))
+            #     sumscores2=sum((1-score[,1])/(1-score[,3]))
+            #     sumscores3=sum(score[,1]/score[,3])
+            #     sumscores4=sum((1-score[,1])*score[,4]/((1-score[,3])*score[,2]))
+            #     y1m0=(nobs*score[,1]*score[,2]/(score[,3]*score[,4])*(score[,5]-score[,6]))/sumscores1+(nobs*(1-score[,1])/(1-score[,3])
+            #     *(score[,6]-score[,7]))/sumscores2+score[,7]
+            #     y1m1=score[,8] + (nobs*score[,1]*(score[,5]-score[,8])/score[,3])/sumscores3
+            #     y0m1=(nobs*(1-score[,1])*score[,4]/((1-score[,3])*score[,2])*(score[,5]-score[,9]))/sumscores4+(nobs*score[,1]/score[,3]
+            #     *(score[,9]-score[,10]))/sumscores3+score[,10]
+            #     y0m0=score[,11] + (nobs*(1-score[,1])*(score[,5]-score[,11])/(1-score[,3]))/sumscores2
+            n_obs = obj_dml_data.n_obs
+            sumscores1=np.sum((d*med_d0)/(m_hat*med_d1))
+            sumscores2=np.sum((1-d)/1-m_hat)
+            sumscores3=np.sum(d/m_hat)
+            sumscores4=np.sum((1-d)*med_d1/((1-m_hat)*med_d0))
+            if self._score == "Y(0, M(0))":
+                psi_b = g_d_hat + (n_obs*(1-d)*(y-g_d_hat)/(1-m_hat))/sumscores2
+            elif self._score == "Y(1, M(1))":
+                psi_b = g_d_hat + (n_obs*d*(y-g_d_hat)/m_hat)/sumscores3
+            elif self._score == "Y(0, M(1))":
+                eymx0te = m * g_counter + (1-m)*g_pot
+                eta01 = g_counter * med_d1 + g_pot * (1-med_d1)
+                psi_b = (n_obs*(1-d)*med_d1/((1-m_hat) * med_d0) * (y - eymx0te))/sumscores4 + (n_obs*d/m_hat * (eymx0te - eta01))/sumscores3 + eta01
+            elif self._score == "Y(1, M(0))":
+                eymx1te = m * g_pot + (1 - m) * g_counter
+                eta10 = g_pot * med_d0 + g_counter * (1 - med_d0)
+                psi_b = (n_obs*d * med_d0 / (m_hat * med_d0) * (y - eymx1te))/sumscores1 + (n_obs*(1 - d) / (1 - m_hat) * (eymx1te - eta10))/sumscores2 + eta10
+        else:
+            #TODO: test that this test_index method works, that d gives the d columns in the test set
+            # Probably won't work. Need to see how it's all averaged.
+            if self._score == "Y(0, M(0))":
+                psi_b = g_d_hat + (1-d) * (y - g_d_hat)/(1-m_hat)
+            elif self._score == "Y(1, M(1))":
+                psi_b = g_d_hat + d*(y-g_d_hat)/(m_hat)
+            elif self._score == "Y(0, M(1))":
+                # y0m1=(1-score[,1])*score[,4]/((1-score[,3])*score[,2])*(score[,5]-score[,9])+score[,1]/score[,3]*(score[,9]-score[,10]) +score[,10]
+                #    = (1 - dte)*med_d1_hat/((1-ml_m)*med_d0_hat)*(yte-eymx0te) + dte/ml_m * (eymx0te - eta01) + eta01
+                # eymx0te = mte * g_counter + (1-mte) * g_pot; eta01 = g_counter * med_d1 + g_pot * (1-med_d1)
+                eymx0te = m * g_counter + (1-m)*g_pot
+                eta01 = g_counter * med_d1 + g_pot * (1-med_d1)
+                psi_b = (1-d)*med_d1/((1-m_hat) * med_d0) * (y - eymx0te) + d/m_hat * (eymx0te - eta01) + eta01
+            elif self._score == "Y(1, M(0))":
+                # y1m0=score[,1]*score[,2]/(score[,3]*score[,4])*(score[,5]-score[,6])+(1-score[,1])/(1-score[,3])*(score[,6]-score[,7])
+                #     +score[,7]
+                #    = dte*med_d0_hat/(ml_m*med_d1_hat)*(yte-eymx1te) + (1-dte)/(1-ml_m) * (eymx1te - eta10) + eta10
+                # eymx1te = mte * g_pot + (1-mte) * g_counter; eta10 = g_pot * med_d0 + g_counter * (1-med_d0)
+                eymx1te = m * g_pot + (1 - m) * g_counter
+                eta10 = g_pot * med_d0 + g_counter * (1 - med_d0)
+                psi_b = d * med_d0/(m_hat * med_d0) * (y - eymx1te) + (1-d)/(1-m_hat) * (eymx1te - eta10) + eta10
+        return psi_a, psi_b
 
-        elif self._score == "Y(1, M(1))":
-            psi_b = g_d_hat + (1-test_inds["d"])*(test_inds["y"]-g_d_hat)/(1-m_hat)
+    def _score_elements_alt(self,smpls, y, d, x, px, m_med=None, g_d=None, g_nested=None):
+        psi_a = -1.0
+        psi_b = None
 
-        elif self._score == "Y(0, M(1))":
-            # y0m1=(1-score[,1])*score[,4]/((1-score[,3])*score[,2])*(score[,5]-score[,9])+score[,1]/score[,3]*(score[,9]-score[,10]) +score[,10]
-            #    = (1 - dte)*med_d1_hat/((1-ml_m)*med_d0_hat)*(yte-eymx0te) + dte/ml_m * (eymx0te - eta01) + eta01
-            # eymx0te = mte * g_counter + (1-mte) * g_pot; eta01 = g_counter * med_d1 + g_pot * (1-med_d1)
-            eymx0te = m * g_counter + (1-m)*g_pot
-            eta01 = g_counter * med_d1 + g_pot * (1-med_d1)
-            psi_b = (1-test_inds["d"])*med_d1/((1-m_hat) * med_d0) * (test_inds["y"] - eymx0te) + test_inds["d"]/m_hat * (eymx0te - eta01) + eta01
-
-        elif self._score == "Y(1, M(0))":
-            # y1m0=score[,1]*score[,2]/(score[,3]*score[,4])*(score[,5]-score[,6])+(1-score[,1])/(1-score[,3])*(score[,6]-score[,7])
-            #     +score[,7]
-            #    = dte*med_d0_hat/(ml_m*med_d1_hat)*(yte-eymx1te) + (1-dte)/(1-ml_m) * (eymx1te - eta10) + eta10
-            # eymx1te = mte * g_pot + (1-mte) * g_counter; eta10 = g_pot * med_d0 + g_counter * (1-med_d0)
-            eymx1te = test_inds["m"] * g_pot + (1 - test_inds["m"]) * g_counter
-            eta10 = g_pot * med_d0 + g_counter * (1 - med_d0)
-            psi_b = test_inds["d"] * med_d0/(m_hat * med_d0) * (test_inds["y"] - eymx1te) + (1-test_inds["d"])/(1-m_hat) * (eymx1te - eta10) + eta10
+        m = obj_dml_data.m
+        #TODO: Check that samples are separated into mu_sample, deltasample and others. This will be a pain.
+        #   y1m1=(eyx1te + dte *(yte-eyx1te)/pxte)
+        #   y0m0=(eyx0te + (1-dte)*(yte-eyx0te)/(1-pxte))
+        #   y0m1=((1-dte)*pmxte/((1-pmxte)*pxte)*(yte-eymx0te)+dte/pxte*(eymx0te-regweymx0te)+regweymx0te
+        #   y1m0=(dte*(1-pmxte)/(pmxte*(1-pxte))*(yte-eymx1te)+(1-dte)/(1-pxte)*(eymx1te-regweymx1te)+regweymx1te)
+        #   dte, pmxte, pxte, yte, eymx0te, regweymx0te, eyx0te, eymx1te, regweymx1te, eyx1te
+        #    1     2     3     4     5         6            7       8          9         10
+        # pmxte = Pr(D=1|M,X), pxte = Pr(D=1|X)
+        # eyx0te = E(Y|D=0, X), eyx1te = E(Y|D=1, X)
+        # eymx1te = E(Y|D=1, M, X), eymx0te = E(Y|D=0, M, X)
+        # regweymx1te = E[E(Y|M,X,D=1)|D=0,X], regweymx0te = E[E(Y|M,X,D=0)|D=1,X]
+        if self.normalize_ipw:
+            #TODO: Erase comments
+            # nobs=nrow(score)
+            #     sumscore1=sum((1-score[,1])*score[,2]/((1-score[,2])*score[,3]))
+            #     sumscore2=sum(score[,1]/score[,3])
+            #     sumscore3=sum((1-score[,1])/(1-score[,3]))
+            #     sumscore4=sum(score[,1]*(1-score[,2])/(score[,2]*(1-score[,3])))
+            #     y0m1=(nobs*(1-score[,1])*score[,2]/((1-score[,2])*score[,3])*(score[,4]-score[,5]))/sumscore1+(nobs*score[,1]/score[,3]
+            #     *(score[,5]-score[,6]))/sumscore2+score[,6]
+            #     y0m0=score[,7] + (nobs*(1-score[,1])*(score[,4]-score[,7])/(1-score[,3]))/sumscore3
+            #     y1m0=(nobs*score[,1]*(1-score[,2])/(score[,2]*(1-score[,3]))*(score[,4]-score[,8]))/sumscore4
+            #     +(nobs*(1-score[,1])/(1-score[,3])*(score[,8]-score[,9]))/sumscore3+score[,9]
+            #     y1m1=score[,10] + (nobs*score[,1]*(score[,4]-score[,10])/score[,3])/sumscore2
+            n_obs = obj_dml_data.n_obs
+            sumscore1 = np.sum((1-d)*m_med/((1-m_med)*px))
+            sumscore2 = np.sum(d/px)
+            sumscore3 = sum((1-d / (1-px)))
+            sumscore4 = sum(d*(1-m_med)/(m_med*(1-px)))
+            if self._score == "Y(0, M(0))":
+                psi_b = g_d + (n_obs*(1-d) * (y - g_d)/(1-px))/sumscore3
+            elif self._score =="Y(0, M(1))":
+                psi_b = (n_obs*(1-d)*m_med/((1-m_med)*px)*(y-g_d))/sumscore1+(n_obs*d/px*(g_d-g_nested))/sumscore2+g_nested
+            elif self._score == "Y(1, M(0))":
+                psi_b = (n_obs*d*(1-m_med)/(m_med*(1-px))*(y-g_d))/sumscore4+(n_obs*(1-d)/(1-px)*(g_d-g_nested))/sumscore3+g_nested
+            elif self._score == "Y(1, M(1))":
+                psi_b = g_d + (n_obs*d * (y - g_d)/px)/sumscore2
+        else:
+            if self._score == "Y(0, M(0))":
+                psi_b = g_d + (1-d) * (y - g_d)/(1-px)
+            elif self._score =="Y(0, M(1))":
+                psi_b = (1-d)*m_med/((1-m_med)*px)*(y-g_d)+d/px*(g_d-g_nested)+g_nested
+            elif self._score == "Y(1, M(0))":
+                psi_b = d*(1-m_med)/(m_med*(1-px))*(y-g_d)+(1-d)/(1-px)*(g_d-g_nested)+g_nested
+            elif self._score == "Y(1, M(1))":
+                psi_b = g_d + d * (y - g_d)/px
         return psi_a, psi_b
 
     def _nuisance_tuning(self, smpls, param_grids, scoring_methods, n_folds_tune, n_jobs_cv, search_mode,
