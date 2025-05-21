@@ -1,12 +1,13 @@
 import numpy as np
 import pandas as pd
 
-from doubleml.data import DoubleMLClusterData, DoubleMLData
+from doubleml.data import DoubleMLClusterData, DoubleMLData, DoubleMLMediationData
 
 _array_alias = ["array", "np.ndarray", "np.array", np.ndarray]
 _data_frame_alias = ["DataFrame", "pd.DataFrame", pd.DataFrame]
 _dml_data_alias = ["DoubleMLData", DoubleMLData]
 _dml_cluster_data_alias = ["DoubleMLClusterData", DoubleMLClusterData]
+_dml_mediation_data_alias = ["DoubleMLMediationData", DoubleMLMediationData]
 
 
 def _get_array_alias():
@@ -27,3 +28,8 @@ def _get_dml_data_alias():
 def _get_dml_cluster_data_alias():
     """Returns the list of DoubleMLClusterData aliases."""
     return _dml_cluster_data_alias
+
+
+def _get_dml_mediation_data_alias():
+    """Returns the list of DoubleMLMediationData aliases."""
+    return _dml_mediation_data_alias

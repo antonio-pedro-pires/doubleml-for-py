@@ -4,10 +4,12 @@ The :mod:`doubleml.data` module implements data classes for double machine learn
 
 from .base_data import DoubleMLData
 from .cluster_data import DoubleMLClusterData
+from .mediation_data import DoubleMLMediationData
 from .panel_data import DoubleMLPanelData
 
 __all__ = [
     "DoubleMLData",
     "DoubleMLClusterData",
     "DoubleMLPanelData",
+    "DoubleMLMediationData",
 ]
