@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from doubleml import DoubleMLClusterData, DoubleMLData
+from doubleml import DoubleMLClusterData, DoubleMLData, DoubleMLMediationData
 from doubleml.datasets import (
     _make_pliv_data,
     fetch_401K,
@@ -13,6 +13,7 @@ from doubleml.datasets import (
     make_iivm_data,
     make_irm_data,
     make_irm_data_discrete_treatments,
+    make_med_data,
     make_pliv_CHS2015,
     make_pliv_multiway_cluster_CKMS2021,
     make_plr_CCDDHNR2018,
@@ -293,3 +294,18 @@ def test_make_data_discrete_treatments(n_levels):
     msg = "n_levels must be an integer."
     with pytest.raises(ValueError, match=msg):
         _ = make_irm_data_discrete_treatments(n_obs=n, n_levels=1.1)
+
+
+def test_make_med_data_return_types():
+    np.random.seed(3141)
+    res = make_med_data(n_obs=100, return_type="DoubleMLMediationData")
+    assert isinstance(res, DoubleMLMediationData)
+    res = make_med_data(n_obs=100, return_type="DataFrame")
+    assert isinstance(res, pd.DataFrame)
+    x, y, d, m = make_med_data(n_obs=100, return_type="array")
+    assert isinstance(x, np.ndarray)
+    assert isinstance(y, np.ndarray)
+    assert isinstance(d, np.ndarray)
+    assert isinstance(m, np.ndarray)
+    with pytest.raises(ValueError, match=msg_inv_return_type):
+        _ = make_med_data(n_obs=100, return_type="matrix")
