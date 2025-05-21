@@ -59,7 +59,7 @@ class DoubleMLMediationData(DoubleMLData):
         self.data.info(verbose=False, buf=buf)
         df_info = buf.getvalue()
         res = (
-            "================== DoubleMLData Object ==================\n"
+            "================== DoubleMLMediationData Object ==================\n"
             + "\n------------------ Data summary      ------------------\n"
             + data_summary
             + "\n------------------ DataFrame info    ------------------\n"
@@ -119,7 +119,7 @@ class DoubleMLMediationData(DoubleMLData):
         else:
             m_cols = [f"m{i + 1}" for i in np.arange(m.shape[1])]
 
-        data = pd.concat((pd.DataFrame(m, columns=m_cols), dml_data.data), axis=1)
+        data = pd.concat([dml_data.data, (pd.DataFrame(m, columns=m_cols))], axis=1)
 
         return cls(
             data,
