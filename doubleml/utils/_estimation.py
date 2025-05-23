@@ -239,20 +239,17 @@ def _solve_ipw_score(ipw_score, bracket_guess):
     return ipw_est
 
 
-def _aggregate_coefs_and_ses(all_coefs, all_ses, var_scaling_factors):
-    if var_scaling_factors.shape == (all_coefs.shape[0],):
-        scaling_factors = np.repeat(var_scaling_factors[:, np.newaxis], all_coefs.shape[1], axis=1)
-    else:
-        scaling_factors = var_scaling_factors
+def _aggregate_coefs_and_ses(all_coefs, all_ses):
+    # already expects equally scaled variances over all repetitions
     # aggregation is done over dimension 1, such that the coefs and ses have to be of shape (n_coefs, n_rep)
     coefs = np.median(all_coefs, 1)
 
-    coefs_deviations = np.square(all_coefs - coefs.reshape(-1, 1))
-    scaled_coef_deviations = np.divide(coefs_deviations, scaling_factors)
-    all_variances = np.square(all_ses) + scaled_coef_deviations
-
-    var = np.median(all_variances, 1)
-    ses = np.sqrt(var)
+    # construct the upper bounds & aggregate
+    critical_value = 1.96
+    all_upper_bounds = all_coefs + critical_value * all_ses
+    agg_upper_bounds = np.median(all_upper_bounds, axis=1)
+    # reverse to calculate the standard errors
+    ses = (agg_upper_bounds - coefs) / critical_value
     return coefs, ses
 
 
@@ -341,3 +338,53 @@ def _set_external_predictions(external_predictions, learners, treatment, i_rep):
         else:
             ext_prediction_dict[learner] = None
     return ext_prediction_dict
+
+
+def _solve_quadratic_inequality(a: float, b: float, c: float):
+    """
+    Solves the quadratic inequation a*x^2 + b*x + c <= 0 and returns the intervals.
+
+    Parameters
+    ----------
+    a : float
+        Coefficient of x^2.
+    b : float
+        Coefficient of x.
+    c : float
+        Constant term.
+
+    Returns
+    -------
+    List[Tuple[float, float]]
+        A list of intervals where the inequation holds.
+    """
+
+    # Handle special cases
+    if abs(a) < 1e-12:  # a is effectively zero
+        if abs(b) < 1e-12:  # constant case
+            return [(-np.inf, np.inf)] if c <= 0 else []
+        # Linear case:
+        else:
+            root = -c / b
+            return [(-np.inf, root)] if b > 0 else [(root, np.inf)]
+
+    # Standard case: quadratic equation
+    roots = np.polynomial.polynomial.polyroots([c, b, a])
+    real_roots = np.sort(roots[np.isreal(roots)].real)
+
+    if len(real_roots) == 0:  # No real roots
+        if a > 0:  # parabola opens upwards, no real roots
+            return []
+        else:  # parabola opens downwards, always <= 0
+            return [(-np.inf, np.inf)]
+    elif len(real_roots) == 1 or np.allclose(real_roots[0], real_roots[1]):  # One real root
+        if a > 0:
+            return [(real_roots[0], real_roots[0])]  # parabola touches x-axis at one point
+        else:
+            return [(-np.inf, np.inf)]  # parabola is always <= 0
+    else:
+        assert len(real_roots) == 2
+        if a > 0:  # happy quadratic (parabola opens upwards)
+            return [(real_roots[0], real_roots[1])]
+        else:  # sad quadratic (parabola opens downwards)
+            return [(-np.inf, real_roots[0]), (real_roots[1], np.inf)]
