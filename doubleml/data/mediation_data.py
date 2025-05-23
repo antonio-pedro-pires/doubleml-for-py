@@ -33,6 +33,9 @@ class DoubleMLMediationData(DoubleMLData):
 
         # we need to set m (needs _data) before call to the super __init__ because of the x_cols setter.
         self.m_cols = m_cols
+
+        # Need to set _force_all_m_finite before _set_m()
+        self._force_all_m_finite = force_all_m_finite
         self._set_m()
 
         DoubleMLData.__init__(
@@ -50,7 +53,6 @@ class DoubleMLMediationData(DoubleMLData):
         )
 
         self._check_disjoint_sets_m_cols()
-        self._force_all_m_finite = force_all_m_finite
         self._binary_meds = self._check_binary_mediators()
 
     def __str__(self):
@@ -108,7 +110,11 @@ class DoubleMLMediationData(DoubleMLData):
                     + "force_all_m_finite must be True, False or 'allow-nan'."
                 )
         elif not isinstance(force_all_m_finite, bool):
-            raise TypeError("Invalid force_all_m_finite. " + "force_all_m_finite must be True, False or 'allow-nan'.")
+            raise TypeError(
+                "Invalid force_all_m_finite. "
+                + "force_all_m_finite must be True, False or 'allow-nan'. "
+                + f"{str(force_all_m_finite)} of type {str(type(force_all_m_finite))} was passed."
+            )
 
         dml_data = DoubleMLData.from_arrays(x, y, d, z, t, s, use_other_treat_as_covariate, force_all_x_finite)
         m = check_array(m, ensure_2d=False, allow_nd=False, force_all_finite=force_all_m_finite)
@@ -171,6 +177,27 @@ class DoubleMLMediationData(DoubleMLData):
             self._set_m()
 
     @property
+    def force_all_m_finite(self):
+        """
+        Indicates whether to raise an error on infinite values and / or missings in the mediators ``m``.
+        """
+        return self._force_all_m_finite
+
+    @force_all_m_finite.setter
+    def force_all_m_finite(self, value):
+        reset_value = hasattr(self, "_force_all_m_finite")
+        if isinstance(value, str):
+            if value != "allow-nan":
+                raise ValueError(
+                    "Invalid force_all_m_finite " + value + ". " + "force_all_m_finite must be True, False or 'allow-nan'."
+                )
+        elif not isinstance(value, bool):
+            raise TypeError("Invalid force_all_m_finite. " + "force_all_m_finite must be True, False or 'allow-nan'.")
+        self._force_all_m_finite = value
+        if reset_value:
+            self._set_m()
+
+    @property
     def n_meds(self):
         """
         The number of mediator variables
@@ -206,6 +233,12 @@ class DoubleMLMediationData(DoubleMLData):
         self._check_disjoint_sets_m_cols()
 
     def _check_disjoint_sets_m_cols(self):
+        # TODO: Is this truly necessary, since the _check_disjoint_sets()
+        #  already calls its super which calls for checks it itself?
+
+        # apply the standard checks from the DoubleMLData class
+        super(DoubleMLMediationData, self)._check_disjoint_sets()
+
         # Disjointedness check for mediator variables.
         m_cols_set = set(self.m_cols)
         y_col_set = {self.y_col}
@@ -235,5 +268,6 @@ class DoubleMLMediationData(DoubleMLData):
             )
 
     def _set_m(self):
-        assert_all_finite(self.data.loc[:, self.m_cols])
+        if self._force_all_m_finite:
+            assert_all_finite(self.data.loc[:, self.m_cols], allow_nan=self._force_all_m_finite == "allow-nan")
         self._m = self.data.loc[:, self.m_cols]
