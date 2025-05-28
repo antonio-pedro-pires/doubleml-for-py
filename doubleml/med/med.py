@@ -44,7 +44,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         order=1,
         fewsplits=False,
         draw_sample_splitting=True,
-        score_type="ipw",
+        score_type="efficient_alt",
     ):
 
         if not isinstance(obj_dml_data, DoubleMLMediationData):
@@ -56,7 +56,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         super().__init__(obj_dml_data, n_folds, n_rep, score, draw_sample_splitting)
 
         self.score_type = score_type
-        valid_score_types = ["efficient", "ipw"]
+        valid_score_types = ["efficient", "efficient_alt"]
         valid_scores = ["Y(d, M(d))", "Y(d, M(1-d))"]
         _check_score(self.score, valid_scores, allow_callable=False)
         _check_score(self.score_type, valid_score_types, allow_callable=False)
@@ -143,7 +143,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         if self._score == "Y(d, M(d))":
             valid_learner.append(["ml_g_d", "ml_m"])
         else:
-            if self.score_type == "ipw":
+            if self.score_type == "efficient_alt":
                 valid_learner.append(["ml_g_d", "ml_g_d_1md", "ml_m", "ml_m_med_x"])
             elif self.score_type == "efficient":
                 valid_learner.append(["ml_g_d_med_d", "ml_g_d_med_1md", "ml_m", "ml_med_d", "ml_med_1md"])
@@ -166,7 +166,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         if self._score == "Y(d, M(d))":
             psi_elements, preds = self._est_potential_alt(smpls, x, y, d, m, n_jobs_cv, return_models, external_predictions)
         elif self._score == "Y(d, M(1-d))":
-            if self.score_type == "ipw":
+            if self.score_type == "efficient_alt":
                 psi_elements, preds = self._est_counterfactual_alt(
                     smpls, x, y, d, m, n_jobs_cv, return_models, external_predictions
                 )
@@ -358,7 +358,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
     def _est_counterfactual_alt(self, smpls, x, y, d, m, n_jobs_cv, return_models, external_predictions):
         # TODO: These functions might be wrong.
         # TODO: Also, check if samples and regressors are right.
-        # TODO: Verify that the samples gotten for score_type == "ipw" are musample, deltasample, psample, etc.
+        # TODO: Verify that the samples gotten for score_type == "efficient_alt" are musample, deltasample, psample, etc.
         smpls_1md, smpls_d = _get_cond_smpls(smpls, self.treated)
         smpls_1md_1md, smpls_1md_d, smpls_d_1md, smpls_d_d = _get_cond_smpls_2d(smpls, self.treated, self.mediated)
 
@@ -368,6 +368,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         m_external = external_predictions["ml_m"] is not None
         m_med_x_external = external_predictions["ml_m_med_x"] is not None
 
+        # TODO: Put the correct samples for regressions.
         # Compute the conditional expectation of outcome Y given treatment level D=d,
         # mediators M and co-founders X. E(Y|D=0,M,X)
         if g_d_external:
@@ -412,13 +413,13 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
 
         # Compute the probability of treatment given the cofounders. Pr(D=1|X)
         if m_external:
-            m_hat = {"preds": external_predictions["preds"], "targets": _cond_targets(d, cond_sample=smpls_d), "models": None}
+            m_hat = {"preds": external_predictions["preds"], "targets": _cond_targets(d, cond_sample=smpls), "models": None}
         else:
             m_hat = _dml_cv_predict(
                 self._learner["ml_m"],
                 x,
                 d,
-                smpls=smpls_d,
+                smpls=smpls,
                 n_jobs=n_jobs_cv,
                 est_params=self._get_params("ml_m"),
                 method=self._predict_method["ml_m"],
@@ -473,8 +474,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         return psi_elements, preds
 
     def _est_potential(self, smpls, x, y, d, m, n_jobs_cv, return_models, external_predictions):
-        treated = self.treated
-        smpls_1md, smpls_d = _get_cond_smpls(smpls, treated)
+        smpls_1md, smpls_d = _get_cond_smpls(smpls, self.treated)
 
         g_d_external = external_predictions["g_d_external"] is not None
         m_external = external_predictions["ml_m"] is not None
@@ -507,7 +507,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
                 self._learner["ml_m"],
                 x,
                 d,
-                smpls=smpls_d,
+                smpls=smpls,
                 n_jobs=n_jobs_cv,
                 est_params=self._get_params("ml_m"),
                 method=self._predict_method["ml_m"],
@@ -534,58 +534,61 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         }
         return psi_elements, preds
 
-    # TODO: Rework score elements section.
-    # def _score_elements(self, g_d_hat, m_hat, g_d_med_d, g_d_med_1md, med_d, med_d1):
-    # TODO: Make sure that y, d, m, x are from the test parts of the samples
-    #    psi_a = -1.0
-    #    psi_b = None
-    #    d = self._dml_data.d
-    #    y = self._dml_data.y
-    # TODO: Create data class for mediator.
-    #    m = self._dml_data.m
+        # TODO: Rework score elements section.
+        # def _score_elements(self, g_d_hat, m_hat, g_d_med_d, g_d_med_1md, med_d, med_d):
+        # TODO: Make sure that y, d, m, x are from the test parts of the samples
+        #     psi_a = -1.0
+        #      psi_b = None
+        #      d = self._dml_data.d
+        #       y = self._dml_data.y
+        #        m = self._dml_data.m
+        # TODO: Create data class for mediator.
 
-    #    if self.normalize_ipw:
-    #        n_obs = self._obj_dml_data.n_obs
-    #        sumscores1 = np.sum((d * med_d) / (m_hat * med_d1))
-    #        sumscores2 = np.sum((1 - d) / 1 - m_hat)
-    #        sumscores3 = np.sum(d / m_hat)
-    #        sumscores4 = np.sum((1 - d) * med_d1 / ((1 - m_hat) * med_d))
-    #        if self._score == "Y(0, M(0))":
-    #            psi_b = g_d_hat + (n_obs * (1 - d) * (y - g_d_hat) / (1 - m_hat)) / sumscores2
-    #        elif self._score == "Y(1, M(1))":
-    #            psi_b = g_d_hat + (n_obs * d * (y - g_d_hat) / m_hat) / sumscores3
-    #        elif self._score == "Y(0, M(1))":
-    #            eymx0te = m * g_d_med_1md + (1 - m) * g_d_med_d
-    #            eta01 = g_d_med_1md * med_d1 + g_d_med_d * (1 - med_d1)
-    #            psi_b = (
-    #                (n_obs * (1 - d) * med_d1 / ((1 - m_hat) * med_d) * (y - eymx0te)) / sumscores4
-    #                + (n_obs * d / m_hat * (eymx0te - eta01)) / sumscores3
-    #                + eta01
-    #            )
-    #        elif self._score == "Y(1, M(0))":
-    #            eymx1te = m * g_d_med_d + (1 - m) * g_d_med_1md
-    #            eta10 = g_d_med_d * med_d0 + g_d_med_1md * (1 - med_d0)
-    #            psi_b = (
-    #                (n_obs * d * med_d0 / (m_hat * med_d0) * (y - eymx1te)) / sumscores1
-    #                + (n_obs * (1 - d) / (1 - m_hat) * (eymx1te - eta10)) / sumscores2
-    #                + eta10
-    #            )
-    #    else:
-    #        # TODO: test that this test_index method works, that d gives the d columns in the test set
-    #        # Probably won't work. Need to see how it's all averaged.
-    #        if self._score == "Y(0, M(0))":
-    #            psi_b = g_d_hat + (1 - d) * (y - g_d_hat) / (1 - m_hat)
-    #        elif self._score == "Y(1, M(1))":
-    #            psi_b = g_d_hat + d * (y - g_d_hat) / (m_hat)
-    #        elif self._score == "Y(0, M(1))":
-    #            eymx0te = m * g_d_med_1md + (1 - m) * g_d_med_d
-    #            eta01 = g_d_med_1md * med_d1 + g_d_med_d * (1 - med_d1)
-    #            psi_b = (1 - d) * med_d1 / ((1 - m_hat) * med_d0) * (y - eymx0te) + d / m_hat * (eymx0te - eta01) + eta01
-    #        elif self._score == "Y(1, M(0))":
-    #            eymx1te = m * g_d_med_d + (1 - m) * g_d_med_1md
-    #            eta10 = g_d_med_d * med_d0 + g_d_med_1md * (1 - med_d0)
-    #            psi_b = d * med_d0 / (m_hat * med_d0) * (y - eymx1te) + (1 - d) / (1 - m_hat) * (eymx1te - eta10) + eta10
-    #    return psi_a, psi_b
+        #       if self.normalize_ipw:
+        #           n_obs = self._obj_dml_data.n_obs
+        #           sumscores1 = np.sum((d * med_d) / (m_hat * med_d))
+        #           sumscores2 = np.sum((1 - d) / 1 - m_hat)
+        #           sumscores3 = np.sum(d / m_hat)
+        #           sumscores4 = np.sum((1 - d) * med_d / ((1 - m_hat) * med_d))
+        #       if self._score == "Y(0, M(0))":
+        #                psi_b = g_d_hat + (n_obs * (1 - d) * (y - g_d_hat) / (1 - m_hat)) / sumscores2
+        #        elif self._score == "Y(1, M(1))":
+        #            psi_b = g_d_hat + (n_obs * d * (y - g_d_hat) / m_hat) / sumscores3
+        #        elif self._score == "Y(0, M(1))":
+        #            eymx0te = m * g_d_med_1md + (1 - m) * g_d_med_d
+        #            eta01 = g_d_med_1md * med_d1 + g_d_med_d * (1 - med_d1)
+        #            psi_b = (
+        #                (n_obs * (1 - d) * med_d1 / ((1 - m_hat) * med_d) * (y - eymx0te)) / sumscores4
+        #                + (n_obs * d / m_hat * (eymx0te - eta01)) / sumscores3
+        #                + eta01
+        #            )
+        #        elif self._score == "Y(1, M(0))":
+        #            eymx1te = m * g_d_med_d + (1 - m) * g_d_med_1md
+        #            eta10 = g_d_med_d * med_d0 + g_d_med_1md * (1 - med_d0)
+        #            psi_b = (
+        #                (n_obs * d * med_d0 / (m_hat * med_d0) * (y - eymx1te)) / sumscores1
+        #                + (n_obs * (1 - d) / (1 - m_hat) * (eymx1te - eta10)) / sumscores2
+        #                + eta10
+        #            )
+        #    else:
+        #        # TODO: test that this test_index method works, that d gives the d columns in the test set
+        #        # Probably won't work. Need to see how it's all averaged.
+        #                if self._score == "Y(d, M(d))":
+        #                    psi_b = g_d_hat + np.divide(self.treated, m_hat) * (y - g_d_hat)
+        #        else:
+        #            eymx0te = m * g_d_med_1md + (1 - m) * g_d_med_d
+        #            eta01 = g_d_med_1md * med_d1 + g_d_med_d * (1 - med_d1)
+
+        # TODO: Working on this now:
+        #            psi_b = (1 - d) * med_d1 / ((1 - m_hat) * med_d0) * (y - eymx0te) + d / m_hat * (eymx0te - eta01) + eta01
+        #            psi_b = (1 - d) * med_d1 / ((1 - m_hat) * med_d0) * (y - eymx0te) + d / m_hat * (eymx0te - eta01) + eta01
+
+        #        elif self._score == "Y(1, M(0))":
+        #            eymx1te = m * g_d_med_d + (1 - m) * g_d_med_1md
+        #            eta10 = g_d_med_d * med_d0 + g_d_med_1md * (1 - med_d0)
+        #            psi_b = d * med_d0 / (m_hat * med_d0) * (y - eymx1te) + (1 - d) / (1 - m_hat) * (eymx1te - eta10) + eta10
+        #    return psi_a, psi_b
+        pass
 
     # def _score_elements_alt(self, smpls, y, d, x, px, m_med=None, g_d=None, g_nested=None):
     #    psi_a = -1.0
@@ -625,6 +628,20 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
     #            psi_b = g_d + d * (y - g_d) / px
     #    return psi_a, psi_b
 
+    def _normalize(self, propensity_score):
+        #    mean_treat_d = np.mean(np.multiply(self.treated, propensity_score))
+        #    mean_treat_1md = np.mean(np.multiply(1 - self.treated, 1 - propensity_score))
+
+        #    if self.score == "Y(d, M(d))":
+        #        np.divide(np.multiply(self.treated, propensity_score)
+        #        else:
+        #        pass
+
+        #       if self.score_type == "efficient":
+
+        #      elif self.score_type == "efficient_alt":
+        pass
+
     def _nuisance_tuning(
         self, smpls, param_grids, scoring_methods, n_folds_tune, n_jobs_cv, search_mode, n_iter_randomized_search
     ):
@@ -651,7 +668,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         smpls_1md, smpls_d = _get_cond_smpls(smpls, treated)
 
         train_inds = [train_index for (train_index, _) in smpls]
-        #    train_inds_d = [train_index for (train_index, _) in smpls_d]
+        # train_inds_d = [train_index for (train_index, _) in smpls_d]
         train_inds_g = None
 
         # TODO: Check what this does
@@ -695,7 +712,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
     def _counterfactual_tuning(
         self, smpls, param_grids, scoring_methods, n_folds_tune, n_jobs_cv, search_mode, n_iter_randomized_search
     ):
-        # TODO: Apply counterfactual_tuning for score_type == "ipw".
+        # TODO: Apply counterfactual_tuning for score_type == "efficient_alt".
         x, y = check_X_y(self._dml_data.x, self._dml_data.y, force_all_finite=False)
         x, d = check_X_y(x, self._dml_data.d, force_all_finite=False)
         # TODO: Create new data class for mediation. Do not use z column for this.
@@ -830,7 +847,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
             )
 
     def _check_score_types(self):
-        finite_scores = ["efficient", "ipw"]
+        finite_scores = ["efficient", "efficient_alt"]
         if self.score_type == "efficient":
             if self._dml_data.n_meds > 1:
                 raise ValueError(
