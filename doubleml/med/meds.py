@@ -1,47 +1,44 @@
-import warnings
-
 import numpy as np
 import pandas as pd
+from joblib import Parallel, delayed
 from sklearn.base import clone
-from sklearn.utils import check_X_y, check_consistent_length
 from sklearn.utils.multiclass import type_of_target
 
 from doubleml import DoubleMLData
 from doubleml.double_ml import DoubleML
-from doubleml.double_ml_score_mixins import LinearScoreMixin
-from doubleml.med.med import DoubleMLMED
-from doubleml.utils import DoubleMLResampling
-from doubleml.utils._checks import _check_finite_predictions
-from doubleml.utils._estimation import _get_cond_smpls, _get_cond_smpls_2d, _dml_cv_predict, _cond_targets
 from doubleml.double_ml_framework import concat
-from joblib import Parallel, delayed
+from doubleml.med.med import DoubleMLMED
+from doubleml.utils._checks import _check_external_predictions, _check_sample_splitting
+from doubleml.utils._descriptive import generate_summary
 
-#TODO: Add new data class for mediation analysis
-#TODO: Learn how sampling works.
+
+# TODO: Add new data class for mediation analysis
+# TODO: Learn how sampling works.
 class DoubleMLMEDS:
-    """Mediation analysis with double machine learning.
+    """Mediation analysis with double machine learning."""
 
-    """
-    def __init__(self,
-                 obj_dml_data,
-                 ml_g,
-                 ml_m,
-                 ml_med,
-                 ml_nested=None,
-                 n_folds=5,
-                 n_rep=1,
-                 score=None,
-                 normalize_ipw=False,
-                 trimming_threshold=1e-2,
-                 order=1,
-                 multmed=True,
-                 fewsplits=False,
-                 draw_sample_splitting=True):
+    def __init__(
+        self,
+        obj_dml_data,
+        ml_g,
+        ml_m,
+        ml_med,
+        ml_nested=None,
+        n_folds=5,
+        n_rep=1,
+        score=None,
+        normalize_ipw=False,
+        trimming_threshold=1e-2,
+        order=1,
+        multmed=True,
+        fewsplits=False,
+        draw_sample_splitting=True,
+    ):
 
         self._check_data(obj_dml_data, trimming_threshold)
         self._dml_data = obj_dml_data
 
-        _check_resampling_specifications(n_folds, n_reps)
+        # _check_resampling_specifications(n_folds, n_rep)
         self._n_folds = n_folds
         self._n_rep = n_rep
 
@@ -51,10 +48,10 @@ class DoubleMLMEDS:
         self._learner = None
         self._params = None
 
-        #Initialize framework constructed after the fit method is called.
+        # Initialize framework constructed after the fit method is called.
         self._framework = None
 
-        #TODO: Add functionality to check if learners are good.
+        # TODO: Add functionality to check if learners are good.
         if multmed:
             if fewsplits:
                 pass
@@ -67,21 +64,21 @@ class DoubleMLMEDS:
         self._score_names = ["Y(0, M(0))", "Y(0, M(1))", "Y(1, M(0))", "Y(1, M(1))"]
         self._score_len = np.unique(self._score_names)
         self._score = score
-        self._normalize_ipw=normalize_ipw
-        self._order=order
-        self._draw_sample_splitting=draw_sample_splitting
+        self._normalize_ipw = normalize_ipw
+        self._order = order
+        self._draw_sample_splitting = draw_sample_splitting
 
         # Set labels for returns
-        self._results_labels=["ATE", "dir.treat", "dir.control", "indir.treat", "indir.control", "Y(0, M(0))"]
+        self._results_labels = ["ATE", "dir.treat", "dir.control", "indir.treat", "indir.control", "Y(0, M(0))"]
 
         # Initialize all properties to None
-        self._se=None
-        self._pvalues=None
-        self._coef=None
-        self._ci=None
-        self.n_trimmed=None
+        self._se = None
+        self._pvalues = None
+        self._coef = None
+        self._ci = None
+        self.n_trimmed = None
 
-        #Check the learners are correctly specified.
+        # Check the learners are correctly specified.
         ml_g_is_classifier = DoubleML._check_learner(ml_g, "ml_g", regressor=True, classifier=True)
         _ = DoubleML._check_learner(ml_m, "ml_m", regressor=False, classifier=True)
         ml_med_is_classifier = DoubleML._check_learner(ml_med, "ml_med", regressor=True, classifier=True)
@@ -112,9 +109,9 @@ class DoubleMLMEDS:
             else:
                 self._predict_method["ml_nested"] = "predict"
 
-        #TODO: erase following comment.
-        #Taken from DoubleMLAPOS.
-        #Perform sample splitting
+        # TODO: erase following comment.
+        # Taken from DoubleMLAPOS.
+        # Perform sample splitting
         self._smpls = None
         if draw_sample_splitting:
             self.draw_sample_splitting()
@@ -161,7 +158,7 @@ class DoubleMLMEDS:
         """
         return self.trimming_threshold
 
-    #TODO: Check if the definition is true
+    # TODO: Check if the definition is true
     @property
     def order(self):
         """
@@ -172,7 +169,8 @@ class DoubleMLMEDS:
     @property
     def multmed(self):
         """
-        Indicates if the mediator variable is continuous and/or multiple. Determines the score function for the counterfactual E[Y(D=d, M(1-d))].
+        Indicates if the mediator variable is continuous and/or multiple.
+        Determines the score function for the counterfactual E[Y(D=d, M(1-d))].
         """
         return self.multmed
 
@@ -183,24 +181,10 @@ class DoubleMLMEDS:
         """
         return self.fewsplits
 
-    #TODO: Add definition
+    # TODO: Add definition
     @property
     def draw_sample_splitting(self):
         return self.draw_sample_splitting
-
-    @property
-    def n_folds(self):
-        """
-        Number of folds.
-        """
-        return self._n_folds
-
-    @property
-    def n_rep(self):
-        """
-        Number of repetitions for the sample splitting.
-        """
-        return self._n_rep
 
     @property
     def coef(self):
@@ -276,8 +260,8 @@ class DoubleMLMEDS:
         """
         if self._smpls is None:
             err_msg = (
-                    "Sample splitting not specified. Draw samples via .draw_sample splitting(). "
-                    + "External samples not implemented yet."
+                "Sample splitting not specified. Draw samples via .draw_sample splitting(). "
+                + "External samples not implemented yet."
             )
             raise ValueError(err_msg)
         return self._smpls
@@ -365,8 +349,8 @@ class DoubleMLMEDS:
 
     def fit(self, n_jobs_models=None, n_jobs_cv=None, store_predictions=True, store_models=False, external_predictions=None):
         if external_predictions is not None:
-            self._check_external_predictions(external_predictions)
-            ext_pred_dict = self._rename_external_predictions(external_predictions)
+            _check_external_predictions(external_predictions)
+            # ext_pred_dict = _rename_external_predictions(external_predictions)
         else:
             ext_pred_dict = None
 
@@ -389,15 +373,12 @@ class DoubleMLMEDS:
 
         return self
 
-    def _fit_model(self, score, n_jobs_cv = None, store_predictions=True, store_models=False, external_predictions_dict=None):
+    def _fit_model(self, score, n_jobs_cv=None, store_predictions=True, store_models=False, external_predictions_dict=None):
         model = self._modeldict[score]
-        #TODO: Add external predictions
+        # TODO: Add external predictions
 
         model.fit(
-            n_jobs_cv=n_jobs_cv,
-            store_predictions=store_predictions,
-            store_models=store_models,
-            external_predictions=None
+            n_jobs_cv=n_jobs_cv, store_predictions=store_predictions, store_models=store_models, external_predictions=None
         )
         return model
 
@@ -405,7 +386,7 @@ class DoubleMLMEDS:
         if self.framework is None:
             raise ValueError("Apply fit() before confint().")
         df_ci = self.framework.confint(joint=joint, level=level)
-        #TODO: Add the score function to the index for better readibility.
+        # TODO: Add the score function to the index for better readibility.
         # df_ci.set_index(pd.Index(self._treatment_levels), inplace=True)
         return df_ci
 
@@ -424,7 +405,7 @@ class DoubleMLMEDS:
 
         return ate, dir_control, dir_treatment, indir_control, indir_treatment
 
-    #TODO: Check how to perform sensitivity analysis for causal mediation analysis.
+    # TODO: Check how to perform sensitivity analysis for causal mediation analysis.
     def sensitivity_analysis(self):
         pass
 
@@ -450,16 +431,28 @@ class DoubleMLMEDS:
         _ = DoubleML._check_learner(ml_g, "ml_g", regressor=True, classifier=False)
         _ = DoubleML._check_learner(ml_m, "ml_m", regressor=True, classifier=False)
         _ = DoubleML._check_learner(ml_med, "ml_med", regressor=True, classifier=False)
-        self._learner = {"ml_g_d0": clone(self._ml_g), "ml_g_d1": clone(self._ml_g),
-                         "ml_g_d0_med0": clone(self._ml_g), "ml_g_d0_med1": clone(self._ml_g),
-                         "ml_g_d1_med0": clone(self._ml_g), "ml_g_d1_med1": clone(self._ml_g),
-                         "ml_m": clone(self._ml_m), "ml_med_d1": clone(self._ml_med),
-                         "ml_med_d0": clone(self._ml_med)}
-        self._predict_method={"ml_g_d0": "predict", "ml_g_d1": "predict",
-                              "ml_g_d0_med0": "predict", "ml_g_d0_med1": "predict",
-                              "ml_g_d1_med0": "predict", "ml_g_d1_med1": "predict",
-                              "ml_m": "predict", "ml_med_d1": "predict",
-                              "ml_med_d0": "predict"}
+        self._learner = {
+            "ml_g_d0": clone(self._ml_g),
+            "ml_g_d1": clone(self._ml_g),
+            "ml_g_d0_med0": clone(self._ml_g),
+            "ml_g_d0_med1": clone(self._ml_g),
+            "ml_g_d1_med0": clone(self._ml_g),
+            "ml_g_d1_med1": clone(self._ml_g),
+            "ml_m": clone(self._ml_m),
+            "ml_med_d1": clone(self._ml_med),
+            "ml_med_d0": clone(self._ml_med),
+        }
+        self._predict_method = {
+            "ml_g_d0": "predict",
+            "ml_g_d1": "predict",
+            "ml_g_d0_med0": "predict",
+            "ml_g_d0_med1": "predict",
+            "ml_g_d1_med0": "predict",
+            "ml_g_d1_med1": "predict",
+            "ml_m": "predict",
+            "ml_med_d1": "predict",
+            "ml_med_d0": "predict",
+        }
         if self._multmed:
             if ml_nested is not None:
                 _ = DoubleML._check_learner(ml_nested, "ml_nested", regressor=True, classifier=False)
@@ -481,19 +474,17 @@ class DoubleMLMEDS:
         if not self._multmed:
             if is_continuous:
                 raise ValueError("Incompatible data. The boolean multmed must be set to True when using a continuous mediator")
-            #TODO: Raise error for multidimensional mediators and not multmed.
+            # TODO: Raise error for multidimensional mediators and not multmed.
 
         if obj_dml_data.z_cols is None:
-            raise ValueError(
-                "Incompatible data. Mediator analysis requires mediator variables."
-            )
+            raise ValueError("Incompatible data. Mediator analysis requires mediator variables.")
 
         if not isinstance(threshold, float):
-            raise TypeError(f"Cutoff value has to be a float. Object of type {str(type(threshold))} passed." )
+            raise TypeError(f"Cutoff value has to be a float. Object of type {str(type(threshold))} passed.")
 
-        #TODO: Test if one_treat works. Not sure of the __len__() method to see if there is only one treatment variable.
-        one_treat = obj_dml_data.d_cols.__len__()>1
-        binary_treat = type_of_target(obj_dml_data.d)!= "binary"
+        # TODO: Test if one_treat works. Not sure of the __len__() method to see if there is only one treatment variable.
+        one_treat = obj_dml_data.d_cols.__len__() > 1
+        binary_treat = type_of_target(obj_dml_data.d) != "binary"
         zero_one_treat = np.all((np.power(obj_dml_data.d, 2) - obj_dml_data.d) == 0)
         if not (one_treat and binary_treat and zero_one_treat):
             raise ValueError(
