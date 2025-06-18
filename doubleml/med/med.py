@@ -13,8 +13,8 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
 
     Parameters
     ----------
-    obj_dml_data : :class:`DoubleMLData` object
-        The :class:`DoubleMLData` object providing the data and specifying the variables for the causal model.
+    med_data : :class:`DoubleMLMediationData` object
+        The :class:`DoubleMLMediationData` object providing the data and specifying the variables for the causal model.
 
     n_folds : int
         Number of folds.
@@ -28,43 +28,68 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
 
     def __init__(
         self,
-        obj_dml_data,
+        med_data,
         treatment_level,
         mediation_level,
         ml_g,
         ml_m,
         ml_med,
         ml_nested=None,
+        score="MED",
+        score_type="efficient_alt",
         n_folds=5,
         n_rep=1,
-        score=None,
         normalize_ipw=False,
         trimming_rule="truncate",
         trimming_threshold=1e-2,
         order=1,
         fewsplits=False,
         draw_sample_splitting=True,
-        score_type="efficient_alt",
     ):
+        self._med_data = med_data
 
-        if not isinstance(obj_dml_data, DoubleMLMediationData):
+        if not isinstance(med_data, DoubleMLMediationData):
             raise TypeError(
                 "Mediation analysis requires data of type DoubleMLMediationData."
-                + f"data of type {str(type(obj_dml_data))} was provided instead."
+                + f"data of type {str(type(med_data))} was provided instead."
             )
 
-        super().__init__(obj_dml_data, n_folds, n_rep, score, draw_sample_splitting)
+        super().__init__(med_data, n_folds, n_rep, score, draw_sample_splitting)
+        valid_score = ["MED"]
+        self._score = score
+        _check_score(score, valid_score)
 
-        self.score_type = score_type
-        valid_score_types = ["efficient", "efficient_alt"]
-        valid_scores = ["Y(d, M(d))", "Y(d, M(1-d))"]
-        _check_score(self.score, valid_scores, allow_callable=False)
-        _check_score(self.score_type, valid_score_types, allow_callable=False)
-        self._check_score_type()
+        self._score_type = score_type
+        valid_scores_types = ["efficient", "efficient-alt"]
+        _check_score(score_type, valid_scores_types)
+
         self._treatment_level = treatment_level
         self._mediation_level = mediation_level
-        self._treated = self._dml_data.d == treatment_level
-        self._mediated = self._dml_data.m == mediation_level
+        self._treated = self._med_data.d == treatment_level
+        self._mediated = self._med_data.m == mediation_level
+        self.score_obj = None
+
+        self._learner = ["ml_m", "ml_g"]
+        self._predict_method = {"ml_m": "predict_proba", "ml_g": "predict"}
+        self._check_learner(learner=ml_m, learner_name="ml_m", regressor=False, classifier=True)
+        self._check_learner(learner=ml_g, learner_name="ml_g", regressor=True, classifier=True)
+        if score_type == "efficient":
+            self._learner.append("ml_med")
+            is_ml_med_classifier = self._check_learner(learner=ml_med, learner_name="ml_med", regressor=True, classifier=True)
+            if is_ml_med_classifier:
+                self._predict_method["ml_med"] = "predict_proba"
+            else:
+                self._predict_method["ml_med"] = "predict"
+        elif score_type == "efficient-alt":
+            self._learner.append("ml_nested")
+            is_ml_nested_classifier = self._check_learner(
+                learner=ml_nested, learner_name="ml_nested", regressor=True, classifier=True
+            )
+            if is_ml_nested_classifier:
+                self._predict_method["is_ml_nested_classifier"] = "predict_proba"
+            else:
+                self._predict_method["is_ml_nested_classifier"] = "predict"
+        self._initialize_ml_nuisance_params()
 
     @property
     def normalize_ipw(self):
@@ -106,7 +131,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         """
         Indicates the type of the score function.
         """
-        return self.score_type
+        return self._score_type
 
     @property
     def treated(self):
@@ -136,467 +161,59 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         """
         return self._mediation_level
 
-    # TODO: Do I have to initialize the learners somewhere else(at init???)
-    def _initialize_ml_nuisance_params(self):
-        # TODO: See if I can estimate ml_m, ml_med_d0 and ml_med_d1 only once for meds.py
-        valid_learner = list()
-        if self._score == "Y(d, M(d))":
-            valid_learner.append(["ml_g_d", "ml_m"])
-        else:
-            if self.score_type == "efficient_alt":
-                valid_learner.append(["ml_g_d", "ml_g_d_1md", "ml_m", "ml_m_med_x"])
-            elif self.score_type == "efficient":
-                valid_learner.append(["ml_g_d_med_d", "ml_g_d_med_1md", "ml_m", "ml_med_d", "ml_med_1md"])
+    @property
+    def is_potential_outcome(self):
+        """
+        Indicates whether the current score function computes the potential outcome: Y(d, m(d)).
+        """
+        return self.treatment_level == self.mediation_level
 
-        self._params = {learner: {key: [None] * self.n_rep for key in self._dml_data.d_cols} for learner in self.valid_learner}
+    def _nuisance_est(
+        self,
+        score,
+        smpls,
+        external_predictions,
+        n_jobs_cv,
+        return_models=False,
+    ):
 
-    # TODO: Check which learners take which samples
-    # TODO: DON'T FORGET TO ADD NORMALISE!!!
-    def _nuisance_est(self, smpls, n_jobs_cv, return_models, external_predictions):
-        x, y = check_X_y(self._dml_data.x, self._dml_data.y, force_all_finite=False)
-        x, d = check_X_y(x, self._dml_data.d, force_all_finite=False)
-        # TODO: Create new data class for mediation. Do not use z column for this.
-        _, m = check_consistent_length(
-            x, self._dml_data.m
-        )  # Check that the mediators have the same number of samples as X and
+        preds = self._initialize_preds_dict()
+        training_params = self._get_training_params(n_jobs_cv, return_models, external_predictions, smpls)
 
-        # dx = np.column_stack((d, x))
-        # mdx = np.column_stack((m, dx))
+        for learner, params in training_params:
+            temp = self._extract_predictions(n_jobs_cv, return_models, **params)
+            preds["predictions"][learner] = temp["preds"]
+            preds["targets"][learner] = temp["targets"]
+            preds["models"][learner] = temp["models"]
 
-        if self._score == "Y(d, M(d))":
-            psi_elements, preds = self._est_potential_alt(smpls, x, y, d, m, n_jobs_cv, return_models, external_predictions)
-        elif self._score == "Y(d, M(1-d))":
-            if self.score_type == "efficient_alt":
-                psi_elements, preds = self._est_counterfactual_alt(
-                    smpls, x, y, d, m, n_jobs_cv, return_models, external_predictions
-                )
-            elif self.score_type == "efficient":
-                psi_elements, preds = self._est_counterfactual(
-                    smpls, x, y, d, m, n_jobs_cv, return_models, external_predictions
-                )
-
-        # TODO: Check for how to initialize external predictions.
-
-        return psi_elements, preds
-
-    # TODO: Check if these functions are needed or not.
-    # TODO: Check whether all parameters are useful or not.
-    def _est_counterfactual(self, smpls, x, y, d, m, n_jobs_cv, return_models, external_predictions):
-        # TODO: These functions might be wrong.
-        smpls_1md, smpls_d = _get_cond_smpls(smpls, self.treated)
-        smpls_1md_1md, smpls_1md_d, smpls_d_1md, smpls_d_d = _get_cond_smpls_2d(smpls, self.treated, self.mediated)
-
-        g_d_med_d_external = external_predictions["ml_g_d_med_d"] is not None
-        g_d_med_1md_external = external_predictions["ml_g_d_med_1md"] is not None
-        m_external = external_predictions["ml_m"] is not None
-        med_d_external = external_predictions["ml_med_d"] is not None
-        med_1md_external = external_predictions["ml_med_1md"] is not None
-
-        # Compute the probability of treatment given the cofounders. Pr(D=1|X)
-        if m_external:
-            m_hat = {"preds": external_predictions["preds"], "targets": _cond_targets(d, cond_sample=smpls_d), "models": None}
-        else:
-            m_hat = _dml_cv_predict(
-                self._learner["ml_m"],
-                x,
-                d,
-                smpls=smpls,
-                n_jobs=n_jobs_cv,
-                est_params=self._get_params("ml_m"),
-                method=self._predict_method["ml_m"],
-                return_models=return_models,
-            )
-            _check_finite_predictions(m_hat["preds"], self._learner["ml_m"], "ml_m", smpls_d)
-
-        # Compute the conditional expectation of outcome Y given non-treatment D=0,
-        # non-mediation M=0 and co-founders X. E(Y|D=0,M=0,X)
-        if g_d_med_d_external:
-            g_d_med_d_hat = {
-                "preds": external_predictions["preds"],
-                "targets": _cond_targets(y, cond_sample=smpls_d_d),
-                "models": None,
-            }
-        else:
-            g_d_med_d_hat = _dml_cv_predict(
-                self._learner["ml_g_d_med_d"],
-                x,
-                y,
-                smpls=smpls_d_d,
-                n_jobs=n_jobs_cv,
-                est_params=self._get_params("ml_g_d_med_d"),
-                method=self._predict_method["ml_g_d_med_d"],
-                return_models=return_models,
-            )
-
-            _check_finite_predictions(g_d_med_d_hat["preds"], self._learner["g_d_med_d_hat"], "ml_g_d_med_d", smpls_d_d)
-        # Compute the conditional expectation of outcome Y given non-treatment D=0,
-        # mediation M=1 and co-founders X. E(Y|D=0,M=1,X)
-        if g_d_med_1md_external:
-            g_d_med_1md_hat = {
-                "preds": external_predictions["preds"],
-                "targets": _cond_targets(y, cond_sample=smpls_d_1md),
-                "models": None,
-            }
-        else:
-            g_d_med_1md_hat = _dml_cv_predict(
-                self._learner["ml_g_d_med_1md"],
-                x,
-                y,
-                smpls=smpls_d_1md,
-                n_jobs=n_jobs_cv,
-                est_params=self._get_params("ml_g_d_med_1md"),
-                method=self._predict_method["ml_g_d_med_1md"],
-                return_models=return_models,
-            )
-            _check_finite_predictions(g_d_med_1md_hat["preds"], self._learner["ml_g_d_med_1md"], "ml_g_d_med_1md", smpls_d_1md)
-
-        # Compute the mediator mean conditional on the treatment and cofounders. E[M|D=1, X]
-        if med_d_external:
-            med_d_hat = {
-                "preds": external_predictions["preds"],
-                "targets": _cond_targets(m, cond_sample=smpls_d),
-                "models": None,
-            }
-        else:
-            med_d_hat = _dml_cv_predict(
-                self._learner["ml_med_d"],
-                x,
-                m,
-                smpls=smpls_d,
-                n_jobs=n_jobs_cv,
-                est_params=self._get_params("ml_med_d_hat"),
-                method=self._predict_method["ml_med_d_hat"],
-                return_models=return_models,
-            )
-            _check_finite_predictions(med_d_hat["preds"], self._learner["ml_med_d"], "ml_med_d", smpls_d)
-
-        # Compute the mediator mean conditional on  non-treatment and cofounders. E[M|D=0, X]
-        if med_1md_external:
-            med_1md_hat = {
-                "preds": external_predictions["preds"],
-                "targets": _cond_targets(m, cond_sample=smpls_1md),
-                "models": None,
-            }
-        else:
-            med_1md_hat = _dml_cv_predict(
-                self._learner["ml_med_1md"],
-                x,
-                m,
-                smpls=smpls_1md,
-                n_jobs=n_jobs_cv,
-                est_params=self._get_params("ml_med_1md"),
-                method=self._predict_method["ml_med_1md"],
-                return_models=return_models,
-            )
-            _check_finite_predictions(med_1md_hat["preds"], self._learner["ml_med_1md"], "ml_med_1md", smpls_1md)
-
-            psi_a, psi_b = self._score_elements(
-                y,
-                d,
-                m,
-                x,
-                m_hat=m_hat["preds"],
-                g_d_med_d_hat=g_d_med_d_hat["preds"],
-                g_d_med_1md_hat=g_d_med_1md_hat["preds"],
-                med_d_hat=med_d_hat["preds"],
-                med_1md_hat=med_1md_hat["preds"],
-            )
-            preds = {
-                "predictions": {
-                    "ml_m": m_hat["preds"],
-                    "ml_g_d_med_d": g_d_med_d_hat["preds"],
-                    "ml_g_d_med_1md": g_d_med_1md_hat["preds"],
-                    "ml_med_d": med_d_hat["preds"],
-                    "ml_med_d1": med_d_hat["preds"],
-                },
-                "targets": {
-                    "ml_m": m_hat["targets"],
-                    "ml_g_d_med_d": g_d_med_d_hat["targets"],
-                    "ml_g_d_med_1md": g_d_med_1md_hat["targets"],
-                    "ml_med_d": med_d_hat["targets"],
-                    "ml_med_1md": med_1md_hat["targets"],
-                },
-                "models": {
-                    "ml_m": m_hat["models"],
-                    "ml_g_d_med_d": g_d_med_d_hat["models"],
-                    "ml_g_d_med_1md": g_d_med_1md_hat["models"],
-                    "ml_med_d": med_d_hat["models"],
-                    "ml_med_d1": med_1md_hat["models"],
-                },
-            }
-
-        psi_a, psi_b = self._score_elements(
-            m_hat=m_hat, g_d_med_d=g_d_med_d_hat, g_d_med_1md=g_d_med_1md_hat, med_d=med_d_hat, med_1md=med_1md_hat
-        )
+        # TODO: instead of feeding it predictions one by one, feed it a list.
+        psi_a, psi_b = self._score_elements(**preds["predictions"])
         psi_elements = {"psi_a": psi_a, "psi_b": psi_b}
-
-        preds = {
-            "predictions": {
-                "ml_m": m_hat["preds"],
-                "ml_g_d_med_d": g_d_med_d_hat["preds"],
-                "ml_g_d_med_1md": g_d_med_1md_hat["preds"],
-                "ml_med_d": med_d_hat["preds"],
-                "ml_med_d1": med_1md_hat["preds"],
-            },
-            "targets": {
-                "ml_m": m_hat["targets"],
-                "ml_g_d_med_d": g_d_med_d_hat["targets"],
-                "ml_g_d_med_1md": g_d_med_1md_hat["targets"],
-                "ml_med_d": med_d_hat["targets"],
-                "ml_med_d1": med_1md_hat["targets"],
-            },
-            "models": {
-                "ml_m": m_hat["models"],
-                "ml_g_d_med_d": g_d_med_d_hat["models"],
-                "ml_g_d_med_1md": g_d_med_1md_hat["models"],
-                "ml_med_d": med_d_hat["models"],
-                "ml_med_d1": med_1md_hat["models"],
-            },
-        }
         return psi_elements, preds
 
-    def _est_counterfactual_alt(self, smpls, x, y, d, m, n_jobs_cv, return_models, external_predictions):
-        # TODO: These functions might be wrong.
-        # TODO: Also, check if samples and regressors are right.
-        # TODO: Verify that the samples gotten for score_type == "efficient_alt" are musample, deltasample, psample, etc.
-        smpls_1md, smpls_d = _get_cond_smpls(smpls, self.treated)
-        smpls_1md_1md, smpls_1md_d, smpls_d_1md, smpls_d_d = _get_cond_smpls_2d(smpls, self.treated, self.mediated)
+    def _score_elements(self, **predictions):
+        #    y = self._med_data.y
+        #    d = self._med_data.d
+        #    x = self._med_data.x
 
-        # "ml_g_d", "ml_g_d_1md", "ml_m", "ml_m_med_x"
-        g_d_external = external_predictions["ml_g_d_d"] is not None
-        g_d_1md_external = external_predictions["ml_g_d_1md"] is not None
-        m_external = external_predictions["ml_m"] is not None
-        m_med_x_external = external_predictions["ml_m_med_x"] is not None
-
-        # TODO: Put the correct samples for regressions.
-        # Compute the conditional expectation of outcome Y given treatment level D=d,
-        # mediators M and co-founders X. E(Y|D=0,M,X)
-        if g_d_external:
-            g_d_hat = {
-                "preds": external_predictions["preds"],
-                "targets": _cond_targets(y, cond_sample=smpls_d),
-                "models": None,
-            }
+        #    psi_a = -1.0
+        #    psi_b = 0
+        if self.is_potential_outcome:
+            pass
         else:
-            g_d_hat = _dml_cv_predict(
-                self._learner["ml_g_d"],
-                x,
-                y,
-                smpls=smpls_d,
-                n_jobs=n_jobs_cv,
-                est_params=self._get_params("ml_g_d"),
-                method=self._predict_method["ml_g_d"],
-                return_models=return_models,
-            )
-            _check_finite_predictions(g_d_hat["preds"], self._learner["ml_g_d"], "ml_g_d", smpls_d)
-
-        # Compute the conditional expectation of outcome Y given non-treatment D=0,
-        # mediation M=1 and co-founders X. E(Y|D=0,M=1,X)
-        if g_d_1md_external:
-            g_d_1md_hat = {
-                "preds": external_predictions["preds"],
-                "targets": _cond_targets(y, cond_sample=smpls_d_1md),
-                "models": None,
-            }
-        else:
-            g_d_1md_hat = _dml_cv_predict(
-                self._learner["ml_g_d_1md"],
-                x,
-                g_d_hat["preds"],
-                smpls=smpls_d_1md,
-                n_jobs=n_jobs_cv,
-                est_params=self._get_params("ml_g_d_1md"),
-                method=self._predict_method["ml_g_d_1md"],
-                return_models=return_models,
-            )
-            _check_finite_predictions(g_d_1md_hat["preds"], self._learner["ml_g_d_1md"], "ml_g_d_1md", smpls_d_1md)
-
-        # Compute the probability of treatment given the cofounders. Pr(D=1|X)
-        if m_external:
-            m_hat = {"preds": external_predictions["preds"], "targets": _cond_targets(d, cond_sample=smpls), "models": None}
-        else:
-            m_hat = _dml_cv_predict(
-                self._learner["ml_m"],
-                x,
-                d,
-                smpls=smpls,
-                n_jobs=n_jobs_cv,
-                est_params=self._get_params("ml_m"),
-                method=self._predict_method["ml_m"],
-                return_models=return_models,
-            )
-            _check_finite_predictions(m_hat["preds"], self._learner["ml_m"], "ml_m", smpls_d)
-
-        # Compute the mediator mean conditional on the treatment and cofounders. E[M|D=1, X]
-        if m_med_x_external:
-            m_med_hat = {
-                "preds": external_predictions["preds"],
-                "targets": _cond_targets(m, cond_sample=smpls),
-                "models": None,
-            }
-        else:
-            m_med_x_hat = _dml_cv_predict(
-                self._learner["m_med_x_hat"],
-                x,
-                m,
-                smpls=smpls,
-                n_jobs=n_jobs_cv,
-                est_params=self._get_params("m_med_x_hat"),
-                method=self._predict_method["m_med_x_hat"],
-                return_models=return_models,
-            )
-            _check_finite_predictions(m_med_x_hat["preds"], self._learner["ml_m_med"], "ml_m_med", smpls)
-
-        # TODO: See to change name of m_hat or parameter in _score_elements_alt
-        psi_a, psi_b = self._score_elements_alt(self, smpls, y, d, x, m_hat, m_med_hat, g_d_hat, g_d_1md_hat)
-        psi_elements = {"psi_a": psi_a, "psi_b": psi_b}
-
-        preds = {
-            "predictions": {
-                "ml_m": m_hat["preds"],
-                "ml_g_d": g_d_hat["preds"],
-                "ml_g_d_1md": g_d_1md_hat["preds"],
-                "ml_m_med": m_med_hat["preds"],
-            },
-            "targets": {
-                "ml_m": m_hat["targets"],
-                "ml_g_d": g_d_hat["targets"],
-                "ml_g_d_1md": g_d_1md_hat["targets"],
-                "ml_m_med": m_med_hat["targets"],
-            },
-            "models": {
-                "ml_m": m_hat["models"],
-                "ml_g_d": g_d_hat["models"],
-                "ml_g_d_1md": g_d_1md_hat["models"],
-                "ml_m_med": m_med_hat["targets"],
-            },
-        }
-        return psi_elements, preds
-
-    def _est_potential(self, smpls, x, y, d, m, n_jobs_cv, return_models, external_predictions):
-        smpls_1md, smpls_d = _get_cond_smpls(smpls, self.treated)
-
-        g_d_external = external_predictions["g_d_external"] is not None
-        m_external = external_predictions["ml_m"] is not None
-
-        # Compute the conditional expectation of outcome Y given non-treatment D=0 and co-founders X. E(Y|D=0,X)
-        if g_d_external:
-            g_d_hat = {
-                "preds": external_predictions["preds"],
-                "targets": _cond_targets(y, cond_sample=smpls_d),
-                "models": None,
-            }
-        else:
-            g_d_hat = _dml_cv_predict(
-                self._learner["ml_g_d"],
-                x,
-                y,
-                smpls=smpls_d,
-                n_jobs=n_jobs_cv,
-                est_params=self._get_params("ml_g_d"),
-                method=self._predict_method["ml_g_d"],
-                return_models=return_models,
-            )
-            _check_finite_predictions(g_d_hat["preds"], self._learner["ml_g_d"], "ml_g_d", smpls_d)
-
-        # Compute the probability of treatment given the cofounders. Pr(D=1|X)
-        if m_external:
-            m_hat = {"preds": external_predictions["preds"], "targets": _cond_targets(d, cond_sample=smpls_d), "models": None}
-        else:
-            m_hat = _dml_cv_predict(
-                self._learner["ml_m"],
-                x,
-                d,
-                smpls=smpls,
-                n_jobs=n_jobs_cv,
-                est_params=self._get_params("ml_m"),
-                method=self._predict_method["ml_m"],
-                return_models=return_models,
-            )
-            _check_finite_predictions(m_hat["preds"], self._learner["ml_m"], "ml_m", smpls_d)
-
-        psi_a, psi_b = self._score_elements(y, d, m, x, g_d_hat["preds"], m_hat["preds"])
-        psi_elements = {"psi_a": psi_a, "psi_b": psi_b}
-
-        preds = {
-            "predictions": {
-                "ml_m": m_hat["preds"],
-                "ml_g_d": g_d_hat["preds"],
-            },
-            "targets": {
-                "ml_m": m_hat["targets"],
-                "ml_g_d": g_d_hat["targets"],
-            },
-            "models": {
-                "ml_m": m_hat["models"],
-                "ml_g_d": g_d_hat["models"],
-            },
-        }
-        return psi_elements, preds
-
-        # TODO: Rework score elements section.
-        # def _score_elements(self, g_d_hat, m_hat, g_d_med_d, g_d_med_1md, med_d, med_d):
-        # TODO: Make sure that y, d, m, x are from the test parts of the samples
-        #     psi_a = -1.0
-        #      psi_b = None
-        #      d = self._dml_data.d
-        #       y = self._dml_data.y
-        #        m = self._dml_data.m
-        # TODO: Create data class for mediator.
-
-        #       if self.normalize_ipw:
-        #           n_obs = self._obj_dml_data.n_obs
-        #           sumscores1 = np.sum((d * med_d) / (m_hat * med_d))
-        #           sumscores2 = np.sum((1 - d) / 1 - m_hat)
-        #           sumscores3 = np.sum(d / m_hat)
-        #           sumscores4 = np.sum((1 - d) * med_d / ((1 - m_hat) * med_d))
-        #       if self._score == "Y(0, M(0))":
-        #                psi_b = g_d_hat + (n_obs * (1 - d) * (y - g_d_hat) / (1 - m_hat)) / sumscores2
-        #        elif self._score == "Y(1, M(1))":
-        #            psi_b = g_d_hat + (n_obs * d * (y - g_d_hat) / m_hat) / sumscores3
-        #        elif self._score == "Y(0, M(1))":
-        #            eymx0te = m * g_d_med_1md + (1 - m) * g_d_med_d
-        #            eta01 = g_d_med_1md * med_d1 + g_d_med_d * (1 - med_d1)
-        #            psi_b = (
-        #                (n_obs * (1 - d) * med_d1 / ((1 - m_hat) * med_d) * (y - eymx0te)) / sumscores4
-        #                + (n_obs * d / m_hat * (eymx0te - eta01)) / sumscores3
-        #                + eta01
-        #            )
-        #        elif self._score == "Y(1, M(0))":
-        #            eymx1te = m * g_d_med_d + (1 - m) * g_d_med_1md
-        #            eta10 = g_d_med_d * med_d0 + g_d_med_1md * (1 - med_d0)
-        #            psi_b = (
-        #                (n_obs * d * med_d0 / (m_hat * med_d0) * (y - eymx1te)) / sumscores1
-        #                + (n_obs * (1 - d) / (1 - m_hat) * (eymx1te - eta10)) / sumscores2
-        #                + eta10
-        #            )
-        #    else:
-        #        # TODO: test that this test_index method works, that d gives the d columns in the test set
-        #        # Probably won't work. Need to see how it's all averaged.
-        #                if self._score == "Y(d, M(d))":
-        #                    psi_b = g_d_hat + np.divide(self.treated, m_hat) * (y - g_d_hat)
-        #        else:
-        #            eymx0te = m * g_d_med_1md + (1 - m) * g_d_med_d
-        #            eta01 = g_d_med_1md * med_d1 + g_d_med_d * (1 - med_d1)
-
-        # TODO: Working on this now:
-        #            psi_b = (1 - d) * med_d1 / ((1 - m_hat) * med_d0) * (y - eymx0te) + d / m_hat * (eymx0te - eta01) + eta01
-        #            psi_b = (1 - d) * med_d1 / ((1 - m_hat) * med_d0) * (y - eymx0te) + d / m_hat * (eymx0te - eta01) + eta01
-
-        #        elif self._score == "Y(1, M(0))":
-        #            eymx1te = m * g_d_med_d + (1 - m) * g_d_med_1md
-        #            eta10 = g_d_med_d * med_d0 + g_d_med_1md * (1 - med_d0)
-        #            psi_b = d * med_d0 / (m_hat * med_d0) * (y - eymx1te) + (1 - d) / (1 - m_hat) * (eymx1te - eta10) + eta10
-        #    return psi_a, psi_b
+            if self.score_type == "efficient":
+                pass
+            elif self.score_type == "efficient_alt":
+                pass
         pass
 
     # def _score_elements_alt(self, smpls, y, d, x, px, m_med=None, g_d=None, g_nested=None):
     #    psi_a = -1.0
     #    psi_b = None
 
-    # m = self._dml_data.m
+    # m = self._med_data.m
     #    if self.normalize_ipw:
-    #        n_obs = self._dml_data.n_obs
+    #        n_obs = self._med_data.n_obs
     #        sumscore1 = np.sum((1 - d) * m_med / ((1 - m_med) * px))
     #        sumscore2 = np.sum(d / px)
     #        sumscore3 = sum((1 - d / (1 - px)))
@@ -655,11 +272,11 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
     def _potential_tuning(
         self, smpls, param_grids, scoring_methods, n_folds_tune, n_jobs_cv, search_mode, n_iter_randomized_search
     ):
-        x, y = check_X_y(self._dml_data.x, self._dml_data.y, force_all_finite=False)
-        x, d = check_X_y(x, self._dml_data.d, force_all_finite=False)
+        x, y = check_X_y(self._med_data.x, self._med_data.y, force_all_finite=False)
+        x, d = check_X_y(x, self._med_data.d, force_all_finite=False)
         # TODO: Create new data class for mediation. Do not use z column for this.
         _, m = check_consistent_length(
-            x, self._dml_data["z"]
+            x, self._med_data["z"]
         )  # Check that the mediators have the same number of samples as X and
 
         dx = np.column_stack((d, x))
@@ -713,11 +330,11 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         self, smpls, param_grids, scoring_methods, n_folds_tune, n_jobs_cv, search_mode, n_iter_randomized_search
     ):
         # TODO: Apply counterfactual_tuning for score_type == "efficient_alt".
-        x, y = check_X_y(self._dml_data.x, self._dml_data.y, force_all_finite=False)
-        x, d = check_X_y(x, self._dml_data.d, force_all_finite=False)
+        x, y = check_X_y(self._med_data.x, self._med_data.y, force_all_finite=False)
+        x, d = check_X_y(x, self._med_data.d, force_all_finite=False)
         # TODO: Create new data class for mediation. Do not use z column for this.
         _, m = check_consistent_length(
-            x, self._dml_data["z"]
+            x, self._med_data["z"]
         )  # Check that the mediators have the same number of samples as X and
 
         treated = self.treated
@@ -839,32 +456,172 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
     def _sensitivity_element_est(self, preds):
         pass
 
-    def _check_data(self, obj_dml_data):
-        if not isinstance(obj_dml_data, DoubleMLMediationData):
+    def _extract_predictions(
+        self,
+        n_jobs_cv,
+        return_models,
+        learner,
+        external_prediction,
+        x,
+        y,
+        smpls,
+    ):
+        if external_prediction is not None:
+            return {"preds": external_prediction, "targets": _cond_targets(y, cond_sample=smpls), "models": None}
+        else:
+            temp = _dml_cv_predict(
+                self._learner[learner],
+                x,
+                y,
+                smpls,
+                n_jobs_cv,
+                est_params=self._get_params(learner),
+                method=self._predict_method[learner],
+                return_models=return_models,
+            )
+            _check_finite_predictions(temp["preds"], self._learner[learner], learner, smpls)
+            return temp
+
+    def _check_data(self, med_data):
+        if not isinstance(med_data, DoubleMLMediationData):
             raise TypeError(
-                f"The data must be of DoubleMLMediationData type. {str(obj_dml_data)} "
-                f"of type {str(type(obj_dml_data))} was passed."
+                f"The data must be of DoubleMLMediationData type. {str(med_data)} "
+                f"of type {str(type(med_data))} was passed."
             )
 
     def _check_score_types(self):
-        finite_scores = ["efficient", "efficient_alt"]
+        valid_score_type = ["efficient", "efficient-alt"]
         if self.score_type == "efficient":
-            if self._dml_data.n_meds > 1:
+            if self._med_data.n_meds > 1:
                 raise ValueError(
                     f"score_type defined as {self.score_type}. "
                     + f"Mediation analysis based on {self.score_type} scores assumes only one mediation variable. "
-                    + f"Data contains {self._dml_data.n_meds} mediation variables. "
+                    + f"Data contains {self._med_data.n_meds} mediation variables. "
                     + "Please choose another score_type for mediation analysis."
                 )
-            if not self._dml_data.binary_meds.all():
+            if not self._med_data.binary_meds.all():
                 raise ValueError(
                     "Mediation analysis based on efficient scores requires a binary mediation variable"
                     + "with integer values equal to 0 or 1 and no missing values."
-                    + f"Actual data contains {np.unique(self._dml_data.data.m)}"
+                    + f"Actual data contains {np.unique(self._med_data.data.m)}"
                     + "unique values and/or may contain missing values."
                 )
-        if self.score_type in finite_scores and not self._dml_data.force_all_m_finite:
+        if self.score_type in valid_score_type and not self._med_data.force_all_m_finite:
             raise ValueError(
-                f"Mediation analysis based on {str(finite_scores)} requires finite mediation variables with no missing values."
+                f"Mediation analysis based on {str(valid_score_type)} "
+                f"requires finite mediation variables with no missing values."
             )
         # TODO: Probably want to check that elements of mediation variables are floats or ints.
+
+    def _initialize_ml_nuisance_params(self):
+        valid_learner = ["ml_m"]
+        if self.is_potential_outcome:
+            valid_learner.append("ml_g_d")
+        else:
+            if self.score_type == "efficient":
+                valid_learner.extend(["ml_g_d_med_d", "ml_g_d_med_1md", "ml_m", "ml_med_d", "ml_med_1md"])
+            elif self.score_type == "efficient-alt":
+                valid_learner.extend(["ml_g_d", "ml_g_d_1md", "ml_m", "ml_m_med_x"])
+
+        self._params = {learner: {key: [None] * self.n_rep for key in self._med_data.d_cols} for learner in valid_learner}
+
+    def _initialize_preds_dict(self):
+        learner_dict = {learner: None for learner in self.params.keys()}
+        preds = {"predictions": learner_dict, "targets": learner_dict, "models": learner_dict}
+        return preds
+
+    def _get_training_params(self, n_jobs_cv, return_models, external_predictions, smpls):
+        # Label data for readability
+        x = self._med_data.x
+        y = self._med_data.y
+        d = self._med_data.d
+        m = self._med_data.m
+
+        # TODO: Verify that the samples gotten for score_type == "efficient_alt" are musample, deltasample, psample, etc.
+        # Get the conditional samples
+        smpls_1md, smpls_d = _get_cond_smpls(smpls, self.treated)
+        smpls_1md_1md, smpls_1md_d, smpls_d_1md, smpls_d_d = _get_cond_smpls_2d(smpls, self.treated, self.mediated)
+
+        training_params = dict()
+        if self.is_potential_outcome:
+            training_params = {
+                "ml_m": {
+                    "external_predictions": external_predictions["ml_m"],
+                    "x": x,
+                    "y": d,
+                    "smpls": smpls,
+                },
+                "ml_g_d": {
+                    "external_predictions": external_predictions["ml_g_d"],
+                    "x": x,
+                    "y": y,
+                    "smpls": smpls_d,
+                },
+            }
+        else:
+            if self.score_type == "efficient":
+
+                training_params = {
+                    "ml_m": {
+                        "external_predictions": external_predictions["ml_m"],
+                        "x": x,
+                        "y": d,
+                        "smpls": smpls,
+                    },
+                    "ml_g_d_med_d": {
+                        "external_predictions": external_predictions["ml_g_d_med_d"],
+                        "x": x,
+                        "y": y,
+                        "smpls": smpls_d_d,
+                    },
+                    "ml_g_d_med_1md": {
+                        "external_predictions": external_predictions["ml_g_d_med_1md"],
+                        "x": x,
+                        "y": y,
+                        "smpls": smpls_d_1md,
+                        # This has to be changed, has to take previous result
+                    },
+                    "ml_med_d_hat": {
+                        "external_predictions": external_predictions["ml_med_d_hat"],
+                        "x": x,
+                        "y": m,
+                        "smpls": smpls_d,
+                    },
+                    "ml_med_1md_hat": {
+                        "external_predictions": external_predictions["ml_med_1md_hat"],
+                        "x": x,
+                        "y": m,
+                        "smpls": smpls_1md,
+                    },
+                }
+            elif self.score_type == "efficient_alt":
+                # TODO: Change the samples
+
+                training_params = {
+                    "ml_m": {
+                        "external_predictions": external_predictions["ml_m"],
+                        "x": x,
+                        "y": d,
+                        "smpls": smpls,
+                    },
+                    "ml_g_d": {
+                        "external_predictions": external_predictions["ml_g_d"],
+                        "x": x,
+                        "y": y,
+                        "smpls": smpls_d,
+                    },
+                    "ml_g_d_1md": {
+                        "external_predictions": external_predictions["ml_g_d_1md"],
+                        "x": x,
+                        "y": self._extract_predictions(n_jobs_cv, return_models, **training_params["ml_g_d"])["preds"],
+                        "smpls": smpls_d,  # This has to be changed, has to take previous result
+                    },
+                    "ml_m_med_x": {
+                        "external_predictions": external_predictions["ml_m_med_x"],
+                        "x": x,
+                        "y": m,
+                        "smpls": smpls,
+                    },
+                }
+
+        return training_params
