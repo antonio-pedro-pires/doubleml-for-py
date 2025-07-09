@@ -367,7 +367,6 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         x, m = check_X_y(x, self._med_data.m, force_all_finite=False)
         xm = np.column_stack(x, m)
 
-        # "ml_g_d", "ml_g_nested", "ml_m", "ml_m_med_x"
         # Check whether there are external predictions for each parameter.
         m_external = external_predictions["ml_m"] is not None
         g_d_external = external_predictions["ml_g_d"] is not None
@@ -556,6 +555,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
             term3 = g_nested_hat
             return term1, term2, term3
 
+    # TODO: Refactor tuning to take away all of the mentions to d0, d1 and others.
     def _nuisance_tuning(
         self, smpls, param_grids, scoring_methods, n_folds_tune, n_jobs_cv, search_mode, n_iter_randomized_search
     ):
@@ -642,15 +642,15 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         dx = np.column_stack((d, x))
 
         # Learner for E(Y|D=d, M=d, X)
-        ml_g_d_med_d = self.params_names[0]
+        ml_g_d_med_pot = self.params_names[0]
         # Learner for E(Y|D=d, M=1-d, X)
-        ml_g_d_med_1md = self.params_names[1]
+        ml_g_d_med_counter = self.params_names[1]
 
         train_inds = [train_index for (train_index, _) in smpls]
         train_inds_d_lvl0 = [train_index for (train_index, _) in smpls_1md]
         train_inds_d_lvl1 = [train_index for (train_index, _) in smpls_d]
 
-        if ml_g_d_med_d == "ml_g_d0_m0":
+        if ml_g_d_med_pot == "ml_g_d0_m0":
             # smpls_d_d = smpls_1md_1md
             # smpls_d_1md = smpls_1md_d
             train_inds_pot = [train_index for (train_index, _) in smpls_1md_1md]
@@ -661,25 +661,25 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
             train_inds_pot = [train_index for (train_index, _) in smpls_d_d]
             train_inds_counter = [train_index for (train_index, _) in smpls_d_1md]
 
-        g_d_med_d_tune_res = _dml_tune(
+        g_d_med_pot_tune_res = _dml_tune(
             y,
             dx,  # used to obtain an estimation over several treatment levels (reduced variance in sensitivity)
             train_inds_pot,
-            self._learner[ml_g_d_med_d],
-            param_grids[ml_g_d_med_d],
-            scoring_methods[ml_g_d_med_d],
+            self._learner[ml_g_d_med_pot],
+            param_grids[ml_g_d_med_pot],
+            scoring_methods[ml_g_d_med_pot],
             n_folds_tune,
             n_jobs_cv,
             search_mode,
             n_iter_randomized_search,
         )
-        g_d_med_1md_tune_res = _dml_tune(
+        g_d_med_counter_tune_res = _dml_tune(
             y,
             dx,  # used to obtain an estimation over several treatment levels (reduced variance in sensitivity)
             train_inds_counter,
-            self._learner[ml_g_d_med_1md],
-            param_grids[ml_g_d_med_1md],
-            scoring_methods[ml_g_d_med_1md],
+            self._learner[ml_g_d_med_counter],
+            param_grids[ml_g_d_med_counter],
+            scoring_methods[ml_g_d_med_counter],
             n_folds_tune,
             n_jobs_cv,
             search_mode,
@@ -725,22 +725,22 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
             n_iter_randomized_search,
         )
 
-        g_d_med_d_best_params = [xx.best_params_ for xx in g_d_med_d_tune_res]
-        g_d_med_1md_best_params = [xx.best_params_ for xx in g_d_med_1md_tune_res]
+        g_d_med_pot_best_params = [xx.best_params_ for xx in g_d_med_pot_tune_res]
+        g_d_med_counter_best_params = [xx.best_params_ for xx in g_d_med_counter_tune_res]
         m_best_params = [xx.best_params_ for xx in m_tune_res]
         med_d0_best_params = [xx.best_params_ for xx in med_d0_tune_res]
         med_d1_best_params = [xx.best_params_ for xx in med_d1_tune_res]
 
         params = {
-            "ml_g_d_med_d": g_d_med_d_best_params,
-            "ml_g_d_med_1md": g_d_med_1md_best_params,
+            "ml_g_d_med_pot": g_d_med_pot_best_params,
+            "ml_g_d_med_counter": g_d_med_counter_best_params,
             "ml_m": m_best_params,
             "ml_med_d0": med_d0_best_params,
             "ml_med_d1": med_d1_best_params,
         }
         tune_res = {
-            "ml_g_d_med_d": g_d_med_d_tune_res,
-            "ml_g_d_med_1md": g_d_med_1md_tune_res,
+            "ml_g_d_med_pot": g_d_med_pot_tune_res,
+            "ml_g_d_med_counter": g_d_med_counter_tune_res,
             "ml_m": m_tune_res,
             "ml_med_d0": med_d0_tune_res,
             "ml_med_d1": med_d1_tune_res,
@@ -789,8 +789,8 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
             valid_learner = ["ml_m", "ml_g_d"]
         else:
             if self.score_type == "efficient":
-                valid_learner = ["ml_g_d_med_d", "ml_g_d_med_1md", "ml_m", "ml_med_d", "ml_med_1md"]
+                valid_learner = ["ml_g_d_med_pot", "ml_g_d_med_counter", "ml_m", "ml_med_pot", "ml_med_counter"]
             elif self.score_type == "efficient-alt":
-                valid_learner = ["ml_g_d", "ml_g_nested", "ml_m", "ml_m_med_x"]
+                valid_learner = ["ml_g_d", "ml_g_nested", "ml_m", "ml_m_med"]
 
         self._params = {learner: {key: [None] * self.n_rep for key in self._med_data.d_cols} for learner in valid_learner}
