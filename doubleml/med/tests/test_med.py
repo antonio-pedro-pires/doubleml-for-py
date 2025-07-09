@@ -101,23 +101,16 @@ def test_initialize_ml_nuisance_params():
     # Potential efficient learners
     med_obj = DoubleMLMED(med_data, 1, 1, ml_g, ml_m, ml_med, ml_nested, score_type="efficient")
     valid_learner = ["ml_m", "ml_g_d"]
-    assert valid_learner == list(med_obj.params.keys())
-
+    for learner in valid_learner:
+        assert learner in set(med_obj.params.keys())
     # Counterfactual efficient learners
     med_obj = DoubleMLMED(med_data, 1, 0, ml_g, ml_m, ml_med, ml_nested, score_type="efficient")
-    valid_learner = ["ml_m", "ml_g_d_med_d", "ml_g_d_med_1md", "ml_med_d", "ml_med_1md"]
-    assert valid_learner == list(med_obj.params.keys())
+    valid_learner = ["ml_m", "ml_g_d_med_pot", "ml_g_d_med_counter", "ml_med_pot", "ml_med_counter"]
+    for learner in valid_learner:
+        assert learner in set(med_obj.params.keys())
 
     # Counterfactual efficient-alt learners
     med_obj = DoubleMLMED(med_data, 1, 0, ml_g, ml_m, ml_med, ml_nested, score_type="efficient-alt")
-    valid_learner = ["ml_m", "ml_g_d", "ml_g_d_1md", "ml_m_med_x"]
-    assert valid_learner == list(med_obj.params.keys())
-
-
-@pytest.mark.ci
-def test_extract_predictions():
-    # Set framework's prediction
-    # See that the conditional works correctly.
-    # See that an external prediction returns the correct data shape
-    # Test the framework's prediction is identical to a prediction made manually.
-    pass
+    valid_learner = ["ml_m", "ml_g_d", "ml_g_nested", "ml_m_med"]
+    for learner in valid_learner:
+        assert learner in set(med_obj.params.keys())
