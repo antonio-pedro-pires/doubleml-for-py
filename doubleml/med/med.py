@@ -1,3 +1,5 @@
+import warnings
+
 import numpy as np
 from sklearn.utils import check_consistent_length, check_X_y
 
@@ -33,7 +35,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         mediation_level,
         ml_g,
         ml_m,
-        ml_med,
+        ml_med=None,
         ml_nested=None,
         score="MED",
         score_type="efficient_alt",
@@ -89,6 +91,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
                 self._predict_method["is_ml_nested_classifier"] = "predict_proba"
             else:
                 self._predict_method["is_ml_nested_classifier"] = "predict"
+        self._check_outcome(ml_g=ml_g, ml_m=ml_m, ml_med=ml_med, ml_nested=ml_nested)
         self._initialize_ml_nuisance_params()
 
     @property
@@ -783,6 +786,51 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
                 f"requires finite mediation variables with no missing values."
             )
         # TODO: Probably want to check that elements of mediation variables are floats or ints.
+
+    def _check_outcome(self, ml_g=None, ml_m=None, ml_med=None, ml_nested=None):
+        if self.is_potential_outcome:
+            if ml_g is None or ml_m is None:
+                raise ValueError(
+                    "Potential outcome estimation requires the learners ml_g and ml_m."
+                    + f"The ml_g provided is {ml_g}, the ml_m provided is {ml_m}."
+                    + "Please provide the missing learner."
+                )
+            if ml_med is not None:
+                warnings.warn(
+                    "Potential outcome estimation does not require ml_med. "
+                    + "The provided learner will not be used for estimation."
+                )
+            if ml_nested is not None:
+                warnings.warn(
+                    "Potential outcome estimation does not require ml_nested. "
+                    + "The provided learner will not be used for estimation."
+                )
+        else:
+            if self.score_type == "efficient":
+                if ml_med is None:
+                    raise ValueError(
+                        "Counterfactual outcome estimation using the efficient score requires a ml_med learner. "
+                        + f"ml_med learner is {ml_med}. If ml_med learner is None, please provide a valid learner."
+                    )
+                if ml_nested is not None:
+                    warnings.warn(
+                        "Counterfactual outcome estimation using the efficient score does not"
+                        + "require the learner ml_nested. The provided ml_nested learner will not be used for estimation."
+                    )
+            elif self.score_type == "efficient-alt":
+                if ml_nested is None:
+                    raise ValueError(
+                        "Counterfactual outcome estimation using the alternative efficient score "
+                        + "requires a ml_nested learner. "
+                        + f"The ml_nested learner is {ml_med}. "
+                        + "If the ml_nested learner is None,\n please provide a valid learner."
+                    )
+                if ml_med is not None:
+                    warnings.warn(
+                        "Counterfactual outcome estimation using the alternative efficient score "
+                        + "does not require the learner ml_med. "
+                        + "The provided ml_med learner will not be used for estimation."
+                    )
 
     def _initialize_ml_nuisance_params(self):
         if self.is_potential_outcome:
