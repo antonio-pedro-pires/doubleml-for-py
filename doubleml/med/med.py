@@ -227,18 +227,15 @@ class DoubleMLMEDP(LinearScoreMixin, DoubleML):
 
     def _score_elements(self, y, m_hat, g_d_hat):
         u_hat = y - g_d_hat
-        propensity_score = np.multiply(
-            np.divide(self.treated, m_hat),
-            _normalize_propensity_med(
-                self.normalize_ipw,
-                self.score,
-                self.score_function,
-                self.treated,
-            ),
+        adjusted_propensity = _normalize_propensity_med(
+            self.normalize_ipw,
+            self.score,
+            self.score_function,
+            self.treated,
         )
 
         psi_a = -1.0
-        psi_b = propensity_score * (u_hat) + g_d_hat
+        psi_b = np.multiply(np.multiply(adjusted_propensity, np.divide(self.treated, m_hat)), u_hat) + g_d_hat
         return psi_a, psi_b
 
     # TODO: Refactor tuning to take away all of the mentions to d0, d1 and others.
@@ -717,7 +714,7 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
             },
         }
 
-        psi_a, psi_b = self._score_counterfactual_outcome(y, m_hat, g_d_hat, g_nested_hat, m_med_hat, smpls)
+        psi_a, psi_b = self._score_counterfactual_alt_outcome(y, m_hat, g_d_hat, g_nested_hat, m_med_hat, smpls)
         psi_elements = {"psi_a": psi_a, "psi_b": psi_b}
 
         return psi_elements, preds
@@ -725,26 +722,71 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
     def _score_counterfactual_outcome(
         self, y, m_hat, g_d_med_pot_hat, g_d_med_counter_hat, med_pot_hat, med_counter_hat, smpls
     ):
+        propensity1 = np.divide(np.multiply(self.treated, med_counter_hat), np.multiply(m_hat, med_pot_hat))
+        propensity2 = np.divide(1.0 - self.treated, 1.0 - m_hat)
+        adjusted_propensity1, adjusted_propensity2 = _normalize_propensity_med(
+            normalize_ipw=self.normalize_ipw,
+            score_function="efficient",
+            outcome="counterfactual",
+            treatment_indicator=self.treated,
+            propensity_score=m_hat,
+            conditional_pot_med_prob=med_pot_hat,
+            conditional_counter_med_prob=med_counter_hat,
+        )
+
+        adjusted_propensity1 = np.multiply(propensity1, np.multiply(adjusted_propensity1))
+        adjusted_propensity2 = np.multiply(propensity2, np.multiply(adjusted_propensity2))
         mu_hat = np.multiply(self.mediated, g_d_med_pot_hat) + np.multiply((1.0 - self.mediated), g_d_med_counter_hat)
         g_mu_hat = np.multiply(g_d_med_pot_hat, med_counter_hat) + np.multiply(g_d_med_counter_hat, (1.0 - med_counter_hat))
 
         u_hat = y - mu_hat
         w_hat = mu_hat - g_mu_hat
 
-        psi_a = -1.0
-        term1, term2, term3 = self._normalize_counterfactual(med_counter_hat, m_hat, med_pot_hat, g_mu_hat, u_hat, w_hat)
-        psi_b = term1 + term2 + term3
+        # TODO: Continue here next time
+        adjusted_propensity_score1, adjusted_propensity_score2 = _normalize_propensity_med(
+            self.normalize_ipw,
+            score=self.score,
+            outcome="counterfactual",
+            treatment_indicator=self.treated,
+            propensity_score=m_hat,
+            conditional_pot_med_prob=med_pot_hat,
+            conditional_counter_med_prob=med_counter_hat,
+        )
 
+        psi_a = -1.0
+        # psi_b = np.multiply(adjusted_propensity1, u_hat) + np.multiply(adjusted_propensity2, w_hat) + w_hat
+        psi_b = (
+            np.multiply(np.multiply(np.divide(self.treated, m_hat), np.divide(med_counter_hat, med_pot_hat)), u_hat)
+            + np.multiply(np.divide(1.0 - self.treated, 1.0 - m_hat), w_hat)
+            + w_hat
+        )
         return psi_a, psi_b
 
     def _score_counterfactual_alt_outcome(self, y, m_hat, g_d_hat, g_nested_hat, m_med_hat, smpls):
         u_hat = y - g_d_hat
         w_hat = g_d_hat - g_nested_hat
 
-        psi_a = -1.0
-        term1, term2, term3 = self._normalize_counterfactual(m_hat, g_d_hat, g_nested_hat, m_med_hat, u_hat, w_hat)
-        psi_b = term1 + term2 + term3
+        propensity1 = np.divide(np.multiply(self.treated, 1.0 - m_med_hat), np.multiply(1.0 - m_hat, m_med_hat))
+        propensity2 = np.divide(1.0 - self.treated, 1.0 - m_hat)
 
+        adjusted_propensity1, adjusted_propensity2 = _normalize_propensity_med(
+            normalize_ipw=self.normalize_ipw,
+            score_function="efficient-alt",
+            outcome="counterfactual",
+            treatment_indicator=self.treated,
+            propensity_score=m_hat,
+            propensity_score_med=m_med_hat,
+        )
+        adjusted_propensity1 = np.multiply(propensity1, np.multiply(adjusted_propensity1))
+        adjusted_propensity2 = np.multiply(propensity2, np.multiply(adjusted_propensity2))
+
+        psi_a = -1.0
+        # psi_b = np.multiply(adjusted_propensity1, u_hat) + np.multiply(adjusted_propensity2, w_hat) + g_nested_hat
+        psi_b = (
+            np.multiply(np.multiply(np.divide(self.treated, 1.0 - m_hat), np.divide(1.0 - m_med_hat, m_med_hat)), u_hat)
+            + np.multiply(np.divide(1.0 - self.treated, 1.0 - m_hat), w_hat)
+            + w_hat
+        )
         return psi_a, psi_b
 
     # TODO: Refactor tuning to take away all of the mentions to d0, d1 and others.
