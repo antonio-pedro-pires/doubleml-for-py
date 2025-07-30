@@ -64,9 +64,8 @@ class DoubleMLMEDP(LinearScoreMixin, DoubleML):
         _check_score(score_function, valid_scores_types)
 
         self._treatment_level = treatment_level
-        self._mediation_level = mediation_level
         self._treated = self._med_data.d == treatment_level
-        self._mediated = self._med_data.m == mediation_level
+        self._mediated = self._med_data.m == treatment_level
 
         self._learner = ["ml_m", "ml_g"]
         self._predict_method = {"ml_m": "predict_proba"}
@@ -156,7 +155,7 @@ class DoubleMLMEDP(LinearScoreMixin, DoubleML):
         return self.treatment_level == self.mediation_level
 
     def _initialize_ml_nuisance_params(self):
-        valid_learner = ["ml_m", "ml_g_d"]
+        valid_learner = ["ml_m", "ml_g_1"]
         self._params = {learner: {key: [None] * self.n_rep for key in self._med_data.d_cols} for learner in valid_learner}
 
     def _nuisance_est(
@@ -172,10 +171,10 @@ class DoubleMLMEDP(LinearScoreMixin, DoubleML):
 
         # Check whether there are external predictions for each parameter.
         m_external = external_predictions["ml_m"] is not None
-        g_d_external = external_predictions["ml_g_d"] is not None
+        g_1_external = external_predictions["ml_g_1"] is not None
 
         # Prepare the samples
-        _, smpls_d = _get_cond_smpls(smpls, self.treated)
+        _, smpls_d1 = _get_cond_smpls(smpls, self.treated)
 
         if m_external:
             m_hat = {"preds": external_predictions["ml_m"], "targets": None, "models": None}
@@ -191,42 +190,42 @@ class DoubleMLMEDP(LinearScoreMixin, DoubleML):
                 return_models=return_models,
             )
 
-        if g_d_external:
-            g_d_hat = {"preds": external_predictions["ml_g_d"], "targets": None, "models": None}
+        if g_1_external:
+            g_1_hat = {"preds": external_predictions["ml_g_1"], "targets": None, "models": None}
         else:
-            g_d_hat = _dml_cv_predict(
-                self._learner["ml_g_d"],
+            g_1_hat = _dml_cv_predict(
+                self._learner["ml_g_1"],
                 x,
                 y,
-                smpls=smpls_d,
+                smpls=smpls_d1,
                 n_jobs=n_jobs_cv,
-                est_params=self._get_params("ml_g_d"),
-                method=self._predict_method["ml_g_d"],
+                est_params=self._get_params("ml_g_1"),
+                method=self._predict_method["ml_g_1"],
                 return_models=return_models,
             )
 
         preds = {
             "predictions": {
                 "ml_m": m_hat["preds"],
-                "ml_g_d": g_d_hat["preds"],
+                "ml_g_1": g_1_hat["preds"],
             },
             "targets": {
                 "ml_m": m_hat["targets"],
-                "ml_g_d": g_d_hat["targets"],
+                "ml_g_1": g_1_hat["targets"],
             },
             "models": {
                 "ml_m": m_hat["models"],
-                "ml_g_d": g_d_hat["models"],
+                "ml_g_1": g_1_hat["models"],
             },
         }
 
-        psi_a, psi_b = self._score_potential_outcome(y, x, d, m_hat["preds"], g_d_hat["preds"])
+        psi_a, psi_b = self._score_potential_outcome(y, x, d, m_hat["preds"], g_1_hat["preds"])
         psi_elements = {"psi_a": psi_a, "psi_b": psi_b}
 
         return psi_elements, preds
 
-    def _score_elements(self, y, m_hat, g_d_hat):
-        u_hat = y - g_d_hat
+    def _score_elements(self, y, m_hat, g_1_hat):
+        u_hat = y - g_1_hat
         adjusted_propensity = _normalize_propensity_med(
             self.normalize_ipw,
             self.score,
@@ -235,7 +234,7 @@ class DoubleMLMEDP(LinearScoreMixin, DoubleML):
         )
 
         psi_a = -1.0
-        psi_b = np.multiply(np.multiply(adjusted_propensity, np.divide(self.treated, m_hat)), u_hat) + g_d_hat
+        psi_b = np.multiply(np.multiply(adjusted_propensity, np.divide(self.treated, m_hat)), u_hat) + g_1_hat
         return psi_a, psi_b
 
     # TODO: Refactor tuning to take away all of the mentions to d0, d1 and others.
@@ -252,23 +251,23 @@ class DoubleMLMEDP(LinearScoreMixin, DoubleML):
         dx = np.column_stack((d, x))
 
         treated = self.treated
-        smpls_1md, smpls_d = _get_cond_smpls(smpls, treated)
+        _, smpls_d1 = _get_cond_smpls(smpls, treated)
 
         train_inds = [train_index for (train_index, _) in smpls]
-        # train_inds_d = [train_index for (train_index, _) in smpls_d]
+        # train_inds_1 = [train_index for (train_index, _) in smpls_d1]
         train_inds_g = None
 
         # TODO: Check what this does
         if scoring_methods is None:
-            scoring_methods = {"ml_g_d": None, "ml_m": None}
+            scoring_methods = {"ml_g_1": None, "ml_m": None}
 
-        g_d_tune_res = _dml_tune(
+        g_1_tune_res = _dml_tune(
             y,
             dx,  # used to obtain an estimation over several treatment levels (reduced variance in sensitivity)
             train_inds_g,
-            self._learner["ml_g_d"],
-            param_grids["ml_g_d"],
-            scoring_methods["ml_g_d"],
+            self._learner["ml_g_1"],
+            param_grids["ml_g_1"],
+            scoring_methods["ml_g_1"],
             n_folds_tune,
             n_jobs_cv,
             search_mode,
@@ -287,11 +286,11 @@ class DoubleMLMEDP(LinearScoreMixin, DoubleML):
             n_iter_randomized_search,
         )
 
-        g_d_best_params = [xx.best_params_ for xx in g_d_tune_res]
+        g_1_best_params = [xx.best_params_ for xx in g_1_tune_res]
         m_best_params = [xx.best_params_ for xx in m_tune_res]
 
-        params = {"ml_g_d": g_d_best_params, "ml_m": m_best_params}
-        tune_res = {"ml_g_d": g_d_tune_res, "ml_m": m_tune_res}
+        params = {"ml_g_1": g_1_best_params, "ml_m": m_best_params}
+        tune_res = {"ml_g_1": g_1_tune_res, "ml_m": m_tune_res}
 
         res = {"params": params, "tune_res": tune_res}
         return res
@@ -489,9 +488,9 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
 
     def _initialize_ml_nuisance_params(self):
         if self.score_function == "efficient":
-            valid_learner = ["ml_g_d_med_pot", "ml_g_d_med_counter", "ml_m", "ml_med_pot", "ml_med_counter"]
+            valid_learner = ["ml_g_d1_m1", "ml_g_d1_m0", "ml_m", "ml_med_d1", "ml_med_d0"]
         elif self.score_function == "efficient-alt":
-            valid_learner = ["ml_g_d", "ml_g_nested", "ml_m", "ml_m_med"]
+            valid_learner = ["ml_g_1", "ml_g_nested", "ml_m", "ml_m_med"]
 
         self._params = {learner: {key: [None] * self.n_rep for key in self._med_data.d_cols} for learner in valid_learner}
 
@@ -515,14 +514,18 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
 
         # Check whether there are external predictions for each parameter.
         m_external = external_predictions["ml_m"] is not None
-        g_d_med_pot_external = external_predictions["ml_g_d_med_pot"] is not None
-        g_d_med_counter_external = external_predictions["ml_g_d_med_counter"] is not None
-        med_pot_external = external_predictions["ml_med_pot"] is not None
-        med_counter_external = external_predictions["ml_med_counter"] is not None
+        g_d1_m1_external = external_predictions["ml_g_d1_m1"] is not None
+        g_d1_m0_external = external_predictions["ml_g_d1_m0"] is not None
+        med_d1_external = external_predictions["ml_med_d1"] is not None
+        med_d0_external = external_predictions["ml_med_d0"] is not None
 
-        # Prepare the samples
-        smpls_1minusd, smpls_d = _get_cond_smpls(smpls, self.treated)
-        _, _, smpls_d_1minusd, smpls_d_d = _get_cond_smpls_2d(smpls, self.treated, self.mediated)
+        # TODO: Redo samples so that m is defined based on d
+        # smpls_d0 points to the non-treated observations, smpls_d1 points to the treated observations.
+        # smpls_d1_m0 points to the treated but not mediated observations,
+        # the other variations (d1_m1, d0_m0, d0_m1) point.
+        # to observations with different combinations of treatment and mediation present.
+        smpls_d0, smpls_d1 = _get_cond_smpls(smpls, self.treated)
+        _, _, smpls_d1_m0, smpls_d1_m1 = _get_cond_smpls_2d(smpls, self.treated, self.mediated)
 
         if m_external:
             m_hat = {"preds": external_predictions["ml_m"], "targets": None, "models": None}
@@ -537,86 +540,84 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
                 method=self._predict_method["ml_m"],
                 return_models=return_models,
             )
-        if g_d_med_pot_external:
-            g_d_med_pot_hat = {"preds": external_predictions["ml_g_d_med_pot"], "targets": None, "models": None}
+        if g_d1_m1_external:
+            g_d1_m1_hat = {"preds": external_predictions["ml_g_d1_m1"], "targets": None, "models": None}
         else:
-            g_d_med_pot_hat = _dml_cv_predict(
-                self._learner["ml_g_d_med_pot"],
+            g_d1_m1_hat = _dml_cv_predict(
+                self._learner["ml_g_d1_m1"],
                 x,
                 y,
-                smpls=smpls_d_d,
+                smpls=smpls_d1_m1,
                 n_jobs=n_jobs_cv,
-                est_params=self._get_params("ml_g_d_med_pot"),
-                method=self._predict_method["ml_g_d_med_pot"],
+                est_params=self._get_params("ml_g_d1_m1"),
+                method=self._predict_method["ml_g_d1_m1"],
                 return_models=return_models,
             )
-        if g_d_med_counter_external:
-            g_d_med_counter_hat = {"preds": external_predictions["ml_g_d_med_counter"], "targets": None, "models": None}
+        if g_d1_m0_external:
+            g_d1_m0_hat = {"preds": external_predictions["ml_g_d1_m0"], "targets": None, "models": None}
         else:
-            g_d_med_counter_hat = _dml_cv_predict(
-                self._learner["ml_g_d_med_counter"],
+            g_d1_m0_hat = _dml_cv_predict(
+                self._learner["ml_g_d1_m0"],
                 x,
                 d,
-                smpls=smpls_d_1minusd,
+                smpls=smpls_d1_m0,
                 n_jobs=n_jobs_cv,
-                est_params=self._get_params("ml_g_d_med_counter"),
-                method=self._predict_method["ml_g_d_med_counter"],
+                est_params=self._get_params("ml_g_d1_m0"),
+                method=self._predict_method["ml_g_d1_m0"],
                 return_models=return_models,
             )
-        if med_pot_external:
-            med_pot_hat = {"preds": external_predictions["ml_med_pot"], "targets": None, "models": None}
+        if med_d1_external:
+            med_d1_hat = {"preds": external_predictions["ml_med_d1"], "targets": None, "models": None}
         else:
-            med_pot_hat = _dml_cv_predict(
-                self._learner["ml_med_pot"],
+            med_d1_hat = _dml_cv_predict(
+                self._learner["ml_med_d1"],
                 x,
                 y,
-                smpls=smpls_d,
+                smpls=smpls_d1,
                 n_jobs=n_jobs_cv,
-                est_params=self._get_params("ml_med_pot"),
-                method=self._predict_method["ml_med_pot"],
+                est_params=self._get_params("ml_med_d1"),
+                method=self._predict_method["ml_med_d1"],
                 return_models=return_models,
             )
-        if med_counter_external:
-            med_counter_hat = {"preds": external_predictions["ml_med_counter"], "targets": None, "models": None}
+        if med_d0_external:
+            med_d0_hat = {"preds": external_predictions["ml_med_d0"], "targets": None, "models": None}
         else:
-            med_counter_hat = _dml_cv_predict(
-                self._learner["ml_med_counter"],
+            med_d0_hat = _dml_cv_predict(
+                self._learner["ml_med_d0"],
                 x,
                 y,
-                smpls=smpls_1minusd,
+                smpls=smpls_d0,
                 n_jobs=n_jobs_cv,
-                est_params=self._get_params("ml_med_counter"),
-                method=self._predict_method["ml_med_counter"],
+                est_params=self._get_params("ml_med_d0"),
+                method=self._predict_method["ml_med_d0"],
                 return_models=return_models,
             )
 
         preds = {
             "predictions": {
                 "ml_m": m_hat["preds"],
-                "ml_g_d_med_pot": g_d_med_pot_hat["preds"],
-                "ml_g_d_med_counter": g_d_med_counter_hat["preds"],
-                "ml_med_pot": med_pot_hat["preds"],
-                "ml_med_counter": med_counter_hat["preds"],
+                "ml_g_d1_m1": g_d1_m1_hat["preds"],
+                "ml_g_d1_m0": g_d1_m0_hat["preds"],
+                "ml_med_d1": med_d1_hat["preds"],
+                "ml_med_d0": med_d0_hat["preds"],
             },
             "targets": {
                 "ml_m": m_hat["targets"],
-                "ml_g_d_med_pot": g_d_med_pot_hat["targets"],
-                "ml_g_d_med_counter": g_d_med_counter_hat["targets"],
-                "ml_med_pot": med_pot_hat["targets"],
-                "ml_med_counter": med_counter_hat["targets"],
+                "ml_g_d1_m1": g_d1_m1_hat["targets"],
+                "ml_g_d1_m0": g_d1_m0_hat["targets"],
+                "ml_med_d1": med_d1_hat["targets"],
+                "ml_med_d0": med_d0_hat["targets"],
             },
             "models": {
                 "ml_m": m_hat["models"],
-                "ml_g_d_med_pot": g_d_med_pot_hat["models"],
-                "ml_g_d_med_counter": g_d_med_counter_hat["models"],
-                "ml_med_pot": med_pot_hat["models"],
-                "ml_med_counter": med_counter_hat["models"],
+                "ml_g_d1_m1": g_d1_m1_hat["models"],
+                "ml_g_d1_m0": g_d1_m0_hat["models"],
+                "ml_med_d1": med_d1_hat["models"],
+                "ml_med_d0": med_d0_hat["models"],
             },
         }
 
-        psi_a, psi_b = self._score_counterfactual_outcome(
-            y, m_hat, g_d_med_pot_hat, g_d_med_counter_hat, med_pot_hat, med_counter_hat, smpls
-        )
+        psi_a, psi_b = self._score_counterfactual_outcome(y, m_hat, g_d1_m1_hat, g_d1_m0_hat, med_d1_hat, med_d0_hat, smpls)
         psi_elements = {"psi_a": psi_a, "psi_b": psi_b}
 
         return psi_elements, preds
@@ -629,14 +630,14 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
 
         # Check whether there are external predictions for each parameter.
         m_external = external_predictions["ml_m"] is not None
-        g_d_external = external_predictions["ml_g_d"] is not None
+        g_1_external = external_predictions["ml_g_1"] is not None
         g_nested_external = external_predictions["ml_g_nested"] is not None
         m_med_external = external_predictions["ml_m_med"] is not None
 
         # TODO: Samples have to be split into musample and deltasample.
         # Prepare the samples
-        smpls_1minusd, smpls_d = _get_cond_smpls(smpls, self.treated)
-        _, _, smpls_d_1minusd, smpls_d_d = _get_cond_smpls_2d(smpls, self.treated, self.mediated)
+        smpls_d0, smpls_d1 = _get_cond_smpls(smpls, self.treated)
+        _, _, smpls_d1_m0, smpls_d1_m1 = _get_cond_smpls_2d(smpls, self.treated, self.mediated)
 
         # TODO: Often required to fit learners on both samples.
         # TODO: Maybe will need to use other strategy than _dml_cv_predict()
@@ -653,17 +654,17 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
                 method=self._predict_method["ml_m"],
                 return_models=return_models,
             )
-        if g_d_external:
-            g_d_hat = {"preds": external_predictions["ml_g_d"], "targets": None, "models": None}
+        if g_1_external:
+            g_1_hat = {"preds": external_predictions["ml_g_1"], "targets": None, "models": None}
         else:
-            g_d_hat = _dml_cv_predict(
-                self._learner["ml_g_d"],
+            g_1_hat = _dml_cv_predict(
+                self._learner["ml_g_1"],
                 xm,
                 y,
-                smpls=smpls_d,
+                smpls=smpls_d1,
                 n_jobs=n_jobs_cv,
-                est_params=self._get_params("ml_g_d"),
-                method=self._predict_method["ml_g_d"],
+                est_params=self._get_params("ml_g_1"),
+                method=self._predict_method["ml_g_1"],
                 return_models=return_models,
             )
         if g_nested_external:
@@ -672,8 +673,8 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
             g_nested_hat = _dml_cv_predict(
                 self._learner["ml_g_nested"],
                 x,
-                g_d_hat,
-                smpls=smpls_d_1minusd,  # TODO: Change this sample
+                g_1_hat,
+                smpls=smpls_d1_m0,  # TODO: Change this sample
                 n_jobs=n_jobs_cv,
                 est_params=self._get_params("ml_g_nested"),
                 method=self._predict_method["ml_g_nested"],
@@ -696,33 +697,31 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
         preds = {
             "predictions": {
                 "ml_m": m_hat["preds"],
-                "ml_g_d": g_d_hat["preds"],
+                "ml_g_1": g_1_hat["preds"],
                 "ml_g_nested": g_nested_hat["preds"],
                 "ml_m_med": m_med_hat["preds"],
             },
             "targets": {
                 "ml_m": m_hat["targets"],
-                "ml_g_d": g_d_hat["targets"],
+                "ml_g_1": g_1_hat["targets"],
                 "ml_g_nested": g_nested_hat["targets"],
                 "ml_m_med": m_med_hat["targets"],
             },
             "models": {
                 "ml_m": m_hat["models"],
-                "ml_g_d": g_d_hat["models"],
+                "ml_g_1": g_1_hat["models"],
                 "ml_g_nested": g_nested_hat["models"],
                 "ml_m_med": m_med_hat["models"],
             },
         }
 
-        psi_a, psi_b = self._score_counterfactual_alt_outcome(y, m_hat, g_d_hat, g_nested_hat, m_med_hat, smpls)
+        psi_a, psi_b = self._score_counterfactual_alt_outcome(y, m_hat, g_1_hat, g_nested_hat, m_med_hat, smpls)
         psi_elements = {"psi_a": psi_a, "psi_b": psi_b}
 
         return psi_elements, preds
 
-    def _score_counterfactual_outcome(
-        self, y, m_hat, g_d_med_pot_hat, g_d_med_counter_hat, med_pot_hat, med_counter_hat, smpls
-    ):
-        propensity1 = np.divide(np.multiply(self.treated, med_counter_hat), np.multiply(m_hat, med_pot_hat))
+    def _score_counterfactual_outcome(self, y, m_hat, g_d1_m1_hat, g_d1_m0_hat, med_d1_hat, med_d0_hat, smpls):
+        propensity1 = np.divide(np.multiply(self.treated, med_d0_hat), np.multiply(m_hat, med_d1_hat))
         propensity2 = np.divide(1.0 - self.treated, 1.0 - m_hat)
         adjusted_propensity1, adjusted_propensity2 = _normalize_propensity_med(
             normalize_ipw=self.normalize_ipw,
@@ -730,14 +729,14 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
             outcome="counterfactual",
             treatment_indicator=self.treated,
             propensity_score=m_hat,
-            conditional_pot_med_prob=med_pot_hat,
-            conditional_counter_med_prob=med_counter_hat,
+            conditional_pot_med_prob=med_d1_hat,
+            conditional_counter_med_prob=med_d0_hat,
         )
 
         adjusted_propensity1 = np.multiply(propensity1, np.multiply(adjusted_propensity1))
         adjusted_propensity2 = np.multiply(propensity2, np.multiply(adjusted_propensity2))
-        mu_hat = np.multiply(self.mediated, g_d_med_pot_hat) + np.multiply((1.0 - self.mediated), g_d_med_counter_hat)
-        g_mu_hat = np.multiply(g_d_med_pot_hat, med_counter_hat) + np.multiply(g_d_med_counter_hat, (1.0 - med_counter_hat))
+        mu_hat = np.multiply(self.mediated, g_d1_m1_hat) + np.multiply((1.0 - self.mediated), g_d1_m0_hat)
+        g_mu_hat = np.multiply(g_d1_m1_hat, med_d0_hat) + np.multiply(g_d1_m0_hat, (1.0 - med_d0_hat))
 
         u_hat = y - mu_hat
         w_hat = mu_hat - g_mu_hat
@@ -749,22 +748,22 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
             outcome="counterfactual",
             treatment_indicator=self.treated,
             propensity_score=m_hat,
-            conditional_pot_med_prob=med_pot_hat,
-            conditional_counter_med_prob=med_counter_hat,
+            conditional_pot_med_prob=med_d1_hat,
+            conditional_counter_med_prob=med_d0_hat,
         )
 
         psi_a = -1.0
         # psi_b = np.multiply(adjusted_propensity1, u_hat) + np.multiply(adjusted_propensity2, w_hat) + w_hat
         psi_b = (
-            np.multiply(np.multiply(np.divide(self.treated, m_hat), np.divide(med_counter_hat, med_pot_hat)), u_hat)
+            np.multiply(np.multiply(np.divide(self.treated, m_hat), np.divide(med_d0_hat, med_d1_hat)), u_hat)
             + np.multiply(np.divide(1.0 - self.treated, 1.0 - m_hat), w_hat)
             + w_hat
         )
         return psi_a, psi_b
 
-    def _score_counterfactual_alt_outcome(self, y, m_hat, g_d_hat, g_nested_hat, m_med_hat, smpls):
-        u_hat = y - g_d_hat
-        w_hat = g_d_hat - g_nested_hat
+    def _score_counterfactual_alt_outcome(self, y, m_hat, g_1_hat, g_nested_hat, m_med_hat, smpls):
+        u_hat = y - g_1_hat
+        w_hat = g_1_hat - g_nested_hat
 
         propensity1 = np.divide(np.multiply(self.treated, 1.0 - m_med_hat), np.multiply(1.0 - m_hat, m_med_hat))
         propensity2 = np.divide(1.0 - self.treated, 1.0 - m_hat)
@@ -812,51 +811,51 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
 
         treated = self.treated
         mediated = self.mediated
-        smpls_1md, smpls_d = _get_cond_smpls(smpls, treated)
-        smpls_1md_1md, smpls_1md_d, smpls_d_1md, smpls_d_d = _get_cond_smpls_2d(smpls, treated, mediated)
+        smpls_d0, smpls_d1 = _get_cond_smpls(smpls, treated)
+        smpls_d0_m0, smpls_d0_m1, smpls_d1_m0, smpls_d1_m1 = _get_cond_smpls_2d(smpls, treated, mediated)
 
         dx = np.column_stack((d, x))
 
         # Learner for E(Y|D=d, M=d, X)
-        ml_g_d_med_pot = self.params_names[0]
+        ml_g_d1_m1 = self.params_names[0]
         # Learner for E(Y|D=d, M=1-d, X)
-        ml_g_d_med_counter = self.params_names[1]
+        ml_g_d1_m0 = self.params_names[1]
 
         train_inds = [train_index for (train_index, _) in smpls]
-        train_inds_d_lvl0 = [train_index for (train_index, _) in smpls_1md]
-        train_inds_d_lvl1 = [train_index for (train_index, _) in smpls_d]
+        train_inds_d_lvl0 = [train_index for (train_index, _) in smpls_d0]
+        train_inds_d_lvl1 = [train_index for (train_index, _) in smpls_d1]
 
-        # TODO: Check which ml_g_d_m to use
-        if ml_g_d_med_pot == "ml_g_d0_m0":
-            # smpls_d_d = smpls_1md_1md
-            # smpls_d_1md = smpls_1md_d
-            train_inds_pot = [train_index for (train_index, _) in smpls_1md_1md]
-            train_inds_counter = [train_index for (train_index, _) in smpls_1md_d]
+        # TODO: Check which ml_g_1_m to use
+        if ml_g_d1_m1 == "ml_g_d0_m0":
+            # smpls_d1_m1 = smpls_d0_m0
+            # smpls_d1_m0 = smpls_d0_m1
+            train_inds_pot = [train_index for (train_index, _) in smpls_d0_m0]
+            train_inds_counter = [train_index for (train_index, _) in smpls_d0_m1]
         else:
-            # smpls_d_d = smpls_d_d
-            # smpls_d_1md = smpls_d_1md
-            train_inds_pot = [train_index for (train_index, _) in smpls_d_d]
-            train_inds_counter = [train_index for (train_index, _) in smpls_d_1md]
+            # smpls_d1_m1 = smpls_d1_m1
+            # smpls_d1_m0 = smpls_d1_m0
+            train_inds_pot = [train_index for (train_index, _) in smpls_d1_m1]
+            train_inds_counter = [train_index for (train_index, _) in smpls_d1_m0]
 
-        g_d_med_pot_tune_res = _dml_tune(
+        g_d1_m1_tune_res = _dml_tune(
             y,
             dx,  # used to obtain an estimation over several treatment levels (reduced variance in sensitivity)
             train_inds_pot,
-            self._learner[ml_g_d_med_pot],
-            param_grids[ml_g_d_med_pot],
-            scoring_methods[ml_g_d_med_pot],
+            self._learner[ml_g_d1_m1],
+            param_grids[ml_g_d1_m1],
+            scoring_methods[ml_g_d1_m1],
             n_folds_tune,
             n_jobs_cv,
             search_mode,
             n_iter_randomized_search,
         )
-        g_d_med_counter_tune_res = _dml_tune(
+        g_d1_m0_tune_res = _dml_tune(
             y,
             dx,  # used to obtain an estimation over several treatment levels (reduced variance in sensitivity)
             train_inds_counter,
-            self._learner[ml_g_d_med_counter],
-            param_grids[ml_g_d_med_counter],
-            scoring_methods[ml_g_d_med_counter],
+            self._learner[ml_g_d1_m0],
+            param_grids[ml_g_d1_m0],
+            scoring_methods[ml_g_d1_m0],
             n_folds_tune,
             n_jobs_cv,
             search_mode,
@@ -902,22 +901,22 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
             n_iter_randomized_search,
         )
 
-        g_d_med_pot_best_params = [xx.best_params_ for xx in g_d_med_pot_tune_res]
-        g_d_med_counter_best_params = [xx.best_params_ for xx in g_d_med_counter_tune_res]
+        g_d1_m1_best_params = [xx.best_params_ for xx in g_d1_m1_tune_res]
+        g_d1_m0_best_params = [xx.best_params_ for xx in g_d1_m0_tune_res]
         m_best_params = [xx.best_params_ for xx in m_tune_res]
         med_d0_best_params = [xx.best_params_ for xx in med_d0_tune_res]
         med_d1_best_params = [xx.best_params_ for xx in med_d1_tune_res]
 
         params = {
-            "ml_g_d_med_pot": g_d_med_pot_best_params,
-            "ml_g_d_med_counter": g_d_med_counter_best_params,
+            "ml_g_d1_m1": g_d1_m1_best_params,
+            "ml_g_d1_m0": g_d1_m0_best_params,
             "ml_m": m_best_params,
             "ml_med_d0": med_d0_best_params,
             "ml_med_d1": med_d1_best_params,
         }
         tune_res = {
-            "ml_g_d_med_pot": g_d_med_pot_tune_res,
-            "ml_g_d_med_counter": g_d_med_counter_tune_res,
+            "ml_g_d1_m1": g_d1_m1_tune_res,
+            "ml_g_d1_m0": g_d1_m0_tune_res,
             "ml_m": m_tune_res,
             "ml_med_d0": med_d0_tune_res,
             "ml_med_d1": med_d1_tune_res,
@@ -940,51 +939,51 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
 
         treated = self.treated
         mediated = self.mediated
-        smpls_1md, smpls_d = _get_cond_smpls(smpls, treated)
-        smpls_1md_1md, smpls_1md_d, smpls_d_1md, smpls_d_d = _get_cond_smpls_2d(smpls, treated, mediated)
+        smpls_d0, smpls_d1 = _get_cond_smpls(smpls, treated)
+        smpls_d0_m0, smpls_d0_m1, smpls_d1_m0, smpls_d1_m1 = _get_cond_smpls_2d(smpls, treated, mediated)
 
         dx = np.column_stack((d, x))
 
         # Learner for E(Y|D=d, M=d, X)
-        ml_g_d_med_pot = self.params_names[0]
+        ml_g_d1_m1 = self.params_names[0]
         # Learner for E(Y|D=d, M=1-d, X)
-        ml_g_d_med_counter = self.params_names[1]
+        ml_g_d1_m0 = self.params_names[1]
 
         train_inds = [train_index for (train_index, _) in smpls]
-        train_inds_d_lvl0 = [train_index for (train_index, _) in smpls_1md]
-        train_inds_d_lvl1 = [train_index for (train_index, _) in smpls_d]
+        train_inds_d_lvl0 = [train_index for (train_index, _) in smpls_d0]
+        train_inds_d_lvl1 = [train_index for (train_index, _) in smpls_d1]
 
         # TODO: Check which ml_g_d_m to use
-        if ml_g_d_med_pot == "ml_g_d0_m0":
-            # smpls_d_d = smpls_1md_1md
-            # smpls_d_1md = smpls_1md_d
-            train_inds_pot = [train_index for (train_index, _) in smpls_1md_1md]
-            train_inds_counter = [train_index for (train_index, _) in smpls_1md_d]
+        if ml_g_d1_m1 == "ml_g_d0_m0":
+            # smpls_d1_m1 = smpls_d0_m0
+            # smpls_d1_m0 = smpls_d0_m1
+            train_inds_pot = [train_index for (train_index, _) in smpls_d0_m0]
+            train_inds_counter = [train_index for (train_index, _) in smpls_d0_m1]
         else:
-            # smpls_d_d = smpls_d_d
-            # smpls_d_1md = smpls_d_1md
-            train_inds_pot = [train_index for (train_index, _) in smpls_d_d]
-            train_inds_counter = [train_index for (train_index, _) in smpls_d_1md]
+            # smpls_d1_m1 = smpls_d1_m1
+            # smpls_d1_m0 = smpls_d1_m0
+            train_inds_pot = [train_index for (train_index, _) in smpls_d1_m1]
+            train_inds_counter = [train_index for (train_index, _) in smpls_d1_m0]
 
-        g_d_med_pot_tune_res = _dml_tune(
+        g_d1_m1_tune_res = _dml_tune(
             y,
             dx,  # used to obtain an estimation over several treatment levels (reduced variance in sensitivity)
             train_inds_pot,
-            self._learner[ml_g_d_med_pot],
-            param_grids[ml_g_d_med_pot],
-            scoring_methods[ml_g_d_med_pot],
+            self._learner[ml_g_d1_m1],
+            param_grids[ml_g_d1_m1],
+            scoring_methods[ml_g_d1_m1],
             n_folds_tune,
             n_jobs_cv,
             search_mode,
             n_iter_randomized_search,
         )
-        g_d_med_counter_tune_res = _dml_tune(
+        g_d1_m0_tune_res = _dml_tune(
             y,
             dx,  # used to obtain an estimation over several treatment levels (reduced variance in sensitivity)
             train_inds_counter,
-            self._learner[ml_g_d_med_counter],
-            param_grids[ml_g_d_med_counter],
-            scoring_methods[ml_g_d_med_counter],
+            self._learner[ml_g_d1_m0],
+            param_grids[ml_g_d1_m0],
+            scoring_methods[ml_g_d1_m0],
             n_folds_tune,
             n_jobs_cv,
             search_mode,
@@ -1030,22 +1029,22 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
             n_iter_randomized_search,
         )
 
-        g_d_med_pot_best_params = [xx.best_params_ for xx in g_d_med_pot_tune_res]
-        g_d_med_counter_best_params = [xx.best_params_ for xx in g_d_med_counter_tune_res]
+        g_d1_m1_best_params = [xx.best_params_ for xx in g_d1_m1_tune_res]
+        g_d1_m0_best_params = [xx.best_params_ for xx in g_d1_m0_tune_res]
         m_best_params = [xx.best_params_ for xx in m_tune_res]
         med_d0_best_params = [xx.best_params_ for xx in med_d0_tune_res]
         med_d1_best_params = [xx.best_params_ for xx in med_d1_tune_res]
 
         params = {
-            "ml_g_d_med_pot": g_d_med_pot_best_params,
-            "ml_g_d_med_counter": g_d_med_counter_best_params,
+            "ml_g_d1_m1": g_d1_m1_best_params,
+            "ml_g_d1_m0": g_d1_m0_best_params,
             "ml_m": m_best_params,
             "ml_med_d0": med_d0_best_params,
             "ml_med_d1": med_d1_best_params,
         }
         tune_res = {
-            "ml_g_d_med_pot": g_d_med_pot_tune_res,
-            "ml_g_d_med_counter": g_d_med_counter_tune_res,
+            "ml_g_d1_m1": g_d1_m1_tune_res,
+            "ml_g_d1_m0": g_d1_m0_tune_res,
             "ml_m": m_tune_res,
             "ml_med_d0": med_d0_tune_res,
             "ml_med_d1": med_d1_tune_res,
