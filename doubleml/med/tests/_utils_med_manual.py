@@ -1,11 +1,10 @@
-
-
 import numpy as np
 from sklearn.base import clone, is_classifier
 
 from ...tests._utils import fit_predict, fit_predict_proba, tune_grid_search
 from ...tests._utils_boot import boot_manual, draw_weights
 from ...utils._checks import _check_is_propensity
+from ...utils._estimation import _get_cond_smpls_2d
 from ...utils._propensity_score import _normalize_ipw
 
 
@@ -20,7 +19,6 @@ class ManualMedP:
         treatment_level,
         mediation_level,
         all_smpls,
-        score,
         score_function,
         n_rep=1,
         g0_params=None,
@@ -41,17 +39,15 @@ class ManualMedP:
 
         for i_rep in range(n_rep):
             smpls = all_smpls[i_rep]
-            g_hat0, g_hat1, m_hat = fit_nuisance_med(
-                y,
-                x,
-                d,
-                treated,
-                mediated,
-                learner_g,
-                learner_m,
-                smpls,
-                score,
-                score_function,
+            g_hat0, g_hat1, m_hat = ManualMedP.fit_nuisance_med(
+                y=y,
+                x=x,
+                d=d,
+                treated=treated,
+                learner_g=learner_g,
+                learner_m=learner_m,
+                smpls=smpls,
+                score_function=score_function,
                 g0_params=g0_params,
                 g1_params=g1_params,
                 m_params=m_params,
@@ -62,8 +58,18 @@ class ManualMedP:
             all_g_hat1.append(g_hat1)
             all_m_hat.append(m_hat)
 
-            thetas[i_rep], ses[i_rep] = med_dml2(
-                y, x, d, m, treated, mediated, g_hat0, g_hat1, m_hat, smpls, score, score_function, normalize_ipw
+            thetas[i_rep], ses[i_rep] = ManualMedP.med_dml2(
+                y=y,
+                x=x,
+                d=d,
+                m=m,
+                treated=treated,
+                g_hat0_list=g_hat0,
+                g_hat1_list=g_hat1,
+                m_hat_list=m_hat,
+                smpls=smpls,
+                score_function="potential",
+                normalize_ipw=normalize_ipw,
             )
 
         theta = np.median(thetas)
@@ -86,12 +92,9 @@ class ManualMedP:
         x,
         d,
         treated,
-        mediated,
         learner_g,
         learner_m,
         smpls,
-        score,
-        score_function,
         g0_params=None,
         g1_params=None,
         m_params=None,
@@ -136,18 +139,18 @@ class ManualMedP:
         _check_is_propensity(m_hat, "learner_m", "ml_m", smpls, eps=1e-12)
         return u_hat0, u_hat1, g_hat0, g_hat1, m_hat
 
-    def med_dml2(y, x, d, m, treated, g_hat0_list, g_hat1_list, m_hat_list, smpls, score, score_function, normalize_ipw):
+    def med_dml2(y, x, d, m, treated, g_hat0_list, g_hat1_list, m_hat_list, smpls, score_function, normalize_ipw):
         n_obs = len(y)
-        u_hat0, u_hat1, g_hat0, g_hat1, m_hat = compute_residuals(y, g_hat0_list, g_hat1_list, m_hat_list, smpls)
+        u_hat0, u_hat1, g_hat0, g_hat1, m_hat = ManualMedP.compute_residuals(y, g_hat0_list, g_hat1_list, m_hat_list, smpls)
 
         if normalize_ipw:
             m_hat_adj = _normalize_ipw(m_hat, treated)
         else:
             m_hat_adj = m_hat
 
-        theta_hat = med_orth(g_hat0, g_hat1, m_hat_adj, u_hat0, u_hat1, treated, score)
+        theta_hat = ManualMedP.med_orth(g_hat0=g_hat0, g_hat1=g_hat1, m_hat=m_hat_adj, u_hat0=u_hat0, u_hat1=u_hat1, treated=treated, score_function="potential")
 
-        se = np.sqrt(var_med(theta_hat, g_hat0, g_hat1, m_hat_adj, u_hat0, u_hat1, treated, score, score_function, n_obs))
+        se = np.sqrt(ManualMedP.var_med(theta_hat, g_hat0, g_hat1, m_hat_adj, u_hat0, u_hat1, treated, score_function, n_obs))
 
         return theta_hat, se
 
@@ -155,7 +158,7 @@ class ManualMedP:
         res = np.mean(g_hat1 + np.divide(np.multiply(treated, u_hat1), m_hat))
         return res
 
-    def var_med(theta, g_hat0, g_hat1, m_hat, u_hat0, u_hat1, treated, score, score_function, n_obs):
+    def var_med(theta, g_hat0, g_hat1, m_hat, u_hat0, u_hat1, treated, score_function, n_obs):
         var = 1 / n_obs * np.mean(np.power(g_hat1 + np.divide(np.multiply(treated, u_hat1), m_hat) - theta, 2))
         return var
 
@@ -186,7 +189,7 @@ class ManualMedP:
             n_obs = len(y)
 
             weights = draw_weights(bootstrap, n_rep_boot, n_obs)
-            boot_t_stat = boot_med_single_split(
+            boot_t_stat = ManualMedP.boot_med_single_split(
                 thetas[i_rep],
                 y,
                 d,
@@ -225,7 +228,7 @@ class ManualMedP:
         n_rep_boot,
         normalize_ipw,
     ):
-        _, u_hat1, _, g_hat1, m_hat = compute_residuals(y, g_hat0_list, g_hat1_list, m_hat_list, smpls)
+        _, u_hat1, _, g_hat1, m_hat = ManualMedP.compute_residuals(y, g_hat0_list, g_hat1_list, m_hat_list, smpls)
 
         if normalize_ipw:
             m_hat_adj = _normalize_ipw(m_hat, treated)
@@ -239,7 +242,7 @@ class ManualMedP:
         return boot_t_stat
 
     def fit_sensitivity_elements_med(
-        y, d, m, treatment_level, mediation_level, all_coef, predictions, score, score_function, n_rep, normalize_ipw
+        y, d, m, treatment_level, mediation_level, all_coef, predictions, score_function, n_rep, normalize_ipw
     ):
         n_treat = 1
         n_obs = len(y)
@@ -357,18 +360,18 @@ class ManualMedC:
 
             for i_rep in range(n_rep):
                 smpls = all_smpls[i_rep]
-                g_d1_m1_hat, g_d1_m0_hat, med_d1_hat, med_d0_hat, m_hat = fit_nuisance_med(
-                    y,
-                    x,
-                    d,
-                    m,
-                    treated,
-                    mediated,
-                    learner_g,
-                    learner_m,
-                    smpls,
-                    score,
-                    score_function,
+                g_d1_m1_hat, g_d1_m0_hat, med_d1_hat, med_d0_hat, m_hat = ManualMedC.fit_nuisance_med(
+                    y=y,
+                    x=x,
+                    d=d,
+                    m=m,
+                    treated=treated,
+                    mediated=mediated,
+                    learner_g=learner_g,
+                    learner_m=learner_m,
+                    learner_med=learner_med,
+                    smpls=smpls,
+                    score_function=score_function,
                     g_d1_m1_params=g_d1_m1_params,
                     g_d1_m0_params=g_d1_m0_params,
                     med_d1_params=med_d1_params,
@@ -383,22 +386,20 @@ class ManualMedC:
                 all_med_d0_hat.append(med_d0_hat)
                 all_m_hat.append(m_hat)
 
-                thetas[i_rep], ses[i_rep] = med_dml2(
-                    y,
-                    x,
-                    d,
-                    m,
-                    treated,
-                    mediated,
-                    g_d1_m1_hat,
-                    med_d0_hat,
-                    med_d1_hat,
-                    med_d0_hat,
-                    m_hat,
-                    smpls,
-                    score,
-                    score_function,
-                    normalize_ipw,
+                thetas[i_rep], ses[i_rep] = ManualMedC.med_dml2(
+                    y=y,
+                    x=x,
+                    d=d,
+                    m=m,
+                    treated=treated,
+                    mediated=mediated,
+                    g_d1_m1_hat=g_d1_m1_hat,
+                    med_d0_hat=med_d0_hat,
+                    med_d1_hat=med_d1_hat,
+                    m_hat=m_hat,
+                    smpls=smpls,
+                    score_function=score_function,
+                    normalize_ipw=normalize_ipw,
                 )
 
             theta = np.median(thetas)
@@ -425,32 +426,33 @@ class ManualMedC:
 
             for i_rep in range(n_rep):
                 smpls = all_smpls[i_rep]
-                g_d_hat, g_nested_hat, m_med_hat, m_hat = fit_nuisance_med(
-                    y,
-                    x,
-                    d,
-                    m,
-                    treated,
-                    mediated,
-                    learner_g,
-                    learner_m,
-                    smpls,
-                    score="MED",
-                    score_function="efficient-alt",
+                g_d_hat, g_nested_hat, m_med_hat, m_hat = ManualMedC.fit_nuisance_med(
+                    y=y,
+                    x=x,
+                    d=d,
+                    m=m,
+                    treated=treated,
+                    mediated=mediated,
+                    learner_g=learner_g,
+                    learner_m=learner_m,
                     learner_nested=learner_nested,
-                    g_d1_params=g_d1_params,
-                    g_nested_params=g_nested_params,
-                    m_med_params=m_med_params,
+                    smpls=smpls,
+                    score_function=score_function,
+                    g_d1_m1_params=g_d1_m1_params,
+                    g_d1_m0_params=g_d1_m0_params,
+                    med_d1_params=med_d1_params,
+                    med_d0_params=med_d0_params,
                     m_params=m_params,
                     trimming_threshold=trimming_threshold,
                 )
+
 
                 all_g_d_hat.append(g_d_hat)
                 all_g_nested_hat.append(g_nested_hat)
                 all_m_med_hat.append(m_med_hat)
                 all_m_hat.append(m_hat)
 
-                thetas[i_rep], ses[i_rep] = med_dml2(
+                thetas[i_rep], ses[i_rep] =ManualMedC.med_dml_2(
                     y,
                     x,
                     d,
@@ -559,18 +561,33 @@ class ManualMedC:
         _check_is_propensity(m_hat, "learner_m", "ml_m", smpls, eps=1e-12)
         return u_hat0, u_hat1, g_hat0, g_hat1, m_hat
 
-    def med_dml2(y, x, d, m, treated, g_hat0_list, g_hat1_list, m_hat_list, smpls, score, score_function, normalize_ipw):
+    def med_dml2(
+            y, 
+            x, 
+            d, 
+            m, 
+            treated, 
+            mediated,
+            g_d1_m1_hat,
+            med_d0_hat,
+            med_d1_hat,                    
+            m_hat,
+            smpls,
+            score,
+            score_function,
+            normalize_ipw,
+            ):
         n_obs = len(y)
-        u_hat0, u_hat1, g_hat0, g_hat1, m_hat = compute_residuals(y, g_hat0_list, g_hat1_list, m_hat_list, smpls)
+        u_hat0, u_hat1, g_hat0, g_hat1, m_hat = ManualMedC.compute_residuals(y, g_hat0_list, g_hat1_list, m_hat_list, smpls)
 
         if normalize_ipw:
             m_hat_adj = _normalize_ipw(m_hat, treated)
         else:
             m_hat_adj = m_hat
 
-        theta_hat = med_orth(g_hat0, g_hat1, m_hat_adj, u_hat0, u_hat1, treated, score)
+        theta_hat = ManualMedC.med_orth(g_hat0, g_hat1, m_hat_adj, u_hat0, u_hat1, treated, score)
 
-        se = np.sqrt(var_med(theta_hat, g_hat0, g_hat1, m_hat_adj, u_hat0, u_hat1, treated, score, score_function, n_obs))
+        se = np.sqrt(ManualMedC.var_med(theta_hat, g_hat0, g_hat1, m_hat_adj, u_hat0, u_hat1, treated, score_function, n_obs))
 
         return theta_hat, se
 
@@ -578,7 +595,7 @@ class ManualMedC:
         res = np.mean(g_hat1 + np.divide(np.multiply(treated, u_hat1), m_hat))
         return res
 
-    def var_med(theta, g_hat0, g_hat1, m_hat, u_hat0, u_hat1, treated, score, score_function, n_obs):
+    def var_med(theta, g_hat0, g_hat1, m_hat, u_hat0, u_hat1, treated, score_function, n_obs):
         var = 1 / n_obs * np.mean(np.power(g_hat1 + np.divide(np.multiply(treated, u_hat1), m_hat) - theta, 2))
         return var
 
@@ -609,7 +626,7 @@ class ManualMedC:
             n_obs = len(y)
 
             weights = draw_weights(bootstrap, n_rep_boot, n_obs)
-            boot_t_stat = boot_med_single_split(
+            boot_t_stat = ManualMedC.boot_med_single_split(
                 thetas[i_rep],
                 y,
                 d,
@@ -648,7 +665,7 @@ class ManualMedC:
         n_rep_boot,
         normalize_ipw,
     ):
-        _, u_hat1, _, g_hat1, m_hat = compute_residuals(y, g_hat0_list, g_hat1_list, m_hat_list, smpls)
+        _, u_hat1, _, g_hat1, m_hat = ManualMedC.compute_residuals(y, g_hat0_list, g_hat1_list, m_hat_list, smpls)
 
         if normalize_ipw:
             m_hat_adj = _normalize_ipw(m_hat, treated)
@@ -662,7 +679,7 @@ class ManualMedC:
         return boot_t_stat
 
     def fit_sensitivity_elements_med(
-        y, d, m, treatment_level, mediation_level, all_coef, predictions, score, score_function, n_rep, normalize_ipw
+        y, d, m, treatment_level, mediation_level, all_coef, predictions, score_function, n_rep, normalize_ipw
     ):
         n_treat = 1
         n_obs = len(y)
