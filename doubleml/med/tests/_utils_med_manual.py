@@ -104,19 +104,17 @@ class ManualMedP:
         ml_g1 = clone(learner_g)
         dx = np.column_stack((d, x))
 
-        # TODO: Find way to select the intersection between m and d for train_cond_xy,
-        # where x, y in [0, 1] and xy = cartesian_product(x, y)
-        train_cond0 = np.where(treated == 0)[0]
+        train_cond_d0 = np.where(treated == 0)[0]
         if is_classifier(learner_g):
-            g_hat0_list = fit_predict_proba(y, dx, ml_g0, g0_params, smpls, train_cond=train_cond0)
+            g_hat0_list = fit_predict_proba(y, dx, ml_g0, g0_params, smpls, train_cond=train_cond_d0)
         else:
-            g_hat0_list = fit_predict(y, dx, ml_g0, g0_params, smpls, train_cond=train_cond0)
+            g_hat0_list = fit_predict(y, dx, ml_g0, g0_params, smpls, train_cond=train_cond_d0)
 
-        train_cond1 = np.where(treated == 1)[0]
+        train_cond_d1 = np.where(treated == 1)[0]
         if is_classifier(learner_g):
-            g_hat1_list = fit_predict_proba(y, x, ml_g1, g1_params, smpls, train_cond=train_cond1)
+            g_hat1_list = fit_predict_proba(y, x, ml_g1, g1_params, smpls, train_cond=train_cond_d1)
         else:
-            g_hat1_list = fit_predict(y, x, ml_g1, g1_params, smpls, train_cond=train_cond1)
+            g_hat1_list = fit_predict(y, x, ml_g1, g1_params, smpls, train_cond=train_cond_d1)
 
         ml_m = clone(learner_m)
         m_hat_list = fit_predict_proba(treated, x, ml_m, m_params, smpls, trimming_threshold=trimming_threshold)
@@ -260,8 +258,8 @@ class ManualMedP:
                 m_hat_adj = _normalize_ipw(m_hat, treated)
             else:
                 m_hat_adj = m_hat
-            g_hat0 = predictions["ml_g_d_lvl0"][:, i_rep, 0]
-            g_hat1 = predictions["ml_g_d_lvl1"][:, i_rep, 0]
+            g_hat0 = predictions["ml_g_d0"][:, i_rep, 0]
+            g_hat1 = predictions["ml_g_d1"][:, i_rep, 0]
 
             weights = np.ones_like(d)
             weights_bar = np.ones_like(d)
@@ -298,11 +296,11 @@ class ManualMedP:
         param_grid_m,
     ):
         dx = np.column_stack((d, x))
-        train_cond0 = np.where(d != treatment_level)[0]
-        g0_tune_res = tune_grid_search(y, dx, ml_g, smpls, param_grid_g, n_folds_tune, train_cond=train_cond0)
+        train_cond_d0 = np.where(d != treatment_level)[0]
+        g0_tune_res = tune_grid_search(y, dx, ml_g, smpls, param_grid_g, n_folds_tune, train_cond=train_cond_d0)
 
-        train_cond1 = np.where(d == treatment_level)[0]
-        g1_tune_res = tune_grid_search(y, x, ml_g, smpls, param_grid_g, n_folds_tune, train_cond=train_cond1)
+        train_cond_d1 = np.where(d == treatment_level)[0]
+        g1_tune_res = tune_grid_search(y, x, ml_g, smpls, param_grid_g, n_folds_tune, train_cond=train_cond_d1)
 
         treated = d == treatment_level
         mediated = m == mediation_level
@@ -418,15 +416,15 @@ class ManualMedC:
             }
 
         if score_function == "efficient-alt":
-            # "ml_g_d", "ml_g_nested", "ml_m", "ml_m_med"
-            all_g_d_hat = list()
+            # "ml_g_d1", "ml_g_nested", "ml_m", "ml_m_med"
+            all_g_d1_hat = list()
             all_g_nested_hat = list()
             all_m_med_hat = list()
             all_m_hat = list()
 
             for i_rep in range(n_rep):
                 smpls = all_smpls[i_rep]
-                g_d_hat, g_nested_hat, m_med_hat, m_hat = ManualMedC.fit_nuisance_med(
+                g_d1_hat, g_nested_hat, m_med_hat, m_hat = ManualMedC.fit_nuisance_med(
                     y=y,
                     x=x,
                     d=d,
@@ -447,7 +445,7 @@ class ManualMedC:
                 )
 
 
-                all_g_d_hat.append(g_d_hat)
+                all_g_d1_hat.append(g_d1_hat)
                 all_g_nested_hat.append(g_nested_hat)
                 all_m_med_hat.append(m_med_hat)
                 all_m_hat.append(m_hat)
@@ -459,7 +457,7 @@ class ManualMedC:
                     m,
                     treated,
                     mediated,
-                    g_d_hat,
+                    g_d1_hat,
                     g_nested_hat,
                     m_med_hat,
                     m_hat,
@@ -477,7 +475,7 @@ class ManualMedC:
                 "se": se,
                 "thetas": thetas,
                 "ses": ses,
-                "all_g_d_hat": g_d_hat,
+                "all_g_d1_hat": g_d1_hat,
                 "all_g_nested_hat": g_nested_hat,
                 "all_m_med_hat": m_med_hat,
                 "all_m_hat": all_m_hat,
@@ -510,89 +508,193 @@ class ManualMedC:
         m_params=None,
         trimming_threshold=1e-12,
     ):
-        dx = np.column_stack((d, x))
+        xm = np.column_stack((x, m))
 
-        train_cond0 = np.where(treated == 0)[0]
         if score_function == "efficient":
             ml_g_d1_m1 = clone(learner_g)
             ml_g_d1_m0 = clone(learner_g)
             ml_med_d1 = clone(learner_med)
+            ml_med_d0 = clone(learner_med)
 
-            # g_d1_m1_hat, g_d1_m0_hat, med_d1_hat, med_d0_hat, m_hat
+            # TODO: Find way to select the intersection between m and d for train_cond_xy,
+            # where x, y in [0, 1] and xy = cartesian_product(x, y)
+            # For 1-dimensional d and m.
 
-            train_cond00, train_cond01, train_cond10, train_cond11 = _get_cond_smpls_2d(
-                smpls,
-            )
+            train_cond_d1_m0 = np.where((treated==1)&(mediated==0))[0]
+            train_cond_d1_m1 = np.where((treated==1)&(mediated==1))[0]
             if is_classifier(learner_g):
-                g_d1_m1_list = fit_predict_proba(y, dx, ml_g_d1_m1, g_d1_m1_params, smpls, train_cond=train_cond0)
-                g_d1_m0_list = fit_predict_proba(y, dx, ml_g_d1_m0, g_d1_m0_params, smpls, train_cond=train_cond0)
+                g_d1_m1_hat_list = fit_predict_proba(y, x, ml_g_d1_m1, g_d1_m1_params, smpls, train_cond=train_cond_d1_m1)
+                g_d1_m0_hat_list = fit_predict_proba(y, x, ml_g_d1_m0, g_d1_m0_params, smpls, train_cond=train_cond_d1_m0)
             else:
-                g_d1_m1_list = fit_predict(y, dx, ml_g_d1_m1, g_d1_m1_params, smpls, train_cond=train_cond0)
-                g_d1_m1_list = fit_predict(y, dx, ml_g_d1_m0, g_d1_m0_params, smpls, train_cond=train_cond0)
+                g_d1_m1_hat_list = fit_predict(y, x, ml_g_d1_m1, g_d1_m1_params, smpls, train_cond=train_cond_d1_m1)
+                g_d1_m0_hat_list = fit_predict(y, x, ml_g_d1_m0, g_d1_m0_params, smpls, train_cond=train_cond_d1_m0)
 
-            train_cond1 = np.where(treated == 1)[0]
-            if is_classifier(learner_g):
-                g_hat1_list = fit_predict_proba(y, x, ml_g1, g1_params, smpls, train_cond=train_cond1)
+            train_cond_d0 = np.where(treated==0)[0]
+            train_cond_d1 = np.where(treated==1)[0]
+            if is_classifier(learner_med):
+                med_d1_hat_list = fit_predict_proba(y, x, ml_med_d1, med_d1_params, smpls, train_cond=train_cond_d1)
+                med_d0_hat_list = fit_predict_proba(y, x, ml_med_d0, med_d0_params, smpls, train_cond=train_cond_d0)
             else:
-                g_hat1_list = fit_predict(y, x, ml_g1, g1_params, smpls, train_cond=train_cond1)
+                med_d1_hat_list = fit_predict(y, x, ml_med_d1, med_d1_params, smpls, train_cond=train_cond_d1)
+                med_d0_hat_list = fit_predict(y, x, ml_med_d0, med_d0_params, smpls, train_cond=train_cond_d0)
 
             ml_m = clone(learner_m)
             m_hat_list = fit_predict_proba(treated, x, ml_m, m_params, smpls, trimming_threshold=trimming_threshold)
 
+            return g_d1_m1_hat_list, g_d1_m0_hat_list, med_d1_hat_list, med_d0_hat_list, m_hat_list
         elif score_function == "efficient-alt":
-            pass
-            # g_d_hat, #g_nested_hat, #m_med_hat, #m_hat ,
+            #TODO: Separate samples into delta, musample, testsample
+            #g_d1_hat, g_nested_hat, m_med_hat, m_hat
+            ml_g_d1 = clone(learner_g)
+            ml_g_nested = clone(learner_nested)
+            ml_med = clone(learner_med)
 
-        # return g_hat0_list, g_hat1_list, m_hat_list
+            # TODO: Find way to select the intersection between m and d for train_cond_xy,
+            # where x, y in [0, 1] and xy = cartesian_product(x, y)
+            # For 1-dimensional d and m.
 
-    def compute_residuals(y, g_hat0_list, g_hat1_list, m_hat_list, smpls):
-        u_hat0 = np.full_like(y, np.nan, dtype="float64")
-        u_hat1 = np.full_like(y, np.nan, dtype="float64")
-        g_hat0 = np.full_like(y, np.nan, dtype="float64")
-        g_hat1 = np.full_like(y, np.nan, dtype="float64")
-        m_hat = np.full_like(y, np.nan, dtype="float64")
-        for idx, (_, test_index) in enumerate(smpls):
-            u_hat0[test_index] = y[test_index] - g_hat0_list[idx]
-            u_hat1[test_index] = y[test_index] - g_hat1_list[idx]
-            g_hat0[test_index] = g_hat0_list[idx]
-            g_hat1[test_index] = g_hat1_list[idx]
-            m_hat[test_index] = m_hat_list[idx]
+            train_cond_d1 = np.where(treated == 1)[0]
+            if is_classifier(learner_g):
+                g_d1_hat_list = fit_predict_proba(y, xm, ml_g_d1, g_d1_params, smpls, train_cond=train_cond_d1)
+            else:
+                g_d1_hat_list = fit_predict(y, xm, ml_g_d1, g_d1_params, smpls, train_cond=train_cond_d1)
 
-        _check_is_propensity(m_hat, "learner_m", "ml_m", smpls, eps=1e-12)
-        return u_hat0, u_hat1, g_hat0, g_hat1, m_hat
+            train_cond_d0 = np.where(treated == 0)[0]
+            if is_classifier(ml_g_nested):
+                g_nested_hat_list = fit_predict_proba(g_d1_hat_list, x, g_d1_params, smpls, train_cond=train_cond_d0 )
+            else:
+                g_nested_hat_list = fit_predict(g_d1_hat_list, x, g_d1_params, smpls, train_cond=train_cond_d0)
+
+            #TODO: shouldn't learner_med be a classifier??
+            if is_classifier(learner_med):
+                #TODO: Apply trimming-threshold???
+                m_med_hat_list = fit_predict_proba(y, x, ml_med, med_params, smpls)
+            else:
+                m_med_hat_list = fit_predict(y, x, ml_med, med_params, smpls)
+
+            ml_m = clone(learner_m)
+            m_hat_list = fit_predict_proba(treated, x, ml_m, m_params, smpls, trimming_threshold=trimming_threshold)
+
+            #g_d1_hat, g_nested_hat, m_med_hat, m_hat
+            return g_d1_hat_list, g_nested_hat_list, m_med_hat_list, m_hat_list
+
+    def compute_residuals(y,
+                          m,
+                          smpls,
+                          score_function,
+                          treatment_level,
+                          m_hat_list,
+                          g_d1_m1_hat_list=None,
+                          g_d1_m0_hat_list=None,
+                          med_d1_hat_list=None,
+                          med_d0_hat_list=None,
+                          g_d1_hat_list=None,
+                          g_nested_hat_list=None,
+                          m_med_hat_list=None,
+                          ):
+
+        if score_function == "efficient":
+            u_hat = np.full_like(y, np.nan, dtype="float64")
+            w_hat = np.full_like(y, np.nan, dtype="float64")
+            g_d1_m0_hat = np.full_like(y, np.nan, dtype="float64")
+            g_d1_m1_hat = np.full_like(y, np.nan, dtype="float64")
+            med_d0_hat = np.full_like(y, np.nan, dtype="float64")
+            med_d1_hat = np.full_like(y, np.nan, dtype="float64")
+            m_hat = np.full_like(y, np.nan, dtype="float64")
+
+            for idx, (_, test_index) in enumerate(smpls):
+                #   eta10=(eymx11te*pm0te+eymx10te*(1-pm0te))
+                if treatment_level == 1:
+                    y_d_m_hat = g_d1_m1_hat_list[idx] * med_d0_hat_list[idx] + g_d1_m0_hat_list[idx] * (1-med_d0_hat_list[idx])
+                    g_d_hat = m[test_index] * g_d1_m1_hat_list[idx] + (1.0 - m[test_index]) * g_d1_m0_hat_list[idx]
+                else:
+                    y_d_m_hat = g_d1_m1_hat_list[idx] * (1-med_d1_hat_list[idx]) + g_d1_m0_hat_list[idx] * med_d1_hat_list[idx]
+                    g_d_hat = m[test_index] * g_d1_m0_hat_list[idx] + (1.0 - m[test_index]) * g_d1_m1_hat_list[idx]
+
+                g_d1_m0_hat[test_index] = g_d1_m0_hat_list[idx]
+                g_d1_m1_hat[test_index] = g_d1_m1_hat_list[idx]
+                med_d0_hat[test_index] = med_d0_hat_list[idx]
+                med_d1_hat[test_index] = med_d1_hat_list[idx]
+                m_hat[test_index] = m_hat_list[idx]
+                u_hat[test_index] = y[test_index] - g_d_hat[idx]
+                w_hat[test_index] = g_d_hat[idx] - y_d_m_hat[idx]
+
+
+            _check_is_propensity(m_hat, "learner_m", "ml_m", smpls, eps=1e-12)
+            return g_d1_m0_hat, g_d1_m1_hat, med_d0_hat, med_d1_hat, m_hat, u_hat, w_hat
+
+        elif score_function == "efficient-alt":
+            g_d1_hat = np.full_like(y, np.nan, dtype="float64")
+            g_nested_hat = np.full_like(y, np.nan, dtype="float64")
+            m_med_hat = np.full_like(y, np.nan, dtype="float64")
+            m_hat = np.full_like(y, np.nan, dtype="float64")
+            u_hat = np.full_like(y, np.nan, dtype="float64")
+            w_hat = np.full_like(y, np.nan, dtype="float64")
+
+            for idx, (_, test_index) in enumerate(smpls):
+                g_d1_hat[test_index] = g_d1_m0_hat_list[idx]
+                g_nested_hat[test_index] = g_nested_hat_list[idx]
+                m_med_hat[test_index] = m_med_hat_list[idx]
+                m_hat[test_index] = m_hat_list[idx]
+                u_hat[test_index] = y[test_index] - g_d1_hat_list[idx]
+                w_hat[test_index] = g_d1_hat[idx] - g_nested_hat_list[idx]
+
+            _check_is_propensity(m_hat, "learner_m", "ml_m", smpls, eps=1e-12)
+            return g_d1_hat, g_nested_hat, m_med_hat, m_hat, u_hat, w_hat
+
 
     def med_dml2(
             y, 
             x, 
             d, 
-            m, 
-            treated, 
-            mediated,
-            g_d1_m1_hat,
-            med_d0_hat,
-            med_d1_hat,                    
-            m_hat,
+            m,
+            treated,
             smpls,
             score,
             score_function,
             normalize_ipw,
+            m_hat_list,
+            g_d1_m0_hat_list=None,
+            g_d1_m1_hat_list=None,
+            med_d0_hat_list=None,
+            med_d1_hat_list=None,
+            g_d1_hat_list=None,
+            g_nested_hat_list=None,
+            m_med_hat_list=None,
             ):
         n_obs = len(y)
-        u_hat0, u_hat1, g_hat0, g_hat1, m_hat = ManualMedC.compute_residuals(y, g_hat0_list, g_hat1_list, m_hat_list, smpls)
+        if score_function == "efficient":
+            g_d1_m0_hat, g_d1_m1_hat, med_d0_hat, med_d1_hat, m_hat, u_hat, w_hat = ManualMedC.compute_residuals(y=y, g_d1_m0_hat_list=g_d1_m0_hat_list, g_d1_m1_hat_list=g_d1_m1_hat_list, med_d0_hat_list=med_d0_hat_list, med_d1_hat_list=med_d1_hat_list, m_hat_list=m_hat_list, smpls=smpls)
+            theta_hat = ManualMedC.med_orth(treated=treated, score_function=score_function, u_hat=u_hat, w_hat=w_hat, g_d1_m0_hat=g_d1_m0_hat, g_d1_m1_hat=g_d1_m1_hat, med_d0_hat=med_d0_hat, med_d1_hat=med_d1_hat, m_hat=m_hat,)
+
+        elif score_function == "efficient-alt":
+            g_d1_hat, g_nested_hat, m_med_hat, m_hat, u_hat, w_hat = ManualMedC.compute_residuals(y=y, m=m, g_d1_hat_list=g_d1_hat_list, g_nested_hat_list=g_nested_hat_list, m_med_hat_list=m_med_hat_list, m_hat_list=m_hat_list, smpls=smpls)
+            theta_hat = ManualMedC.med_orth(treated=treated, score_function=score_function, u_hat=u_hat, w_hat=w_hat,g_d1_hat=g_d1_hat, g_nested_hat=g_nested_hat, m_med_hat=m_med_hat, m_hat=m_hat,)
 
         if normalize_ipw:
             m_hat_adj = _normalize_ipw(m_hat, treated)
         else:
             m_hat_adj = m_hat
-
-        theta_hat = ManualMedC.med_orth(g_hat0, g_hat1, m_hat_adj, u_hat0, u_hat1, treated, score)
-
+        #TODO Continue here(1/2. 2025.08.06)
         se = np.sqrt(ManualMedC.var_med(theta_hat, g_hat0, g_hat1, m_hat_adj, u_hat0, u_hat1, treated, score_function, n_obs))
 
         return theta_hat, se
 
-    def med_orth(g_hat0, g_hat1, m_hat, u_hat0, u_hat1, treated, score):
-        res = np.mean(g_hat1 + np.divide(np.multiply(treated, u_hat1), m_hat))
+    def med_orth( treated,
+                  score_function,
+                  u_hat,
+                  w_hat,
+                  g_d1_m0_hat=None,
+                  g_d1_m1_hat=None,
+                  med_d0_hat=None,
+                  med_d1_hat=None,
+                  m_hat=None,
+                  ):
+        #TODO Continue here(2/2 2025:08.06)
+        if score_function=="efficient":
+            res = np.mean(g_hat1 + np.divide(np.multiply(treated, u_hat1), m_hat))
+        elif score_function=="efficient-alt":
+            res = np.mean()
         return res
 
     def var_med(theta, g_hat0, g_hat1, m_hat, u_hat0, u_hat1, treated, score_function, n_obs):
@@ -697,8 +799,8 @@ class ManualMedC:
                 m_hat_adj = _normalize_ipw(m_hat, treated)
             else:
                 m_hat_adj = m_hat
-            g_hat0 = predictions["ml_g_d_lvl0"][:, i_rep, 0]
-            g_hat1 = predictions["ml_g_d_lvl1"][:, i_rep, 0]
+            g_hat0 = predictions["ml_g_d0"][:, i_rep, 0]
+            g_hat1 = predictions["ml_g_d1"][:, i_rep, 0]
 
             weights = np.ones_like(d)
             weights_bar = np.ones_like(d)
@@ -735,11 +837,11 @@ class ManualMedC:
         param_grid_m,
     ):
         dx = np.column_stack((d, x))
-        train_cond0 = np.where(d != treatment_level)[0]
-        g0_tune_res = tune_grid_search(y, dx, ml_g, smpls, param_grid_g, n_folds_tune, train_cond=train_cond0)
+        train_cond_d0 = np.where(d != treatment_level)[0]
+        g0_tune_res = tune_grid_search(y, dx, ml_g, smpls, param_grid_g, n_folds_tune, train_cond=train_cond_d0)
 
-        train_cond1 = np.where(d == treatment_level)[0]
-        g1_tune_res = tune_grid_search(y, x, ml_g, smpls, param_grid_g, n_folds_tune, train_cond=train_cond1)
+        train_cond_d1 = np.where(d == treatment_level)[0]
+        g1_tune_res = tune_grid_search(y, x, ml_g, smpls, param_grid_g, n_folds_tune, train_cond=train_cond_d1)
 
         treated = d == treatment_level
         mediated = m == mediation_level
