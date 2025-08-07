@@ -4,7 +4,6 @@ from sklearn.base import clone, is_classifier
 from ...tests._utils import fit_predict, fit_predict_proba, tune_grid_search
 from ...tests._utils_boot import boot_manual, draw_weights
 from ...utils._checks import _check_is_propensity
-from ...utils._estimation import _get_cond_smpls_2d
 from ...utils._propensity_score import _normalize_ipw
 
 
@@ -146,7 +145,15 @@ class ManualMedP:
         else:
             m_hat_adj = m_hat
 
-        theta_hat = ManualMedP.med_orth(g_hat0=g_hat0, g_hat1=g_hat1, m_hat=m_hat_adj, u_hat0=u_hat0, u_hat1=u_hat1, treated=treated, score_function="potential")
+        theta_hat = ManualMedP.med_orth(
+            g_hat0=g_hat0,
+            g_hat1=g_hat1,
+            m_hat=m_hat_adj,
+            u_hat0=u_hat0,
+            u_hat1=u_hat1,
+            treated=treated,
+            score_function="potential",
+        )
 
         se = np.sqrt(ManualMedP.var_med(theta_hat, g_hat0, g_hat1, m_hat_adj, u_hat0, u_hat1, treated, score_function, n_obs))
 
@@ -444,13 +451,12 @@ class ManualMedC:
                     trimming_threshold=trimming_threshold,
                 )
 
-
                 all_g_d1_hat.append(g_d1_hat)
                 all_g_nested_hat.append(g_nested_hat)
                 all_m_med_hat.append(m_med_hat)
                 all_m_hat.append(m_hat)
 
-                thetas[i_rep], ses[i_rep] =ManualMedC.med_dml_2(
+                thetas[i_rep], ses[i_rep] = ManualMedC.med_dml_2(
                     y,
                     x,
                     d,
@@ -520,8 +526,8 @@ class ManualMedC:
             # where x, y in [0, 1] and xy = cartesian_product(x, y)
             # For 1-dimensional d and m.
 
-            train_cond_d1_m0 = np.where((treated==1)&(mediated==0))[0]
-            train_cond_d1_m1 = np.where((treated==1)&(mediated==1))[0]
+            train_cond_d1_m0 = np.where((treated == 1) & (mediated == 0))[0]
+            train_cond_d1_m1 = np.where((treated == 1) & (mediated == 1))[0]
             if is_classifier(learner_g):
                 g_d1_m1_hat_list = fit_predict_proba(y, x, ml_g_d1_m1, g_d1_m1_params, smpls, train_cond=train_cond_d1_m1)
                 g_d1_m0_hat_list = fit_predict_proba(y, x, ml_g_d1_m0, g_d1_m0_params, smpls, train_cond=train_cond_d1_m0)
@@ -529,8 +535,8 @@ class ManualMedC:
                 g_d1_m1_hat_list = fit_predict(y, x, ml_g_d1_m1, g_d1_m1_params, smpls, train_cond=train_cond_d1_m1)
                 g_d1_m0_hat_list = fit_predict(y, x, ml_g_d1_m0, g_d1_m0_params, smpls, train_cond=train_cond_d1_m0)
 
-            train_cond_d0 = np.where(treated==0)[0]
-            train_cond_d1 = np.where(treated==1)[0]
+            train_cond_d0 = np.where(treated == 0)[0]
+            train_cond_d1 = np.where(treated == 1)[0]
             if is_classifier(learner_med):
                 med_d1_hat_list = fit_predict_proba(y, x, ml_med_d1, med_d1_params, smpls, train_cond=train_cond_d1)
                 med_d0_hat_list = fit_predict_proba(y, x, ml_med_d0, med_d0_params, smpls, train_cond=train_cond_d0)
@@ -543,8 +549,8 @@ class ManualMedC:
 
             return g_d1_m1_hat_list, g_d1_m0_hat_list, med_d1_hat_list, med_d0_hat_list, m_hat_list
         elif score_function == "efficient-alt":
-            #TODO: Separate samples into delta, musample, testsample
-            #g_d1_hat, g_nested_hat, m_med_hat, m_hat
+            # TODO: Separate samples into delta, musample, testsample
+            # g_d1_hat, g_nested_hat, m_med_hat, m_hat
             ml_g_d1 = clone(learner_g)
             ml_g_nested = clone(learner_nested)
             ml_med = clone(learner_med)
@@ -561,13 +567,13 @@ class ManualMedC:
 
             train_cond_d0 = np.where(treated == 0)[0]
             if is_classifier(ml_g_nested):
-                g_nested_hat_list = fit_predict_proba(g_d1_hat_list, x, g_d1_params, smpls, train_cond=train_cond_d0 )
+                g_nested_hat_list = fit_predict_proba(g_d1_hat_list, x, g_d1_params, smpls, train_cond=train_cond_d0)
             else:
                 g_nested_hat_list = fit_predict(g_d1_hat_list, x, g_d1_params, smpls, train_cond=train_cond_d0)
 
-            #TODO: shouldn't learner_med be a classifier??
+            # TODO: shouldn't learner_med be a classifier??
             if is_classifier(learner_med):
-                #TODO: Apply trimming-threshold???
+                # TODO: Apply trimming-threshold???
                 m_med_hat_list = fit_predict_proba(y, x, ml_med, med_params, smpls)
             else:
                 m_med_hat_list = fit_predict(y, x, ml_med, med_params, smpls)
@@ -575,23 +581,24 @@ class ManualMedC:
             ml_m = clone(learner_m)
             m_hat_list = fit_predict_proba(treated, x, ml_m, m_params, smpls, trimming_threshold=trimming_threshold)
 
-            #g_d1_hat, g_nested_hat, m_med_hat, m_hat
+            # g_d1_hat, g_nested_hat, m_med_hat, m_hat
             return g_d1_hat_list, g_nested_hat_list, m_med_hat_list, m_hat_list
 
-    def compute_residuals(y,
-                          m,
-                          smpls,
-                          score_function,
-                          treatment_level,
-                          m_hat_list,
-                          g_d1_m1_hat_list=None,
-                          g_d1_m0_hat_list=None,
-                          med_d1_hat_list=None,
-                          med_d0_hat_list=None,
-                          g_d1_hat_list=None,
-                          g_nested_hat_list=None,
-                          m_med_hat_list=None,
-                          ):
+    def compute_residuals(
+        y,
+        m,
+        smpls,
+        score_function,
+        treatment_level,
+        m_hat_list,
+        g_d1_m1_hat_list=None,
+        g_d1_m0_hat_list=None,
+        med_d1_hat_list=None,
+        med_d0_hat_list=None,
+        g_d1_hat_list=None,
+        g_nested_hat_list=None,
+        m_med_hat_list=None,
+    ):
 
         if score_function == "efficient":
             u_hat = np.full_like(y, np.nan, dtype="float64")
@@ -605,10 +612,14 @@ class ManualMedC:
             for idx, (_, test_index) in enumerate(smpls):
                 #   eta10=(eymx11te*pm0te+eymx10te*(1-pm0te))
                 if treatment_level == 1:
-                    y_d_m_hat = g_d1_m1_hat_list[idx] * med_d0_hat_list[idx] + g_d1_m0_hat_list[idx] * (1-med_d0_hat_list[idx])
+                    y_d_m_hat = g_d1_m1_hat_list[idx] * med_d0_hat_list[idx] + g_d1_m0_hat_list[idx] * (
+                        1 - med_d0_hat_list[idx]
+                    )
                     g_d_hat = m[test_index] * g_d1_m1_hat_list[idx] + (1.0 - m[test_index]) * g_d1_m0_hat_list[idx]
                 else:
-                    y_d_m_hat = g_d1_m1_hat_list[idx] * (1-med_d1_hat_list[idx]) + g_d1_m0_hat_list[idx] * med_d1_hat_list[idx]
+                    y_d_m_hat = (
+                        g_d1_m1_hat_list[idx] * (1 - med_d1_hat_list[idx]) + g_d1_m0_hat_list[idx] * med_d1_hat_list[idx]
+                    )
                     g_d_hat = m[test_index] * g_d1_m0_hat_list[idx] + (1.0 - m[test_index]) * g_d1_m1_hat_list[idx]
 
                 g_d1_m0_hat[test_index] = g_d1_m0_hat_list[idx]
@@ -619,9 +630,8 @@ class ManualMedC:
                 u_hat[test_index] = y[test_index] - g_d_hat[idx]
                 w_hat[test_index] = g_d_hat[idx] - y_d_m_hat[idx]
 
-
             _check_is_propensity(m_hat, "learner_m", "ml_m", smpls, eps=1e-12)
-            return g_d1_m0_hat, g_d1_m1_hat, med_d0_hat, med_d1_hat, m_hat, u_hat, w_hat
+            return g_d1_m0_hat, g_d1_m1_hat, med_d0_hat, med_d1_hat, m_hat, u_hat, w_hat, y_d_m_hat
 
         elif score_function == "efficient-alt":
             g_d1_hat = np.full_like(y, np.nan, dtype="float64")
@@ -642,63 +652,105 @@ class ManualMedC:
             _check_is_propensity(m_hat, "learner_m", "ml_m", smpls, eps=1e-12)
             return g_d1_hat, g_nested_hat, m_med_hat, m_hat, u_hat, w_hat
 
-
     def med_dml2(
-            y, 
-            x, 
-            d, 
-            m,
-            treated,
-            smpls,
-            score,
-            score_function,
-            normalize_ipw,
-            m_hat_list,
-            g_d1_m0_hat_list=None,
-            g_d1_m1_hat_list=None,
-            med_d0_hat_list=None,
-            med_d1_hat_list=None,
-            g_d1_hat_list=None,
-            g_nested_hat_list=None,
-            m_med_hat_list=None,
-            ):
+        y,
+        x,
+        d,
+        m,
+        treated,
+        smpls,
+        score,
+        score_function,
+        normalize_ipw,
+        m_hat_list,
+        g_d1_m0_hat_list=None,
+        g_d1_m1_hat_list=None,
+        med_d0_hat_list=None,
+        med_d1_hat_list=None,
+        g_d1_hat_list=None,
+        g_nested_hat_list=None,
+        m_med_hat_list=None,
+    ):
         n_obs = len(y)
         if score_function == "efficient":
-            g_d1_m0_hat, g_d1_m1_hat, med_d0_hat, med_d1_hat, m_hat, u_hat, w_hat = ManualMedC.compute_residuals(y=y, g_d1_m0_hat_list=g_d1_m0_hat_list, g_d1_m1_hat_list=g_d1_m1_hat_list, med_d0_hat_list=med_d0_hat_list, med_d1_hat_list=med_d1_hat_list, m_hat_list=m_hat_list, smpls=smpls)
-            theta_hat = ManualMedC.med_orth(treated=treated, score_function=score_function, u_hat=u_hat, w_hat=w_hat, g_d1_m0_hat=g_d1_m0_hat, g_d1_m1_hat=g_d1_m1_hat, med_d0_hat=med_d0_hat, med_d1_hat=med_d1_hat, m_hat=m_hat,)
+            g_d1_m0_hat, g_d1_m1_hat, med_d0_hat, med_d1_hat, m_hat, u_hat, w_hat, y_d_m_hat = ManualMedC.compute_residuals(
+                y=y,
+                g_d1_m0_hat_list=g_d1_m0_hat_list,
+                g_d1_m1_hat_list=g_d1_m1_hat_list,
+                med_d0_hat_list=med_d0_hat_list,
+                med_d1_hat_list=med_d1_hat_list,
+                m_hat_list=m_hat_list,
+                smpls=smpls,
+            )
+            theta_hat = ManualMedC.med_orth(
+                treated=treated,
+                score_function=score_function,
+                u_hat=u_hat,
+                w_hat=w_hat,
+                med_d0_hat=med_d0_hat,
+                med_d1_hat=med_d1_hat,
+                y_d_m_hat=y_d_m_hat,
+                m_hat=m_hat,
+            )
+
+            #TODO: Probably add method to get adjusted m_hat
+            se = np.sqrt(ManualMedC.var_med(theta_hat=theta_hat, med_d0_hat=med_d0_hat, med_d1_hat=med_d1_hat, m_hat=m_hat, u_hat=u_hat, w_hat=w_hat, treated=treated, score_function=score_function, n_obs=n_obs))
 
         elif score_function == "efficient-alt":
-            g_d1_hat, g_nested_hat, m_med_hat, m_hat, u_hat, w_hat = ManualMedC.compute_residuals(y=y, m=m, g_d1_hat_list=g_d1_hat_list, g_nested_hat_list=g_nested_hat_list, m_med_hat_list=m_med_hat_list, m_hat_list=m_hat_list, smpls=smpls)
-            theta_hat = ManualMedC.med_orth(treated=treated, score_function=score_function, u_hat=u_hat, w_hat=w_hat,g_d1_hat=g_d1_hat, g_nested_hat=g_nested_hat, m_med_hat=m_med_hat, m_hat=m_hat,)
+            g_d1_hat, g_nested_hat, m_med_hat, m_hat, u_hat, w_hat = ManualMedC.compute_residuals(
+                y=y,
+                m=m,
+                g_d1_hat_list=g_d1_hat_list,
+                g_nested_hat_list=g_nested_hat_list,
+                m_med_hat_list=m_med_hat_list,
+                m_hat_list=m_hat_list,
+                smpls=smpls,
+            )
+            theta_hat = ManualMedC.med_orth(
+                treated=treated,
+                score_function=score_function,
+                u_hat=u_hat,
+                w_hat=w_hat,
+                g_nested_hat=g_nested_hat,
+                m_med_hat=m_med_hat,
+                m_hat=m_hat,
+            )
+
+            se = np.sqrt(ManualMedC.var_med(theta_hat=theta_hat, g_d1_hat=g_d1_hat, g_nested_hat=g_nested_hat, m_med_hat=m_med_hat, m_hat=m_hat, u_hat=u_hat, w_hat=w_hat, treated=treated, score_function=score_function, n_obs=n_obs))
+
 
         if normalize_ipw:
             m_hat_adj = _normalize_ipw(m_hat, treated)
         else:
             m_hat_adj = m_hat
-        #TODO Continue here(1/2. 2025.08.06)
-        se = np.sqrt(ManualMedC.var_med(theta_hat, g_hat0, g_hat1, m_hat_adj, u_hat0, u_hat1, treated, score_function, n_obs))
+        # TODO Continue here(1/2. 2025.08.06)
 
         return theta_hat, se
 
-    def med_orth( treated,
-                  score_function,
-                  u_hat,
-                  w_hat,
-                  g_d1_m0_hat=None,
-                  g_d1_m1_hat=None,
-                  med_d0_hat=None,
-                  med_d1_hat=None,
-                  m_hat=None,
-                  ):
-        #TODO Continue here(2/2 2025:08.06)
-        if score_function=="efficient":
-            res = np.mean(g_hat1 + np.divide(np.multiply(treated, u_hat1), m_hat))
-        elif score_function=="efficient-alt":
-            res = np.mean()
+    def med_orth(
+        treated,
+        score_function,
+        u_hat,
+        w_hat,
+        med_d0_hat=None,
+        med_d1_hat=None,
+        y_d_m_hat=None,
+        g_nested_hat=None,
+        m_med_hat=None,
+        m_hat=None,
+    ):
+        # TODO Continue here(2/2 2025:08.06)
+        if score_function == "efficient":
+            res = np.mean(np.multiply(np.multiply(np.divide(treated, m_hat), np.divide(med_d0_hat, med_d1_hat)), u_hat) + np.multiply(np.divide(1.0 - treated, 1.0-m_hat), w_hat) + y_d_m_hat)
+        elif score_function == "efficient-alt":
+            res = np.mean(np.multiply(np.multiply(np.divide(treated,1.0-m_hat), np.divide(1.0-m_med_hat, m_med_hat)), u_hat) + np.multiply(np.divide(1.0 - treated, 1.0-m_hat), w_hat) + g_nested_hat)
         return res
 
-    def var_med(theta, g_hat0, g_hat1, m_hat, u_hat0, u_hat1, treated, score_function, n_obs):
-        var = 1 / n_obs * np.mean(np.power(g_hat1 + np.divide(np.multiply(treated, u_hat1), m_hat) - theta, 2))
+    def var_med(theta, treated, score_function, n_obs, m_hat, u_hat, w_hat, med_d0_hat=None, med_d1_hat=None, y_d_m_hat=None, m_med_hat=None, g_nested_hat=None):
+        if score_function == "efficient":
+            var = 1 / n_obs * np.mean(np.power(np.multiply(np.multiply(np.divide(treated, m_hat), np.divide(med_d0_hat, med_d1_hat)), u_hat) + np.multiply(np.divide(1.0 - treated, 1.0-m_hat), w_hat) + y_d_m_hat - theta, 2))
+        elif score_function == "efficient-alt":
+            var = 1/n_obs*np.mean(np.power(np.multiply(np.multiply(np.divide(treated,1.0-m_hat), np.divide(1.0-m_med_hat, m_med_hat)), u_hat) + np.multiply(np.divide(1.0 - treated, 1.0-m_hat), w_hat) + g_nested_hat - theta, 2))
         return var
 
     def boot_med(
