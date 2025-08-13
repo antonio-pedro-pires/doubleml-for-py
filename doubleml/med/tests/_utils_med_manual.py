@@ -570,8 +570,10 @@ class ManualMedC:
         mediation_level,
         thetas,
         ses,
-        all_g_hat0,
-        all_g_hat1,
+        all_g_d1_m1_hat,
+        all_g_d1_m0_hat,
+        all_med_d1_hat,
+        all_med_d0_hat,
         all_m_hat,
         all_smpls,
         score,
@@ -596,8 +598,10 @@ class ManualMedC:
                 d,
                 treated,
                 mediated,
-                all_g_hat0[i_rep],
-                all_g_hat1[i_rep],
+                all_g_d1_m1_hat[i_rep],
+                all_g_d1_m0_hat[i_rep],
+                all_med_d1_hat[i_rep],
+                all_med_d0_hat[i_rep],
                 all_m_hat[i_rep],
                 smpls,
                 score,
@@ -618,18 +622,18 @@ class ManualMedC:
         y,
         d,
         treated,
-        g_hat0_list,
-        g_hat1_list,
         m_hat_list,
+        g_d1_m0_hat_list,
+        g_d1_m1_hat_list,
+        med_d0_hat_list,
+        med_d1_hat_list,
         smpls,
-        score,
-        score_function,
         se,
         weights,
         n_rep_boot,
         normalize_ipw,
     ):
-        _, u_hat1, _, g_hat1, m_hat = ManualMedC.compute_residuals(y, g_hat0_list, g_hat1_list, m_hat_list, smpls)
+        g_d1_m0_hat, g_d1_m1_hat, med_d0_hat, med_d1_hat, m_hat, u_hat, w_hat, y_d_m_hat = ManualMedC.compute_residuals(y, m_hat_list, g_d1_m0_hat_list, g_d1_m1_hat_list, med_d0_hat_list, med_d1_hat_list, smpls)
 
         if normalize_ipw:
             m_hat_adj = _normalize_ipw(m_hat, treated)
@@ -637,7 +641,7 @@ class ManualMedC:
             m_hat_adj = m_hat
 
         J = -1.0
-        psi = g_hat1 + np.divide(np.multiply(treated, u_hat1), m_hat_adj) - theta
+        psi = np.mean(np.multiply(np.multiply(np.divide(treated, m_hat), np.divide(med_d0_hat, med_d1_hat)), u_hat) + np.multiply(np.divide(1.0 - treated, 1.0-m_hat), w_hat) + y_d_m_hat) - theta
         boot_t_stat = boot_manual(psi, J, smpls, se, weights, n_rep_boot)
 
         return boot_t_stat
@@ -752,7 +756,7 @@ class ManualMedCAlt:
 
         for i_rep in range(n_rep):
             smpls = all_smpls[i_rep]
-            g_d1_hat, g_nested_hat, m_med_hat, m_hat = ManualMedC.fit_nuisance_med(
+            g_d1_hat, g_nested_hat, m_med_hat, m_hat = ManualMedCAlt.fit_nuisance_med(
                 y=y,
                 x=x,
                 d=d,
@@ -776,7 +780,7 @@ class ManualMedCAlt:
             all_m_med_hat.append(m_med_hat)
             all_m_hat.append(m_hat)
 
-            thetas[i_rep], ses[i_rep] = ManualMedC.med_dml_2(
+            thetas[i_rep], ses[i_rep] = ManualMedCAlt.med_dml_2(
                 y,
                 x,
                 d,
@@ -907,7 +911,7 @@ class ManualMedCAlt:
     ):
         n_obs = len(y)
 
-        g_d1_hat, g_nested_hat, m_med_hat, m_hat, u_hat, w_hat = ManualMedC.compute_residuals(
+        g_d1_hat, g_nested_hat, m_med_hat, m_hat, u_hat, w_hat = ManualMedCAlt.compute_residuals(
             y=y,
             m=m,
             g_d1_hat_list=g_d1_hat_list,
@@ -916,7 +920,7 @@ class ManualMedCAlt:
             m_hat_list=m_hat_list,
             smpls=smpls,
         )
-        theta_hat = ManualMedC.med_orth(
+        theta_hat = ManualMedCAlt.med_orth(
             treated=treated,
             score_function=score_function,
             u_hat=u_hat,
@@ -926,7 +930,7 @@ class ManualMedCAlt:
             m_hat=m_hat,
         )
 
-        se = np.sqrt(ManualMedC.var_med(theta_hat=theta_hat, g_d1_hat=g_d1_hat, g_nested_hat=g_nested_hat, m_med_hat=m_med_hat, m_hat=m_hat, u_hat=u_hat, w_hat=w_hat, treated=treated, score_function=score_function, n_obs=n_obs))
+        se = np.sqrt(ManualMedCAlt.var_med(theta_hat=theta_hat, g_d1_hat=g_d1_hat, g_nested_hat=g_nested_hat, m_med_hat=m_med_hat, m_hat=m_hat, u_hat=u_hat, w_hat=w_hat, treated=treated, score_function=score_function, n_obs=n_obs))
 
         return theta_hat, se
 
@@ -954,14 +958,15 @@ class ManualMedCAlt:
         mediation_level,
         thetas,
         ses,
-        all_g_hat0,
-        all_g_hat1,
+        all_g_d1_hat,
+        all_g_nested_hat,
+        all_m_med_hat,
         all_m_hat,
-        all_smpls,
         score,
         score_function,
         bootstrap,
         n_rep_boot,
+        all_smpls,
         n_rep=1,
         normalize_ipw=True,
     ):
@@ -974,14 +979,16 @@ class ManualMedCAlt:
             n_obs = len(y)
 
             weights = draw_weights(bootstrap, n_rep_boot, n_obs)
-            boot_t_stat = ManualMedC.boot_med_single_split(
+            boot_t_stat = ManualMedCAlt.boot_med_single_split(
                 thetas[i_rep],
                 y,
                 d,
+                m,
                 treated,
                 mediated,
-                all_g_hat0[i_rep],
-                all_g_hat1[i_rep],
+                all_g_d1_hat[i_rep],
+                all_g_nested_hat[i_rep],
+                all_m_med_hat[i_rep],
                 all_m_hat[i_rep],
                 smpls,
                 score,
@@ -1000,17 +1007,27 @@ class ManualMedCAlt:
     def boot_med_single_split(
         theta,
         y,
+        m,
         treated,
-        g_hat0_list,
-        g_hat1_list,
         m_hat_list,
+        g_d1_m0_hat_list,
+        g_d1_hat_list,
+        g_nested_hat_list,
+        m_med_hat_list,
         smpls,
         se,
         weights,
         n_rep_boot,
         normalize_ipw,
     ):
-        _, u_hat1, _, g_hat1, m_hat = ManualMedC.compute_residuals(y, g_hat0_list, g_hat1_list, m_hat_list, smpls)
+        g_d1_hat, g_nested_hat, m_med_hat, m_hat, u_hat, w_hat = ManualMedCAlt.compute_residuals(y,
+                                                                        m,
+                                                                        smpls,
+                                                                        m_hat_list,
+                                                                        g_d1_m0_hat_list,
+                                                                        g_d1_hat_list,
+                                                                        g_nested_hat_list,
+                                                                        m_med_hat_list,)
 
         if normalize_ipw:
             m_hat_adj = _normalize_ipw(m_hat, treated)
@@ -1018,7 +1035,7 @@ class ManualMedCAlt:
             m_hat_adj = m_hat
 
         J = -1.0
-        psi = g_hat1 + np.divide(np.multiply(treated, u_hat1), m_hat_adj) - theta
+        psi = np.multiply(np.multiply(np.divide(treated,1.0-m_hat), np.divide(1.0-m_med_hat, m_med_hat)), u_hat) + np.multiply(np.divide(1.0 - treated, 1.0-m_hat), w_hat) + g_nested_hat - theta
         boot_t_stat = boot_manual(psi, J, smpls, se, weights, n_rep_boot)
 
         return boot_t_stat
