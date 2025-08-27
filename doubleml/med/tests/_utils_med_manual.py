@@ -231,7 +231,7 @@ class ManualMedP:
 
         return boot_t_stat
 
-    def fit_sensitivity_elements_med(y, d, m, treatment_level, mediation_level, all_coef, predictions, n_rep, normalize_ipw):
+    def fit_sensitivity_elements_med(y, d, treatment_level, all_coef, predictions, n_rep, normalize_ipw):
         n_treat = 1
         n_obs = len(y)
         treated = d == treatment_level
@@ -392,8 +392,6 @@ class ManualMedC:
     def fit_nuisance_med(
         y,
         x,
-        d,
-        m,
         treated,
         mediated,
         learner_g,
@@ -482,10 +480,8 @@ class ManualMedC:
     # TODO: Probably add method to get adjusted m_hat
     def med_dml2(
         y,
-        m,
         treated,
         smpls,
-        normalize_ipw,
         m_hat_list,
         g_d1_m0_hat_list,
         g_d1_m1_hat_list,
@@ -615,7 +611,6 @@ class ManualMedC:
     def boot_med_single_split(
         theta,
         y,
-        d,
         treated,
         m_hat_list,
         g_d1_m0_hat_list,
@@ -650,7 +645,7 @@ class ManualMedC:
 
         return boot_t_stat
 
-    def fit_sensitivity_elements_med(y, d, m, treatment_level, mediation_level, all_coef, predictions, n_rep, normalize_ipw):
+    def fit_sensitivity_elements_med(y, d, treatment_level, all_coef, predictions, n_rep, normalize_ipw):
         n_treat = 1
         n_obs = len(y)
         treated = d == treatment_level
@@ -691,9 +686,7 @@ class ManualMedC:
         y,
         x,
         d,
-        m,
         treatment_level,
-        mediation_level,
         ml_g,
         ml_m,
         smpls,
@@ -728,7 +721,6 @@ class ManualMedCAlt:
         learner_m,
         learner_nested,
         treatment_level,
-        mediation_level,
         all_smpls,
         n_rep=1,
         g_d1_params=None,
@@ -809,10 +801,8 @@ class ManualMedCAlt:
     def fit_nuisance_med(
         y,
         x,
-        d,
         m,
         treated,
-        mediated,
         learner_g,
         learner_m,
         learner_med,
@@ -864,7 +854,6 @@ class ManualMedCAlt:
 
     def compute_residuals(
         y,
-        m,
         smpls,
         m_hat_list,
         g_d1_m0_hat_list,
@@ -1064,7 +1053,7 @@ class ManualMedCAlt:
 
         return boot_t_stat
 
-    def fit_sensitivity_elements_med(y, d, m, treatment_level, mediation_level, all_coef, predictions, n_rep, normalize_ipw):
+    def fit_sensitivity_elements_med(y, d, treatment_level, all_coef, predictions, n_rep, normalize_ipw):
         n_treat = 1
         n_obs = len(y)
         treated = d == treatment_level
