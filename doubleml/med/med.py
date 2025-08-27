@@ -5,11 +5,12 @@ from doubleml import DoubleMLMediationData
 from doubleml.double_ml import DoubleML
 from doubleml.double_ml_score_mixins import LinearScoreMixin
 from doubleml.med.utils._med_utils import _normalize_propensity_med
-from doubleml.utils._checks import _check_score
-from doubleml.utils._estimation import _dml_cv_predict, _dml_tune, _get_cond_smpls, _get_cond_smpls_2d
+from doubleml.utils._checks import _check_finite_predictions, _check_score
+from doubleml.utils._estimation import _cond_targets, _dml_cv_predict, _dml_tune, _get_cond_smpls, _get_cond_smpls_2d
 
 
 # TODO: Transplant methods into utils documents.
+# TODO: Apply threshold
 class DoubleMLMEDP(LinearScoreMixin, DoubleML):
     """Double machine learning for the estimation of the potential outcome in causal mediation analysis.
 
@@ -67,7 +68,7 @@ class DoubleMLMEDP(LinearScoreMixin, DoubleML):
         self._treated = self._med_data.d == treatment_level
         self._mediated = self._med_data.m == treatment_level
 
-        self._learner = ["ml_m", "ml_g"]
+        self._learner = {"ml_m": ml_m, "ml_g": ml_g}
         self._predict_method = {"ml_m": "predict_proba"}
         self._check_learner(learner=ml_m, learner_name="ml_m", regressor=False, classifier=True)
         is_classifier_ml_g = self._check_learner(learner=ml_g, learner_name="ml_g", regressor=True, classifier=True)
@@ -77,12 +78,15 @@ class DoubleMLMEDP(LinearScoreMixin, DoubleML):
             self._predict_method["ml_g"] = "predict"
         self._initialize_ml_nuisance_params()
 
+        self._normalize_ipw = normalize_ipw
+        self._external_predictions_implemented = True
+
     @property
     def normalize_ipw(self):
         """
         indicates whether the  inverse probability weights are normalized
         """
-        return self.normalize_ipw
+        return self._normalize_ipw
 
     @property
     def trimming_rule(self):
@@ -161,9 +165,9 @@ class DoubleMLMEDP(LinearScoreMixin, DoubleML):
     def _nuisance_est(
         self,
         smpls,
-        external_predictions,
         n_jobs_cv,
-        return_models=False,
+        external_predictions,
+        return_models=True,
     ):
 
         x, y = check_X_y(self._med_data.x, self._med_data.y, force_all_finite=False)
@@ -182,7 +186,7 @@ class DoubleMLMEDP(LinearScoreMixin, DoubleML):
             m_hat = _dml_cv_predict(
                 self._learner["ml_m"],
                 x,
-                d,
+                self.treated,
                 smpls=smpls,
                 n_jobs=n_jobs_cv,
                 est_params=self._get_params("ml_m"),
@@ -191,18 +195,25 @@ class DoubleMLMEDP(LinearScoreMixin, DoubleML):
             )
 
         if g_1_external:
-            g_1_hat = {"preds": external_predictions["ml_g_1"], "targets": None, "models": None}
+            g_1_hat = {
+                "preds": external_predictions["ml_g_1"],
+                "targets": _cond_targets(y, cond_sample=(self.treated == 1)),
+                "models": None,
+            }
         else:
             g_1_hat = _dml_cv_predict(
-                self._learner["ml_g_1"],
+                self._learner["ml_g"],
                 x,
                 y,
                 smpls=smpls_d1,
                 n_jobs=n_jobs_cv,
                 est_params=self._get_params("ml_g_1"),
-                method=self._predict_method["ml_g_1"],
+                method=self._predict_method["ml_g"],
                 return_models=return_models,
             )
+        _check_finite_predictions(g_1_hat["preds"], self._learner["ml_g"], "ml_g", smpls)
+        # adjust target values to consider only compatible subsamples
+        g_1_hat["targets"] = _cond_targets(g_1_hat["targets"], cond_sample=(self.treated == 1))
 
         preds = {
             "predictions": {
@@ -219,22 +230,22 @@ class DoubleMLMEDP(LinearScoreMixin, DoubleML):
             },
         }
 
-        psi_a, psi_b = self._score_potential_outcome(y, x, d, m_hat["preds"], g_1_hat["preds"])
+        psi_a, psi_b = self._score_elements(y, m_hat["preds"], g_1_hat["preds"])
         psi_elements = {"psi_a": psi_a, "psi_b": psi_b}
 
         return psi_elements, preds
 
-    def _score_elements(self, y, m_hat, g_d_hat):
-        u_hat = y - g_d_hat
-        adjusted_propensity = _normalize_propensity_med(
-            self.normalize_ipw,
-            self.score,
-            self.score_function,
-            self.treated,
-        )
+    def _score_elements(self, y, m_hat, g_1_hat):
+        u_hat = y - g_1_hat
+        # adjusted_propensity = _normalize_propensity_med(
+        #    self.normalize_ipw,
+        #    self.score,
+        #    self.score_function,
+        #    self.treated,
+        # )
 
         psi_a = -1.0
-        psi_b = np.multiply(np.multiply(adjusted_propensity, np.divide(self.treated, m_hat)), u_hat) + g_d_hat
+        psi_b = np.multiply(np.divide(self.treated, m_hat), u_hat) + g_1_hat
         return psi_a, psi_b
 
     # TODO: Refactor tuning to take away all of the mentions to d0, d1 and others.
@@ -265,9 +276,9 @@ class DoubleMLMEDP(LinearScoreMixin, DoubleML):
             y,
             dx,  # used to obtain an estimation over several treatment levels (reduced variance in sensitivity)
             train_inds_g,
-            self._learner["ml_g_1"],
-            param_grids["ml_g_1"],
-            scoring_methods["ml_g_1"],
+            self._learner["ml_g"],
+            param_grids["ml_g"],
+            scoring_methods["ml_g"],
             n_folds_tune,
             n_jobs_cv,
             search_mode,
@@ -533,7 +544,7 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
             m_hat = _dml_cv_predict(
                 self._learner["ml_m"],
                 x,
-                d,
+                self.treated,
                 smpls=smpls,
                 n_jobs=n_jobs_cv,
                 est_params=self._get_params("ml_m"),
@@ -658,13 +669,13 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
             g_1_hat = {"preds": external_predictions["ml_g_1"], "targets": None, "models": None}
         else:
             g_1_hat = _dml_cv_predict(
-                self._learner["ml_g_1"],
+                self._learner["ml_g"],
                 xm,
                 y,
                 smpls=smpls_d1,
                 n_jobs=n_jobs_cv,
                 est_params=self._get_params("ml_g_1"),
-                method=self._predict_method["ml_g_1"],
+                method=self._predict_method["ml_g"],
                 return_models=return_models,
             )
         if g_nested_external:
@@ -845,9 +856,9 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
             y,
             dx,  # used to obtain an estimation over several treatment levels (reduced variance in sensitivity)
             train_inds_pot,
-            self._learner[ml_g_d1_m1],
-            param_grids[ml_g_d1_m1],
-            scoring_methods[ml_g_d1_m1],
+            self._learner["ml_g"],
+            param_grids["ml_g"],
+            scoring_methods["ml_g"],
             n_folds_tune,
             n_jobs_cv,
             search_mode,
@@ -857,9 +868,9 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
             y,
             dx,  # used to obtain an estimation over several treatment levels (reduced variance in sensitivity)
             train_inds_counter,
-            self._learner[ml_g_d1_m0],
-            param_grids[ml_g_d1_m0],
-            scoring_methods[ml_g_d1_m0],
+            self._learner["ml_g"],
+            param_grids["ml_g"],
+            scoring_methods["ml_g"],
             n_folds_tune,
             n_jobs_cv,
             search_mode,
@@ -883,9 +894,9 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
             y,
             dx,  # used to obtain an estimation over several treatment levels (reduced variance in sensitivity)
             train_inds_d_lvl0,
-            self._learner["ml_med_d0"],
-            param_grids["ml_med_d0"],
-            scoring_methods["ml_med_d0"],
+            self._learner["ml_med"],
+            param_grids["ml_med"],
+            scoring_methods["ml_med"],
             n_folds_tune,
             n_jobs_cv,
             search_mode,
@@ -896,9 +907,9 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
             y,
             dx,  # used to obtain an estimation over several treatment levels (reduced variance in sensitivity)
             train_inds_d_lvl1,
-            self._learner["ml_med_d1"],
-            param_grids["ml_med_d1"],
-            scoring_methods["ml_med_d1"],
+            self._learner["ml_med"],
+            param_grids["ml_med"],
+            scoring_methods["ml_med"],
             n_folds_tune,
             n_jobs_cv,
             search_mode,
@@ -973,9 +984,9 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
             y,
             dx,  # used to obtain an estimation over several treatment levels (reduced variance in sensitivity)
             train_inds_pot,
-            self._learner[ml_g_d1_m1],
-            param_grids[ml_g_d1_m1],
-            scoring_methods[ml_g_d1_m1],
+            self._learner["ml_g"],
+            param_grids["ml_g"],
+            scoring_methods["ml_g"],
             n_folds_tune,
             n_jobs_cv,
             search_mode,
@@ -985,9 +996,9 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
             y,
             dx,  # used to obtain an estimation over several treatment levels (reduced variance in sensitivity)
             train_inds_counter,
-            self._learner[ml_g_d1_m0],
-            param_grids[ml_g_d1_m0],
-            scoring_methods[ml_g_d1_m0],
+            self._learner["ml_g"],
+            param_grids["ml_g"],
+            scoring_methods["ml_g"],
             n_folds_tune,
             n_jobs_cv,
             search_mode,
@@ -1011,9 +1022,9 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
             y,
             dx,  # used to obtain an estimation over several treatment levels (reduced variance in sensitivity)
             train_inds_d_lvl0,
-            self._learner["ml_med_d0"],
-            param_grids["ml_med_d0"],
-            scoring_methods["ml_med_d0"],
+            self._learner["ml_med"],
+            param_grids["ml_med"],
+            scoring_methods["ml_med"],
             n_folds_tune,
             n_jobs_cv,
             search_mode,
@@ -1024,9 +1035,9 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
             y,
             dx,  # used to obtain an estimation over several treatment levels (reduced variance in sensitivity)
             train_inds_d_lvl1,
-            self._learner["ml_med_d1"],
-            param_grids["ml_med_d1"],
-            scoring_methods["ml_med_d1"],
+            self._learner["ml_med"],
+            param_grids["ml_med"],
+            scoring_methods["ml_med1"],
             n_folds_tune,
             n_jobs_cv,
             search_mode,

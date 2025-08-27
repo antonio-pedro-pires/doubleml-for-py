@@ -7,7 +7,7 @@ from sklearn.utils.multiclass import type_of_target
 from doubleml import DoubleMLData
 from doubleml.double_ml import DoubleML
 from doubleml.double_ml_framework import concat
-from doubleml.med.med import DoubleMLMED
+from doubleml.med.med import DoubleMLMEDP, DoubleMLMEDC
 from doubleml.utils._checks import _check_external_predictions, _check_sample_splitting
 from doubleml.utils._descriptive import generate_summary
 
