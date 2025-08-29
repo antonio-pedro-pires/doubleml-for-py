@@ -145,7 +145,6 @@ class ManualMedP:
             g_hat0=g_hat0,
             g_hat1=g_hat1,
             m_hat=m_hat_adj,
-            u_hat0=u_hat0,
             u_hat1=u_hat1,
             treated=treated,
         )
@@ -154,7 +153,13 @@ class ManualMedP:
 
         return theta_hat, se
 
-    def med_orth(g_hat0, g_hat1, m_hat, u_hat0, u_hat1, treated, score):
+    def med_orth(
+        g_hat0,
+        g_hat1,
+        m_hat,
+        u_hat1,
+        treated,
+    ):
         res = np.mean(g_hat1 + np.divide(np.multiply(treated, u_hat1), m_hat))
         return res
 
@@ -208,6 +213,7 @@ class ManualMedP:
     def boot_med_single_split(
         theta,
         y,
+        d,
         treated,
         g_hat0_list,
         g_hat1_list,
@@ -1013,6 +1019,7 @@ class ManualMedCAlt:
     def boot_med_single_split(
         theta,
         y,
+        d,
         m,
         treated,
         m_hat_list,

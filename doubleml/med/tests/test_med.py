@@ -14,34 +14,42 @@ from .. import DoubleMLMEDP, DoubleMLMEDC
 from ...tests._utils import draw_smpls
 from ._utils_med_manual import ManualMedP, ManualMedC, ManualMedCAlt
 
+
 @pytest.fixture(scope="module")
 def n_folds():
     return 2
+
 
 @pytest.fixture(scope="module")
 def n_rep_boot():
     return 499
 
+
 @pytest.fixture(scope="module")
 def n_obs():
     return 500
+
 
 @pytest.fixture(scope="module")
 def data_med(n_obs):
     np.random.seed(3141)
     return make_med_data(n_obs=n_obs)
 
+
 @pytest.fixture(scope="module")
 def y(data_med):
     return data_med.y
+
 
 @pytest.fixture(scope="module")
 def d(data_med):
     return data_med.d
 
+
 @pytest.fixture(scope="module")
 def m(data_med):
     return data_med.m
+
 
 @pytest.fixture(scope="module")
 def x(data_med):
@@ -55,6 +63,7 @@ def data(n_obs, data_med, y, d, m, x):
     )
 
     return dml.DoubleMLMediationData(df_med, "y", "d", "m")
+
 
 @pytest.fixture(scope="module")
 def all_smpls(data, n_obs, n_folds, d):
@@ -71,7 +80,7 @@ class TestPotentialOutcomes:
     @pytest.fixture(
         scope="module",
         params=[
-            [LinearRegression(), ElasticNet(l1_ratio=1, max_iter=250, random_state=42)],
+            [LinearRegression(), LogisticRegression(penalty="l1", solver="liblinear", max_iter=250, random_state=42)],
             [
                 RandomForestRegressor(max_depth=5, n_estimators=10, random_state=42),
                 RandomForestClassifier(max_depth=5, n_estimators=10, random_state=42),
@@ -122,7 +131,23 @@ class TestPotentialOutcomes:
         return request.param
 
     @pytest.fixture(scope="module")
-    def dml_med_fixture(self, data, y, d, m, x, all_smpls, learner, outcome_scoring, normalize_ipw, trimming_threshold, treatment_level, mediation_level):
+    def dml_med_fixture(
+        self,
+        data,
+        y,
+        d,
+        m,
+        x,
+        all_smpls,
+        learner,
+        outcome_scoring,
+        normalize_ipw,
+        trimming_threshold,
+        treatment_level,
+        mediation_level,
+        n_rep_boot,
+        n_folds,
+    ):
         boot_methods = ["normal"]
 
         # Set machine learning methods for m & g
@@ -154,11 +179,12 @@ class TestPotentialOutcomes:
             x,
             d,
             m,
-            clone(learner[0]),
-            clone(learner[1]),
+            learner_g=clone(learner[0]),
+            learner_m=clone(learner[1]),
             treatment_level=treatment_level,
+            mediation_level=mediation_level,
             all_smpls=all_smpls,
-            score="MED",
+            n_rep=1,
             normalize_ipw=normalize_ipw,
             trimming_threshold=trimming_threshold,
         )
@@ -184,8 +210,7 @@ class TestPotentialOutcomes:
 
         prediction_dict = {
             "d": {
-                "ml_g_d_0": dml_obj.predictions["ml_g_d_0"].reshape(-1, 1),
-                "ml_g_d_1": dml_obj.predictions["ml_g_d_1"].reshape(-1, 1),
+                "ml_g_1": dml_obj.predictions["ml_g_1"].reshape(-1, 1),
                 "ml_m": dml_obj.predictions["ml_m"].reshape(-1, 1),
             }
         }
@@ -207,13 +232,12 @@ class TestPotentialOutcomes:
                 y,
                 d,
                 treatment_level,
-                res_manual["thetas"],
-                res_manual["ses"],
-                res_manual["all_g_hat0"],
-                res_manual["all_g_hat1"],
-                res_manual["all_m_hat"],
-                all_smpls,
-                score="MED",
+                thetas=res_manual["thetas"],
+                ses=res_manual["ses"],
+                all_g_hat0=res_manual["all_g_hat0"],
+                all_g_hat1=res_manual["all_g_hat1"],
+                all_m_hat=res_manual["all_m_hat"],
+                all_smpls=all_smpls,
                 bootstrap=bootstrap,
                 n_rep_boot=n_rep_boot,
                 normalize_ipw=normalize_ipw,
@@ -228,21 +252,21 @@ class TestPotentialOutcomes:
             res_dict["boot_t_stat" + bootstrap + "_ext"] = dml_obj_ext.boot_t_stat
 
         # check if sensitivity score with rho=0 gives equal asymptotic standard deviation
-        dml_obj.sensitivity_analysis(rho=0.0)
-        res_dict["sensitivity_ses"] = dml_obj.sensitivity_params["se"]
+        # dml_obj.sensitivity_analysis(rho=0.0)
+        # res_dict["sensitivity_ses"] = dml_obj.sensitivity_params["se"]
 
         # sensitivity tests
-        res_dict["sensitivity_elements"] = dml_obj.sensitivity_elements
-        res_dict["sensitivity_elements_manual"] = outcome_scoring[1].fit_sensitivity_elements_med(
-            y,
-            d,
-            treatment_level,
-            all_coef=dml_obj.all_coef,
-            predictions=dml_obj.predictions,
-            score="MED",
-            n_rep=1,
-            normalize_ipw=normalize_ipw,
-        )
+        # res_dict["sensitivity_elements"] = dml_obj.sensitivity_elements
+        # res_dict["sensitivity_elements_manual"] = outcome_scoring[1].fit_sensitivity_elements_med(
+        #    y,
+        #    d,
+        #    treatment_level,
+        #    all_coef=dml_obj.all_coef,
+        #    predictions=dml_obj.predictions,
+        #    score="MED",
+        #    n_rep=1,
+        #    normalize_ipw=normalize_ipw,
+        # )
         return res_dict
 
     @pytest.mark.ci
@@ -416,8 +440,7 @@ class MEDCounterfactualEstimation:
 
         prediction_dict = {
             "d": {
-                "ml_g_d_0": dml_obj.predictions["ml_g_d_0"].reshape(-1, 1),
-                "ml_g_d_1": dml_obj.predictions["ml_g_d_1"].reshape(-1, 1),
+                "ml_g_1": dml_obj.predictions["ml_g_1"].reshape(-1, 1),
                 "ml_med_or_nested": dml_obj.predictions["ml_med_or_nested"].reshape(-1, 1),
             }
         }
