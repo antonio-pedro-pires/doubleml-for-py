@@ -5,14 +5,14 @@ import pandas as pd
 import pytest
 from sklearn.base import clone
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
-from sklearn.linear_model import LinearRegression, LogisticRegression, ElasticNet
+from sklearn.linear_model import ElasticNet, LinearRegression, LogisticRegression
 
 import doubleml as dml
 from doubleml.datasets import make_med_data
-from .. import DoubleMLMEDP, DoubleMLMEDC
 
 from ...tests._utils import draw_smpls
-from ._utils_med_manual import ManualMedP, ManualMedC, ManualMedCAlt
+from .. import DoubleMLMEDC, DoubleMLMEDP
+from ._utils_med_manual import ManualMedC, ManualMedCAlt, ManualMedP
 
 
 @pytest.fixture(scope="module")
@@ -33,7 +33,8 @@ def n_obs():
 @pytest.fixture(scope="module")
 def data_med(n_obs):
     np.random.seed(3141)
-    return make_med_data(n_obs=n_obs)
+    data_med = make_med_data(n_obs=n_obs)
+    return data_med
 
 
 @pytest.fixture(scope="module")
@@ -67,7 +68,8 @@ def data(n_obs, data_med, y, d, m, x):
 
 @pytest.fixture(scope="module")
 def all_smpls(data, n_obs, n_folds, d):
-    all_smpls = draw_smpls(n_obs, n_folds, n_rep=1, groups=d)
+    np.random.seed(3141)
+    all_smpls = draw_smpls(n_obs, n_folds, n_rep=1)
     return all_smpls
 
 
@@ -174,20 +176,10 @@ class TestPotentialOutcomes:
         dml_obj.fit()
 
         np.random.seed(3141)
-        res_manual = outcome_scoring[1].fit_med(
-            y,
-            x,
-            d,
-            m,
-            learner_g=clone(learner[0]),
-            learner_m=clone(learner[1]),
-            treatment_level=treatment_level,
-            mediation_level=mediation_level,
-            all_smpls=all_smpls,
-            n_rep=1,
-            normalize_ipw=normalize_ipw,
-            trimming_threshold=trimming_threshold,
+        manual_med = outcome_scoring[1](
+            y, x, d, m, clone(learner[0]), clone(learner[1]), treatment_level, all_smpls, 1, normalize_ipw, trimming_threshold
         )
+        res_manual = manual_med.fit_med()
 
         np.random.seed(3141)
         # test with external nuisance predictions
@@ -228,19 +220,14 @@ class TestPotentialOutcomes:
 
         for bootstrap in boot_methods:
             np.random.seed(3141)
-            boot_t_stat = outcome_scoring[1].boot_med(
-                y,
-                d,
-                treatment_level,
+            boot_t_stat = manual_med.boot_med(
                 thetas=res_manual["thetas"],
                 ses=res_manual["ses"],
                 all_g_hat0=res_manual["all_g_hat0"],
                 all_g_hat1=res_manual["all_g_hat1"],
                 all_m_hat=res_manual["all_m_hat"],
-                all_smpls=all_smpls,
                 bootstrap=bootstrap,
                 n_rep_boot=n_rep_boot,
-                normalize_ipw=normalize_ipw,
             )
 
             np.random.seed(3141)

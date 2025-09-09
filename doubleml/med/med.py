@@ -5,11 +5,12 @@ from doubleml import DoubleMLMediationData
 from doubleml.double_ml import DoubleML
 from doubleml.double_ml_score_mixins import LinearScoreMixin
 from doubleml.med.utils._med_utils import _normalize_propensity_med
-from doubleml.utils._checks import _check_score
-from doubleml.utils._estimation import _dml_cv_predict, _dml_tune, _get_cond_smpls, _get_cond_smpls_2d
+from doubleml.utils._checks import _check_finite_predictions, _check_score
+from doubleml.utils._estimation import _cond_targets, _dml_cv_predict, _dml_tune, _get_cond_smpls, _get_cond_smpls_2d
 
 
 # TODO: Transplant methods into utils documents.
+# TODO: Apply threshold
 class DoubleMLMEDP(LinearScoreMixin, DoubleML):
     """Double machine learning for the estimation of the potential outcome in causal mediation analysis.
 
@@ -166,7 +167,7 @@ class DoubleMLMEDP(LinearScoreMixin, DoubleML):
         smpls,
         n_jobs_cv,
         external_predictions,
-        return_models=False,
+        return_models=True,
     ):
 
         x, y = check_X_y(self._med_data.x, self._med_data.y, force_all_finite=False)
@@ -194,7 +195,11 @@ class DoubleMLMEDP(LinearScoreMixin, DoubleML):
             )
 
         if g_1_external:
-            g_1_hat = {"preds": external_predictions["ml_g_1"], "targets": None, "models": None}
+            g_1_hat = {
+                "preds": external_predictions["ml_g_1"],
+                "targets": _cond_targets(y, cond_sample=(self.treated == 1)),
+                "models": None,
+            }
         else:
             g_1_hat = _dml_cv_predict(
                 self._learner["ml_g"],
@@ -206,6 +211,9 @@ class DoubleMLMEDP(LinearScoreMixin, DoubleML):
                 method=self._predict_method["ml_g"],
                 return_models=return_models,
             )
+        _check_finite_predictions(g_1_hat["preds"], self._learner["ml_g"], "ml_g", smpls)
+        # adjust target values to consider only compatible subsamples
+        g_1_hat["targets"] = _cond_targets(g_1_hat["targets"], cond_sample=(self.treated == 1))
 
         preds = {
             "predictions": {

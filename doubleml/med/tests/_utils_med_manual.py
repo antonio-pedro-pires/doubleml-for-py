@@ -8,63 +8,53 @@ from ...utils._propensity_score import _normalize_ipw
 
 
 class ManualMedP:
+    def __init__(self, y, x, d, m, learner_g, learner_m, treatment_level, all_smpls, n_rep, normalize_ipw, trimming_threshold):
+        self._train_test_samples = None
+        self.y = y
+        self.x = x
+        self.d = d
+        self.m = m
+        self.learner_g = learner_g
+        self.learner_m = learner_m
+        self.treatment_level = treatment_level
+        self.all_smpls = all_smpls
+        self.n_rep = n_rep
+        self.normalize_ipw = normalize_ipw
+        self.trimming_threshold = trimming_threshold
+        self.treated = self.d == self.treatment_level
+
     def fit_med(
-        y,
-        x,
-        d,
-        m,
-        learner_g,
-        learner_m,
-        treatment_level,
-        mediation_level,
-        all_smpls,
-        n_rep=1,
+        self,
         g0_params=None,
         g1_params=None,
         m_params=None,
-        normalize_ipw=False,
-        trimming_threshold=1e-2,
     ):
-        n_obs = len(y)
-        treated = d == treatment_level
+        n_obs = len(self.y)
 
-        thetas = np.zeros(n_rep)
-        ses = np.zeros(n_rep)
+        thetas = np.zeros(self.n_rep)
+        ses = np.zeros(self.n_rep)
         all_g_hat0 = list()
         all_g_hat1 = list()
         all_m_hat = list()
 
-        for i_rep in range(n_rep):
-            smpls = all_smpls[i_rep]
-            g_hat0, g_hat1, m_hat = ManualMedP.fit_nuisance_med(
-                y=y,
-                x=x,
-                d=d,
-                treated=treated,
-                learner_g=learner_g,
-                learner_m=learner_m,
-                smpls=smpls,
+        for i_rep in range(self.n_rep):
+            smpls = self.all_smpls[i_rep]
+            g_hat0, g_hat1, m_hat = self.fit_nuisance_med(
+                smpls,
                 g0_params=g0_params,
                 g1_params=g1_params,
                 m_params=m_params,
-                trimming_threshold=trimming_threshold,
             )
 
             all_g_hat0.append(g_hat0)
             all_g_hat1.append(g_hat1)
             all_m_hat.append(m_hat)
 
-            thetas[i_rep], ses[i_rep] = ManualMedP.med_dml2(
-                y=y,
-                x=x,
-                d=d,
-                m=m,
-                treated=treated,
+            thetas[i_rep], ses[i_rep] = self.med_dml2(
+                smpls,
                 g_hat0_list=g_hat0,
                 g_hat1_list=g_hat1,
                 m_hat_list=m_hat,
-                smpls=smpls,
-                normalize_ipw=normalize_ipw,
             )
 
         theta = np.median(thetas)
@@ -83,48 +73,49 @@ class ManualMedP:
         return res
 
     def fit_nuisance_med(
-        y,
-        x,
-        d,
-        treated,
-        learner_g,
-        learner_m,
+        self,
         smpls,
         g0_params=None,
         g1_params=None,
         m_params=None,
-        trimming_threshold=1e-12,
     ):
-        ml_g0 = clone(learner_g)
-        ml_g1 = clone(learner_g)
-        dx = np.column_stack((d, x))
+        ml_g0 = clone(self.learner_g)
+        ml_g1 = clone(self.learner_g)
+        dx = np.column_stack((self.d, self.x))
 
-        train_cond_d0 = np.where(treated == 0)[0]
-        if is_classifier(learner_g):
-            g_hat0_list = fit_predict_proba(y, dx, ml_g0, g0_params, smpls, train_cond=train_cond_d0)
+        train_cond_d0 = np.where(self.treated == 0)[0]
+        if is_classifier(self.learner_g):
+            g_hat0_list = fit_predict_proba(self.y, dx, ml_g0, g0_params, smpls, train_cond=train_cond_d0)
         else:
-            g_hat0_list = fit_predict(y, dx, ml_g0, g0_params, smpls, train_cond=train_cond_d0)
+            g_hat0_list = fit_predict(self.y, dx, ml_g0, g0_params, smpls, train_cond=train_cond_d0)
 
-        train_cond_d1 = np.where(treated == 1)[0]
-        if is_classifier(learner_g):
-            g_hat1_list = fit_predict_proba(y, x, ml_g1, g1_params, smpls, train_cond=train_cond_d1)
+        train_cond_d1 = np.where(self.treated == 1)[0]
+        if is_classifier(self.learner_g):
+            g_hat1_list = fit_predict_proba(self.y, self.x, ml_g1, g1_params, smpls, train_cond=train_cond_d1)
         else:
-            g_hat1_list = fit_predict(y, x, ml_g1, g1_params, smpls, train_cond=train_cond_d1)
+            g_hat1_list = fit_predict(self.y, self.x, ml_g1, g1_params, smpls, train_cond=train_cond_d1)
 
-        ml_m = clone(learner_m)
-        m_hat_list = fit_predict_proba(treated, x, ml_m, m_params, smpls, trimming_threshold=trimming_threshold)
+        ml_m = clone(self.learner_m)
+        # Turned off trimming_threshold for debugging. Turn it back on.
+        m_hat_list = fit_predict_proba(self.treated, self.x, ml_m, m_params, smpls, trimming_threshold=0)
 
         return g_hat0_list, g_hat1_list, m_hat_list
 
-    def compute_residuals(y, g_hat0_list, g_hat1_list, m_hat_list, smpls):
-        u_hat0 = np.full_like(y, np.nan, dtype="float64")
-        u_hat1 = np.full_like(y, np.nan, dtype="float64")
-        g_hat0 = np.full_like(y, np.nan, dtype="float64")
-        g_hat1 = np.full_like(y, np.nan, dtype="float64")
-        m_hat = np.full_like(y, np.nan, dtype="float64")
+    def compute_residuals(
+        self,
+        smpls,
+        g_hat0_list,
+        g_hat1_list,
+        m_hat_list,
+    ):
+        u_hat0 = np.full_like(self.y, np.nan, dtype="float64")
+        u_hat1 = np.full_like(self.y, np.nan, dtype="float64")
+        g_hat0 = np.full_like(self.y, np.nan, dtype="float64")
+        g_hat1 = np.full_like(self.y, np.nan, dtype="float64")
+        m_hat = np.full_like(self.y, np.nan, dtype="float64")
         for idx, (_, test_index) in enumerate(smpls):
-            u_hat0[test_index] = y[test_index] - g_hat0_list[idx]
-            u_hat1[test_index] = y[test_index] - g_hat1_list[idx]
+            u_hat0[test_index] = self.y[test_index] - g_hat0_list[idx]
+            u_hat1[test_index] = self.y[test_index] - g_hat1_list[idx]
             g_hat0[test_index] = g_hat0_list[idx]
             g_hat1[test_index] = g_hat1_list[idx]
             m_hat[test_index] = m_hat_list[idx]
@@ -132,69 +123,70 @@ class ManualMedP:
         _check_is_propensity(m_hat, "learner_m", "ml_m", smpls, eps=1e-12)
         return u_hat0, u_hat1, g_hat0, g_hat1, m_hat
 
-    def med_dml2(y, x, d, m, treated, g_hat0_list, g_hat1_list, m_hat_list, smpls, normalize_ipw):
-        n_obs = len(y)
-        u_hat0, u_hat1, g_hat0, g_hat1, m_hat = ManualMedP.compute_residuals(y, g_hat0_list, g_hat1_list, m_hat_list, smpls)
+    def med_dml2(
+        self,
+        smpls,
+        g_hat0_list,
+        g_hat1_list,
+        m_hat_list,
+    ):
+        n_obs = len(self.y)
+        u_hat0, u_hat1, g_hat0, g_hat1, m_hat = self.compute_residuals(
+            smpls,
+            g_hat0_list,
+            g_hat1_list,
+            m_hat_list,
+        )
 
-        if normalize_ipw:
-            m_hat_adj = _normalize_ipw(m_hat, treated)
+        if self.normalize_ipw:
+            m_hat_adj = _normalize_ipw(m_hat, self.treated)
         else:
             m_hat_adj = m_hat
 
-        theta_hat = ManualMedP.med_orth(
+        theta_hat = self.med_orth(
             g_hat0=g_hat0,
             g_hat1=g_hat1,
             m_hat=m_hat_adj,
             u_hat1=u_hat1,
-            treated=treated,
         )
 
-        se = np.sqrt(ManualMedP.var_med(theta_hat, g_hat0, g_hat1, m_hat_adj, u_hat0, u_hat1, treated, n_obs))
+        se = np.sqrt(self.var_med(theta_hat, g_hat0, g_hat1, m_hat_adj, u_hat0, u_hat1, n_obs))
 
         return theta_hat, se
 
     def med_orth(
+        self,
         g_hat0,
         g_hat1,
         m_hat,
         u_hat1,
-        treated,
     ):
-        res = np.mean(g_hat1 + np.divide(np.multiply(treated, u_hat1), m_hat))
+        res = np.mean(g_hat1 + np.divide(np.multiply(self.treated, u_hat1), m_hat))
         return res
 
-    def var_med(theta, g_hat0, g_hat1, m_hat, u_hat0, u_hat1, treated, n_obs):
-        var = 1 / n_obs * np.mean(np.power(g_hat1 + np.divide(np.multiply(treated, u_hat1), m_hat) - theta, 2))
+    def var_med(self, theta, g_hat0, g_hat1, m_hat, u_hat0, u_hat1, n_obs):
+        var = 1 / n_obs * np.mean(np.power(g_hat1 + np.divide(np.multiply(self.treated, u_hat1), m_hat) - theta, 2))
         return var
 
     def boot_med(
-        y,
-        d,
-        treatment_level,
+        self,
         thetas,
         ses,
         all_g_hat0,
         all_g_hat1,
         all_m_hat,
-        all_smpls,
         bootstrap,
         n_rep_boot,
-        n_rep=1,
-        normalize_ipw=True,
     ):
-        treated = d == treatment_level
 
         all_boot_t_stat = list()
-        for i_rep in range(n_rep):
-            smpls = all_smpls[i_rep]
-            n_obs = len(y)
+        for i_rep in range(self.n_rep):
+            smpls = self.all_smpls[i_rep]
+            n_obs = len(self.y)
 
             weights = draw_weights(bootstrap, n_rep_boot, n_obs)
-            boot_t_stat = ManualMedP.boot_med_single_split(
+            boot_t_stat = self.boot_med_single_split(
                 thetas[i_rep],
-                y,
-                d,
-                treated,
                 all_g_hat0[i_rep],
                 all_g_hat1[i_rep],
                 all_m_hat[i_rep],
@@ -202,7 +194,6 @@ class ManualMedP:
                 ses[i_rep],
                 weights,
                 n_rep_boot,
-                normalize_ipw,
             )
             all_boot_t_stat.append(boot_t_stat)
 
@@ -211,10 +202,8 @@ class ManualMedP:
         return boot_t_stat
 
     def boot_med_single_split(
+        self,
         theta,
-        y,
-        d,
-        treated,
         g_hat0_list,
         g_hat1_list,
         m_hat_list,
@@ -222,35 +211,42 @@ class ManualMedP:
         se,
         weights,
         n_rep_boot,
-        normalize_ipw,
     ):
-        _, u_hat1, _, g_hat1, m_hat = ManualMedP.compute_residuals(y, g_hat0_list, g_hat1_list, m_hat_list, smpls)
+        _, u_hat1, _, g_hat1, m_hat = self.compute_residuals(
+            smpls,
+            g_hat0_list,
+            g_hat1_list,
+            m_hat_list,
+        )
 
-        if normalize_ipw:
-            m_hat_adj = _normalize_ipw(m_hat, treated)
+        if self.normalize_ipw:
+            m_hat_adj = _normalize_ipw(m_hat, self.treated)
         else:
             m_hat_adj = m_hat
 
         J = -1.0
-        psi = g_hat1 + np.divide(np.multiply(treated, u_hat1), m_hat_adj) - theta
+        psi = g_hat1 + np.divide(np.multiply(self.treated, u_hat1), m_hat_adj) - theta
         boot_t_stat = boot_manual(psi, J, smpls, se, weights, n_rep_boot)
 
         return boot_t_stat
 
-    def fit_sensitivity_elements_med(y, d, treatment_level, all_coef, predictions, n_rep, normalize_ipw):
+    def fit_sensitivity_elements_med(
+        self,
+        all_coef,
+        predictions,
+    ):
         n_treat = 1
-        n_obs = len(y)
-        treated = d == treatment_level
+        n_obs = len(self.y)
 
-        sigma2 = np.full(shape=(1, n_rep, n_treat), fill_value=np.nan)
-        nu2 = np.full(shape=(1, n_rep, n_treat), fill_value=np.nan)
-        psi_sigma2 = np.full(shape=(n_obs, n_rep, n_treat), fill_value=np.nan)
-        psi_nu2 = np.full(shape=(n_obs, n_rep, n_treat), fill_value=np.nan)
+        sigma2 = np.full(shape=(1, self.n_rep, n_treat), fill_value=np.nan)
+        nu2 = np.full(shape=(1, self.n_rep, n_treat), fill_value=np.nan)
+        psi_sigma2 = np.full(shape=(n_obs, self.n_rep, n_treat), fill_value=np.nan)
+        psi_nu2 = np.full(shape=(n_obs, self.n_rep, n_treat), fill_value=np.nan)
 
-        for i_rep in range(n_rep):
+        for i_rep in range(self.n_rep):
             m_hat = predictions["ml_m"][:, i_rep, 0]
-            if normalize_ipw:
-                m_hat_adj = _normalize_ipw(m_hat, treated)
+            if self.normalize_ipw:
+                m_hat_adj = _normalize_ipw(m_hat, self.treated)
             else:
                 m_hat_adj = m_hat
             g_hat0 = predictions["ml_g_d0"][:, i_rep, 0]
@@ -259,13 +255,15 @@ class ManualMedP:
             weights = np.ones_like(d)
             weights_bar = np.ones_like(d)
 
-            sigma2_score_element = np.square(y - np.multiply(treated, g_hat1) - np.multiply(1.0 - treated, g_hat0))
+            sigma2_score_element = np.square(
+                self.y - np.multiply(self.treated, g_hat1) - np.multiply(1.0 - self.treated, g_hat0)
+            )
             sigma2[0, i_rep, 0] = np.mean(sigma2_score_element)
             psi_sigma2[:, i_rep, 0] = sigma2_score_element - sigma2[0, i_rep, 0]
 
             # calc m(W,alpha) and Riesz representer
             m_alpha = np.multiply(weights, np.multiply(weights_bar, np.divide(1.0, m_hat_adj)))
-            rr = np.multiply(weights_bar, np.divide(treated, m_hat_adj))
+            rr = np.multiply(weights_bar, np.divide(self.treated, m_hat_adj))
 
             nu2_score_element = np.multiply(2.0, m_alpha) - np.square(rr)
             nu2[0, i_rep, 0] = np.mean(nu2_score_element)
@@ -275,10 +273,7 @@ class ManualMedP:
         return element_dict
 
     def tune_nuisance_med(
-        y,
-        x,
-        d,
-        treatment_level,
+        self,
         ml_g,
         ml_m,
         smpls,
@@ -286,15 +281,14 @@ class ManualMedP:
         param_grid_g,
         param_grid_m,
     ):
-        dx = np.column_stack((d, x))
-        train_cond_d0 = np.where(d != treatment_level)[0]
-        g0_tune_res = tune_grid_search(y, dx, ml_g, smpls, param_grid_g, n_folds_tune, train_cond=train_cond_d0)
+        dx = np.column_stack((self.d, self.x))
+        train_cond_d0 = np.where(self.d != self.treatment_level)[0]
+        g0_tune_res = tune_grid_search(self.y, dx, ml_g, smpls, param_grid_g, n_folds_tune, train_cond=train_cond_d0)
 
-        train_cond_d1 = np.where(d == treatment_level)[0]
-        g1_tune_res = tune_grid_search(y, x, ml_g, smpls, param_grid_g, n_folds_tune, train_cond=train_cond_d1)
+        train_cond_d1 = np.where(self.d == self.treatment_level)[0]
+        g1_tune_res = tune_grid_search(self.y, self.x, ml_g, smpls, param_grid_g, n_folds_tune, train_cond=train_cond_d1)
 
-        treated = d == treatment_level
-        m_tune_res = tune_grid_search(treated, x, ml_m, smpls, param_grid_m, n_folds_tune)
+        m_tune_res = tune_grid_search(self.treated, self.x, ml_m, smpls, param_grid_m, n_folds_tune)
 
         g0_best_params = [xx.best_params_ for xx in g0_tune_res]
         g1_best_params = [xx.best_params_ for xx in g1_tune_res]
