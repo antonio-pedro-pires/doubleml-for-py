@@ -96,9 +96,10 @@ class ManualMedP:
             g_hat1_list = fit_predict(self.y, self.x, ml_g1, g1_params, smpls, train_cond=train_cond_d1)
 
         ml_m = clone(self.learner_m)
+        ###Debugging
         # Turned off trimming_threshold for debugging. Turn it back on.
         m_hat_list = fit_predict_proba(self.treated, self.x, ml_m, m_params, smpls, trimming_threshold=0)
-
+        ###
         return g_hat0_list, g_hat1_list, m_hat_list
 
     def compute_residuals(
@@ -137,11 +138,13 @@ class ManualMedP:
             g_hat1_list,
             m_hat_list,
         )
-
-        if self.normalize_ipw:
-            m_hat_adj = _normalize_ipw(m_hat, self.treated)
-        else:
-            m_hat_adj = m_hat
+        #### Debugging
+        # if self.normalize_ipw:
+        #   m_hat_adj = _normalize_ipw(m_hat, self.treated)
+        # else:
+        #    m_hat_adj = m_hat
+        m_hat_adj = m_hat
+        ####
 
         theta_hat = self.med_orth(
             g_hat0=g_hat0,
@@ -161,7 +164,7 @@ class ManualMedP:
         m_hat,
         u_hat1,
     ):
-        res = np.mean(g_hat1 + np.divide(np.multiply(self.treated, u_hat1), m_hat))
+        res = np.mean(g_hat1 + np.multiply(np.divide(self.treated, m_hat), u_hat1))
         return res
 
     def var_med(self, theta, g_hat0, g_hat1, m_hat, u_hat0, u_hat1, n_obs):
@@ -218,12 +221,13 @@ class ManualMedP:
             g_hat1_list,
             m_hat_list,
         )
-
-        if self.normalize_ipw:
-            m_hat_adj = _normalize_ipw(m_hat, self.treated)
-        else:
-            m_hat_adj = m_hat
-
+        ###Debugging
+        # if self.normalize_ipw:
+        #    m_hat_adj = _normalize_ipw(m_hat, self.treated)
+        # else:
+        #    m_hat_adj = m_hat
+        m_hat_adj = m_hat
+        ###
         J = -1.0
         psi = g_hat1 + np.divide(np.multiply(self.treated, u_hat1), m_hat_adj) - theta
         boot_t_stat = boot_manual(psi, J, smpls, se, weights, n_rep_boot)

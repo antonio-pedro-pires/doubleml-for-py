@@ -186,7 +186,7 @@ class DoubleMLMEDP(LinearScoreMixin, DoubleML):
             m_hat = _dml_cv_predict(
                 self._learner["ml_m"],
                 x,
-                d,
+                self.treated,
                 smpls=smpls,
                 n_jobs=n_jobs_cv,
                 est_params=self._get_params("ml_m"),
@@ -544,7 +544,7 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
             m_hat = _dml_cv_predict(
                 self._learner["ml_m"],
                 x,
-                d,
+                self.treated,
                 smpls=smpls,
                 n_jobs=n_jobs_cv,
                 est_params=self._get_params("ml_m"),

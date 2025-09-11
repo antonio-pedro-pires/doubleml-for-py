@@ -115,21 +115,17 @@ class TestPotentialOutcomes:
     @pytest.fixture(
         scope="module",
         params=[
-            0,
-            1,
+            [
+                0,
+                0,
+            ],
+            [
+                1,
+                1,
+            ],
         ],
     )
-    def treatment_level(self, request):
-        return request.param
-
-    @pytest.fixture(
-        scope="module",
-        params=[
-            0,
-            1,
-        ],
-    )
-    def mediation_level(self, request):
+    def treatment_mediation_level(self, request):
         return request.param
 
     @pytest.fixture(scope="module")
@@ -145,12 +141,12 @@ class TestPotentialOutcomes:
         outcome_scoring,
         normalize_ipw,
         trimming_threshold,
-        treatment_level,
-        mediation_level,
+        treatment_mediation_level,
         n_rep_boot,
         n_folds,
     ):
         boot_methods = ["normal"]
+        treatment_level, mediation_level = treatment_mediation_level
 
         # Set machine learning methods for m & g
         ml_g = clone(learner[0])
@@ -164,7 +160,7 @@ class TestPotentialOutcomes:
             ml_g=ml_g,
             ml_m=ml_m,
             score="MED",
-            score_function="efficient-alt",
+            score_function="efficient",
             n_folds=2,
             normalize_ipw=normalize_ipw,
             draw_sample_splitting=False,
@@ -177,7 +173,17 @@ class TestPotentialOutcomes:
 
         np.random.seed(3141)
         manual_med = outcome_scoring[1](
-            y, x, d, m, clone(learner[0]), clone(learner[1]), treatment_level, all_smpls, 1, normalize_ipw, trimming_threshold
+            y,
+            x,
+            d,
+            m,
+            learner_g=clone(learner[0]),
+            learner_m=clone(learner[1]),
+            treatment_level=treatment_level,
+            all_smpls=all_smpls,
+            n_rep=1,
+            normalize_ipw=normalize_ipw,
+            trimming_threshold=trimming_threshold,
         )
         res_manual = manual_med.fit_med()
 
@@ -190,7 +196,7 @@ class TestPotentialOutcomes:
             ml_g=ml_g,
             ml_m=ml_m,
             score="MED",
-            score_function="efficient-alt",
+            score_function="efficient",
             n_folds=2,
             normalize_ipw=normalize_ipw,
             draw_sample_splitting=False,
