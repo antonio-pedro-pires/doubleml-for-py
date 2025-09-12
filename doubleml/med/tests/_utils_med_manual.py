@@ -98,7 +98,7 @@ class ManualMedP:
         ml_m = clone(self.learner_m)
         ###Debugging
         # Turned off trimming_threshold for debugging. Turn it back on.
-        m_hat_list = fit_predict_proba(self.treated, self.x, ml_m, m_params, smpls, trimming_threshold=0)
+        m_hat_list = fit_predict_proba(self.treated, self.x, ml_m, m_params, smpls, trimming_threshold=self.trimming_threshold)
         ###
         return g_hat0_list, g_hat1_list, m_hat_list
 
