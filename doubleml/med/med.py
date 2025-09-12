@@ -7,6 +7,7 @@ from doubleml.double_ml_score_mixins import LinearScoreMixin
 from doubleml.med.utils._med_utils import _normalize_propensity_med
 from doubleml.utils._checks import _check_finite_predictions, _check_score
 from doubleml.utils._estimation import _cond_targets, _dml_cv_predict, _dml_tune, _get_cond_smpls, _get_cond_smpls_2d
+from doubleml.utils._propensity_score import _trimm
 
 
 # TODO: Transplant methods into utils documents.
@@ -194,6 +195,9 @@ class DoubleMLMEDP(LinearScoreMixin, DoubleML):
                 return_models=return_models,
             )
 
+        # trimm external predictions
+        m_hat["preds"] = _trimm(m_hat["preds"], self.trimming_rule, self.trimming_threshold)
+
         if g_1_external:
             g_1_hat = {
                 "preds": external_predictions["ml_g_1"],
@@ -243,7 +247,6 @@ class DoubleMLMEDP(LinearScoreMixin, DoubleML):
         #    self.score_function,
         #    self.treated,
         # )
-
         psi_a = -1.0
         psi_b = np.multiply(np.divide(self.treated, m_hat), u_hat) + g_1_hat
         return psi_a, psi_b
