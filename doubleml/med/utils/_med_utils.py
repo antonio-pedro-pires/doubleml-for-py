@@ -2,17 +2,22 @@ import numpy as np
 
 
 # TODO: refactor so that it takes multiple columns and multiple conditions for trimming.
-def _trim_probabilities(preds, trimming_threshold, method="both"):
-    if method == "both":
-        lower_bound = trimming_threshold
-        upper_bound = 1 - trimming_threshold
-        preds = preds[(preds >= lower_bound) & (preds <= upper_bound)]
-    elif method == "higher":
-        preds = preds[(preds <= trimming_threshold)]
-    elif method == "lower":
-        preds = preds[preds >= trimming_threshold]
-    return preds
+def _trim_probabilities(preds, trimming_threshold=None, method=None, conditions=None):
+    if preds.ndim == 1:
+        if conditions!=None:
+            return np.array(preds)[conditions]
+        if method == "both":
+            lower_bound = trimming_threshold
+            upper_bound = 1 - trimming_threshold
+            preds = preds[(preds >= lower_bound) & (preds <= upper_bound)]
+        elif method == "higher":
+            preds = preds[(preds <= trimming_threshold)]
+        elif method == "lower":
+            preds = preds[preds >= trimming_threshold]
+    else:
+        return np.array(preds)[:, conditions]  # selects columns based on conditions
 
+    return preds
 
 def _normalize_propensity_med(
     normalize_ipw,

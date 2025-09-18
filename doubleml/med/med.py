@@ -247,7 +247,6 @@ class DoubleMLMEDP(LinearScoreMixin, DoubleML):
         #    self.score_function,
         #    self.treated,
         # )
-
         psi_a = -1.0
         psi_b = np.multiply(np.divide(self.treated, m_hat), u_hat) + g_1_hat
         return psi_a, psi_b

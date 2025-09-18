@@ -58,6 +58,10 @@ def test_trim_probabilities_1d(method_threshold_expected_array):
     assert np.array_equal(trimmed_array, expected_array)
 
 
-def test_trim_probabilities_nd(method_threshold_expected_array):
-    # TODO: test and create function for trimming multiple arrays.
-    pass
+def test_trim_probabilities_nd():
+    full_array = np.array([np.linspace(0, 1, num=10, endpoint=False), np.linspace(1, 0, num=10, endpoint=False)])
+    mask = (full_array[0] <= 0.7) & (full_array[1] >= 0.2)
+    expected_array = np.array([full_array[0][mask], full_array[1][mask]])
+    trimmed_array = _trim_probabilities(full_array, conditions=mask)
+
+    assert np.array_equal(trimmed_array, expected_array)
