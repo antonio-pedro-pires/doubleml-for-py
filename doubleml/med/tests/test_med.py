@@ -289,7 +289,7 @@ class TestPotentialOutcomes:
             )
 
 
-class MEDCounterfactualEstimation:
+class TestCounterfactualOutcomes:
     @pytest.fixture(
         scope="module",
         params=[
