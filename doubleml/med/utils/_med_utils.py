@@ -1,4 +1,5 @@
 import numpy as np
+from sklearn.model_selection import train_test_split
 
 
 # TODO: refactor so that it takes multiple columns and multiple conditions for trimming.
@@ -83,3 +84,22 @@ def _normalize_counterfactual_alt(treatment_indicator, propensity_score, propens
     )
     propensity_coef2 = np.multiply(np.divide(1.0 - treatment_indicator, 1.0 - propensity_score), mean_treat2)
     return [propensity_coef1, propensity_coef2]
+
+def separate_samples_for_nested_estimator(smpls, smpls_ratio,):
+    if ((smpls is None) or (not smpls)):
+        raise ValueError("the smpls array is empty")
+    if smpls_ratio == None:
+        raise ValueError("smpls_ratio must be a float between 0.0 and 1.0")
+
+    results = []
+    for idx, (train_index, test_index) in enumerate(smpls):
+        deltasample, musample = train_test_split(train_index, test_size=smpls_ratio)
+        results.append((deltasample, musample, train_index, test_index))
+    return results
+
+def fit_predict_nested_estimator(estimator, x, y, smpls=None, est_params=None):
+    # Separate smpls into delta, mu, test, train samples.
+    # Fit estimators using necessary smpls (may reuse _dml_cv_predict function for that)
+    # Predict using necessary smpls
+    # Return with the given structure
+    pass

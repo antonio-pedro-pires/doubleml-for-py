@@ -1,7 +1,10 @@
+import random
+
 import numpy as np
+from sklearn.model_selection import train_test_split
 import pytest
 
-from doubleml.med.utils._med_utils import _trim_probabilities
+from doubleml.med.utils._med_utils import _trim_probabilities, separate_samples_for_nested_estimator
 
 
 @pytest.fixture(
@@ -65,3 +68,38 @@ def test_trim_probabilities_nd():
     trimmed_array = _trim_probabilities(full_array, conditions=mask)
 
     assert np.array_equal(trimmed_array, expected_array)
+
+
+@pytest.fixture(
+    scope="module",
+    params=[
+        [[np.linspace(0, 100, 100, endpoint=False, dtype=int)]],
+        [[np.linspace(0, 100, 100, endpoint=False, dtype=int), np.linspace(101, 200, 100, endpoint=False, dtype=int)]],
+    ],
+)
+def smpls(request):
+    full_smpls = request.param[0]
+    train_test_smpls = []
+    np.random.seed(10)
+    for idx, smpl in enumerate(full_smpls):
+        train_idx, test_idx = train_test_split(smpl, test_size=0.7)
+        train_test_smpls.append((train_idx, test_idx))
+    return train_test_smpls
+
+
+def test_separate_samples_for_nested_estimator(smpls):
+    smpls_ratio = 0.5
+
+    np.random.seed(10)
+    expected_smpls = []
+    for idx, (train_idx, test_idx) in enumerate(smpls):
+        expected_delta, expected_mu = train_test_split(train_idx, test_size=smpls_ratio)
+        expected_smpls.append((expected_delta, expected_mu, train_idx, test_idx))
+
+    np.random.seed(10)
+    actual_smpls = separate_samples_for_nested_estimator(
+        smpls,
+        smpls_ratio,
+    )
+    for a, e in zip(actual_smpls, expected_smpls):
+        np.array_equal(a, e)
