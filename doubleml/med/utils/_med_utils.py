@@ -85,21 +85,57 @@ def _normalize_counterfactual_alt(treatment_indicator, propensity_score, propens
     propensity_coef2 = np.multiply(np.divide(1.0 - treatment_indicator, 1.0 - propensity_score), mean_treat2)
     return [propensity_coef1, propensity_coef2]
 
-def separate_samples_for_nested_estimator(smpls, smpls_ratio,):
+def extract_sets_from_smpls(smpls, index=0):
+    """
+    Extracts the train or test indices from smpls
+
+    Parameters
+    ----------
+    idx : integer
+        When idx equals 0, extracts the train indices from smpls
+        When idx equals 1, extracts the test indices from smpls
+    """
+    assert index <= 1
+    results=[]
+    for train_test_smpls in smpls:
+        results.append(train_test_smpls[index])
+    return results
+
+def divide_samples(smpls, smpls_ratio, ):
+    """
+    Separate samples for the estimation of the nested estimator to be used with the efficient-alt scoring function.
+
+    Parameters
+    ----------
+    smpls_ratio : float
+        Describes the ratio of observations in the musample
+
+    Returns
+    -------
+    results : a list of tuples of ndarrays
+        Contains the indexes of the subsamples (mu, delta, train and test)
+    """
     if ((smpls is None) or (not smpls)):
         raise ValueError("the smpls array is empty")
     if smpls_ratio == None:
         raise ValueError("smpls_ratio must be a float between 0.0 and 1.0")
 
     results = []
-    for idx, (train_index, test_index) in enumerate(smpls):
-        deltasample, musample = train_test_split(train_index, test_size=smpls_ratio)
-        results.append((deltasample, musample, train_index, test_index))
+    subsample1=[]
+    subsample2=[]
+    for smpl in smpls:
+        subsample1_idx, subsample2_idx = train_test_split(smpl, test_size=smpls_ratio)
+        subsample1.append(subsample1_idx)
+        subsample2.append(subsample2_idx)
+    results.append((subsample1, subsample2))
     return results
 
-def fit_predict_nested_estimator(estimator, x, y, smpls=None, est_params=None):
-    # Separate smpls into delta, mu, test, train samples.
-    # Fit estimators using necessary smpls (may reuse _dml_cv_predict function for that)
-    # Predict using necessary smpls
-    # Return with the given structure
-    pass
+def recombine_samples(subsmpls1, subsmpls2,):
+    # Take only the samples of interest and recombine them.
+        # Need indexes to know which sample to recombine
+        # Loop through each smpls to get the targeted sample
+        # Create new samples made up of subsamples
+    result=[]
+    for s1, s2 in zip(subsmpls1, subsmpls2):
+        result.append((s1, s2))
+    return result

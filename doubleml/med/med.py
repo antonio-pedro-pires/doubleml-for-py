@@ -4,7 +4,7 @@ from sklearn.utils import check_consistent_length, check_X_y
 from doubleml import DoubleMLMediationData
 from doubleml.double_ml import DoubleML
 from doubleml.double_ml_score_mixins import LinearScoreMixin
-from doubleml.med.utils._med_utils import _normalize_propensity_med
+from doubleml.med.utils._med_utils import _normalize_propensity_med, divide_samples, recombine_samples
 from doubleml.utils._checks import _check_finite_predictions, _check_score
 from doubleml.utils._estimation import _cond_targets, _dml_cv_predict, _dml_tune, _get_cond_smpls, _get_cond_smpls_2d
 from doubleml.utils._propensity_score import _trimm
@@ -196,7 +196,7 @@ class DoubleMLMEDP(LinearScoreMixin, DoubleML):
             )
 
         # trimm external predictions
-        m_hat["preds"] = _trimm(m_hat["preds"], self.trimming_rule, self.trimming_threshold)
+#        m_hat["preds"] = _trimm(m_hat["preds"], self.trimming_rule, self.trimming_threshold)
 
         if g_1_external:
             g_1_hat = {
@@ -541,6 +541,7 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
         smpls_d0, smpls_d1 = _get_cond_smpls(smpls, self.treated)
         _, _, smpls_d1_m0, smpls_d1_m1 = _get_cond_smpls_2d(smpls, self.treated, self.mediated)
 
+        # Estimate the probability of treatment conditional on the covariates.
         if m_external:
             m_hat = {"preds": external_predictions["ml_m"], "targets": None, "models": None}
         else:
@@ -554,32 +555,8 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
                 method=self._predict_method["ml_m"],
                 return_models=return_models,
             )
-        if g_d1_m1_external:
-            g_d1_m1_hat = {"preds": external_predictions["ml_g_d1_m1"], "targets": None, "models": None}
-        else:
-            g_d1_m1_hat = _dml_cv_predict(
-                self._learner["ml_g_d1_m1"],
-                x,
-                y,
-                smpls=smpls_d1_m1,
-                n_jobs=n_jobs_cv,
-                est_params=self._get_params("ml_g_d1_m1"),
-                method=self._predict_method["ml_g_d1_m1"],
-                return_models=return_models,
-            )
-        if g_d1_m0_external:
-            g_d1_m0_hat = {"preds": external_predictions["ml_g_d1_m0"], "targets": None, "models": None}
-        else:
-            g_d1_m0_hat = _dml_cv_predict(
-                self._learner["ml_g_d1_m0"],
-                x,
-                d,
-                smpls=smpls_d1_m0,
-                n_jobs=n_jobs_cv,
-                est_params=self._get_params("ml_g_d1_m0"),
-                method=self._predict_method["ml_g_d1_m0"],
-                return_models=return_models,
-            )
+
+        # Estimate the probability of treatment conditional on the mediator and covariates.
         if med_d1_external:
             med_d1_hat = {"preds": external_predictions["ml_med_d1"], "targets": None, "models": None}
         else:
@@ -607,6 +584,36 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
                 return_models=return_models,
             )
 
+        # Estimate the conditional expectation of outcome Y given D, M, and X.
+        #TODO: Add smpls_ratio as a parameter
+        smpls_ratio=0.5
+        mu_delta_smpls = divide_samples(smpls, smpls_ratio)
+        if g_d1_m1_external:
+            g_d1_m1_hat = {"preds": external_predictions["ml_g_d1_m1"], "targets": None, "models": None}
+        else:
+            g_d1_m1_hat = _dml_cv_predict(
+                self._learner["ml_g_d1_m1"],
+                x,
+                y,
+                smpls=smpls_d1_m1,
+                n_jobs=n_jobs_cv,
+                est_params=self._get_params("ml_g_d1_m1"),
+                method=self._predict_method["ml_g_d1_m1"],
+                return_models=return_models,
+            )
+        if g_d1_m0_external:
+            g_d1_m0_hat = {"preds": external_predictions["ml_g_d1_m0"], "targets": None, "models": None}
+        else:
+            g_d1_m0_hat = _dml_cv_predict(
+                self._learner["ml_g_d1_m0"],
+                x,
+                d,
+                smpls=smpls_d1_m0,
+                n_jobs=n_jobs_cv,
+                est_params=self._get_params("ml_g_d1_m0"),
+                method=self._predict_method["ml_g_d1_m0"],
+                return_models=return_models,
+            )
         preds = {
             "predictions": {
                 "ml_m": m_hat["preds"],

@@ -438,7 +438,8 @@ class ManualMedC:
             med_d0_hat_list = fit_predict(y, x, ml_med_d0, med_d0_params, smpls, train_cond=train_cond_d0)
 
         ml_m = clone(learner_m)
-        m_hat_list = fit_predict_proba(treated, x, ml_m, m_params, smpls, trimming_threshold=trimming_threshold)
+        # TODO: reset trimming_threshold to parameter
+        m_hat_list = fit_predict_proba(treated, x, ml_m, m_params, smpls, trimming_threshold=0)
 
         return g_d1_m1_hat_list, g_d1_m0_hat_list, med_d1_hat_list, med_d0_hat_list, m_hat_list
 
