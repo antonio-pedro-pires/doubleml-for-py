@@ -1,11 +1,14 @@
 import numpy as np
+import copy
+from joblib import Parallel
+from sklearn.base import clone
+from sklearn.model_selection import train_test_split
 from sklearn.utils import check_consistent_length, check_X_y
 
 from doubleml import DoubleMLMediationData
 from doubleml.double_ml import DoubleML
 from doubleml.double_ml_score_mixins import LinearScoreMixin
-from doubleml.med.utils._med_utils import _normalize_propensity_med, split_smpls, recombine_samples, \
-    extract_sets_from_smpls
+from doubleml.med.utils._med_utils import _normalize_propensity_med, split_smpls, recombine_samples, extract_sets_from_smpls
 from doubleml.utils._checks import _check_finite_predictions, _check_score
 from doubleml.utils._estimation import _cond_targets, _dml_cv_predict, _dml_tune, _get_cond_smpls, _get_cond_smpls_2d
 from doubleml.utils._propensity_score import _trimm
@@ -35,7 +38,6 @@ class DoubleMLMEDP(LinearScoreMixin, DoubleML):
         self,
         med_data,
         treatment_level,
-        mediation_level,
         ml_g,
         ml_m,
         score="MED",
@@ -197,7 +199,7 @@ class DoubleMLMEDP(LinearScoreMixin, DoubleML):
             )
 
         # trimm external predictions
-#        m_hat["preds"] = _trimm(m_hat["preds"], self.trimming_rule, self.trimming_threshold)
+        # m_hat["preds"] = _trimm(m_hat["preds"], self.trimming_rule, self.trimming_threshold)
 
         if g_1_external:
             g_1_hat = {
@@ -368,14 +370,16 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
         med_data,
         treatment_level,
         mediation_level,
-        ml_g,
-        ml_m,
-        ml_med=None,
+        ml_yx,
+        ml_ymx,
+        ml_px,
+        ml_pmx,
         ml_nested=None,
         score="MED",
         score_function="efficient-alt",
         n_folds=5,
         n_rep=1,
+        smpls_ratio=0.5,
         normalize_ipw=False,
         trimming_rule="truncate",
         trimming_threshold=1e-2,
@@ -404,31 +408,31 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
         self._mediation_level = mediation_level
         self._treated = self._med_data.d == treatment_level
         self._mediated = self._med_data.m == mediation_level
+        self.smpls_ratio = smpls_ratio
 
-        self._learner = ["ml_m", "ml_g"]
-        self._check_learner(learner=ml_m, learner_name="ml_m", regressor=False, classifier=True)
-        is_classifier_ml_g = self._check_learner(learner=ml_g, learner_name="ml_g", regressor=True, classifier=True)
-        self._predict_method = {"ml_m": "predict_proba"}
-        if is_classifier_ml_g:
-            self._predict_method["ml_g"] = "predict_proba"
+        self._learner = {"ml_px": ml_px, "ml_pmx": ml_pmx, "ml_yx": ml_yx, "ml_ymx": ml_ymx, "ml_nested": ml_nested}
+        self._check_learner(learner=ml_px, learner_name="ml_px", regressor=False, classifier=True)
+        self._check_learner(learner=ml_pmx, learner_name="ml_pmx", regressor=False, classifier=True)
+
+        is_classifier_ml_yx = self._check_learner(learner=ml_yx, learner_name="ml_yx", regressor=True, classifier=True)
+        is_classifier_ml_ymx = self._check_learner(learner=ml_ymx, learner_name="ml_ymx", regressor=True, classifier=True)
+        is_classifier_ml_nested = self._check_learner(
+            learner=ml_nested, learner_name="ml_nested", regressor=True, classifier=True
+        )
+
+        self._predict_method = {"ml_px": "predict_proba", "ml_pmx": "predict_proba"}
+        if is_classifier_ml_yx:
+            self._predict_method["ml_yx"] = "predict_proba"
         else:
-            self._predict_method["ml_g"] = "predict"
-        if score_function == "efficient":
-            self._learner.append("ml_med")
-            is_ml_med_classifier = self._check_learner(learner=ml_med, learner_name="ml_med", regressor=True, classifier=True)
-            if is_ml_med_classifier:
-                self._predict_method["ml_med"] = "predict_proba"
-            else:
-                self._predict_method["ml_med"] = "predict"
-        elif score_function == "efficient-alt":
-            self._learner.append("ml_nested")
-            is_ml_nested_classifier = self._check_learner(
-                learner=ml_nested, learner_name="ml_nested", regressor=True, classifier=True
-            )
-            if is_ml_nested_classifier:
-                self._predict_method["is_ml_nested_classifier"] = "predict_proba"
-            else:
-                self._predict_method["is_ml_nested_classifier"] = "predict"
+            self._predict_method["ml_yx"] = "predict"
+        if is_classifier_ml_ymx:
+            self._predict_method["ml_ymx"] = "predict_proba"
+        else:
+            self._predict_method["ml_ymx"] = "predict"
+        if is_classifier_ml_nested:
+            self._predict_method["ml_nested"] = "predict_proba"
+        else:
+            self._predict_method["ml_nested"] = "predict"
         self._initialize_ml_nuisance_params()
 
     @property
@@ -502,156 +506,28 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
         return self._mediation_level
 
     def _initialize_ml_nuisance_params(self):
-        if self.score_function == "efficient":
-            valid_learner = ["ml_g_d1_m1", "ml_g_d1_m0", "ml_m", "ml_med_d1", "ml_med_d0"]
-        elif self.score_function == "efficient-alt":
-            valid_learner = ["ml_g_1", "ml_g_nested", "ml_m", "ml_m_med"]
-
+        valid_learner = ["ml_px", "ml_pmx", "ml_yx", "ml_ymx", "ml_nested"]
         self._params = {learner: {key: [None] * self.n_rep for key in self._med_data.d_cols} for learner in valid_learner}
 
     def _nuisance_est(
         self,
         smpls,
-        external_predictions,
         n_jobs_cv,
+        external_predictions,
         return_models=False,
     ):
         # TODO: For each nuisance_est function, don't forget to trim predictions.
-        if self.score_function == "efficient":
-            return self._nuisance_est_counterfactual_efficient(smpls, external_predictions, n_jobs_cv, return_models)
-        elif self.score_function == "efficient-alt":
-            return self._nuisance_est_counterfactual_efficient_alt(smpls, external_predictions, n_jobs_cv, return_models)
-
-    def _nuisance_est_counterfactual_efficient(self, smpls, external_predictions, n_jobs_cv, return_models):
-        x, y = check_X_y(self._med_data.x, self._med_data.y, force_all_finite=False)
-        _, d = check_X_y(x, self._med_data.d, force_all_finite=False)
-        _, m = check_X_y(x, self._med_data.m, force_all_finite=False)
-
-        # Check whether there are external predictions for each parameter.
-        m_external = external_predictions["ml_m"] is not None
-        g_d1_m1_external = external_predictions["ml_g_d1_m1"] is not None
-        g_d1_m0_external = external_predictions["ml_g_d1_m0"] is not None
-        med_d1_external = external_predictions["ml_med_d1"] is not None
-        med_d0_external = external_predictions["ml_med_d0"] is not None
-
-        # TODO: Redo samples so that m is defined based on d
-        # smpls_d0 points to the non-treated observations, smpls_d1 points to the treated observations.
-        # smpls_d1_m0 points to the treated but not mediated observations,
-        # the other variations (d1_m1, d0_m0, d0_m1) point.
-        # to observations with different combinations of treatment and mediation present.
-        smpls_d0, smpls_d1 = _get_cond_smpls(smpls, self.treated)
-        _, _, smpls_d1_m0, smpls_d1_m1 = _get_cond_smpls_2d(smpls, self.treated, self.mediated)
-
-        # Estimate the probability of treatment conditional on the covariates.
-        if m_external:
-            m_hat = {"preds": external_predictions["ml_m"], "targets": None, "models": None}
-        else:
-            m_hat = _dml_cv_predict(
-                self._learner["ml_m"],
-                x,
-                self.treated,
-                smpls=smpls,
-                n_jobs=n_jobs_cv,
-                est_params=self._get_params("ml_m"),
-                method=self._predict_method["ml_m"],
-                return_models=return_models,
-            )
-
-        #Estimate the conditional density of the mediator given the treatment level and covariates.
-        if med_d1_external:
-            med_d1_hat = {"preds": external_predictions["ml_med_d1"], "targets": None, "models": None}
-        else:
-            med_d1_hat = _dml_cv_predict(
-                self._learner["ml_med_d1"],
-                x,
-                y,
-                smpls=smpls_d1,
-                n_jobs=n_jobs_cv,
-                est_params=self._get_params("ml_med_d1"),
-                method=self._predict_method["ml_med_d1"],
-                return_models=return_models,
-            )
-        if med_d0_external:
-            med_d0_hat = {"preds": external_predictions["ml_med_d0"], "targets": None, "models": None}
-        else:
-            med_d0_hat = _dml_cv_predict(
-                self._learner["ml_med_d0"],
-                x,
-                y,
-                smpls=smpls_d0,
-                n_jobs=n_jobs_cv,
-                est_params=self._get_params("ml_med_d0"),
-                method=self._predict_method["ml_med_d0"],
-                return_models=return_models,
-            )
-
-        # Estimate the probability of the outcome conditional on treatment level, mediation level and covariates.
-        if g_d1_m1_external:
-            g_d1_m1_hat = {"preds": external_predictions["ml_g_d1_m1"], "targets": None, "models": None}
-        else:
-            g_d1_m1_hat = _dml_cv_predict(
-                self._learner["ml_g_d1_m1"],
-                x,
-                y,
-                smpls=smpls_d1_m1,
-                n_jobs=n_jobs_cv,
-                est_params=self._get_params("ml_g_d1_m1"),
-                method=self._predict_method["ml_g_d1_m1"],
-                return_models=return_models,
-            )
-        if g_d1_m0_external:
-            g_d1_m0_hat = {"preds": external_predictions["ml_g_d1_m0"], "targets": None, "models": None}
-        else:
-            g_d1_m0_hat = _dml_cv_predict(
-                self._learner["ml_g_d1_m0"],
-                x,
-                d,
-                smpls=smpls_d1_m0,
-                n_jobs=n_jobs_cv,
-                est_params=self._get_params("ml_g_d1_m0"),
-                method=self._predict_method["ml_g_d1_m0"],
-                return_models=return_models,
-            )
-        preds = {
-            "predictions": {
-                "ml_m": m_hat["preds"],
-                "ml_g_d1_m1": g_d1_m1_hat["preds"],
-                "ml_g_d1_m0": g_d1_m0_hat["preds"],
-                "ml_med_d1": med_d1_hat["preds"],
-                "ml_med_d0": med_d0_hat["preds"],
-            },
-            "targets": {
-                "ml_m": m_hat["targets"],
-                "ml_g_d1_m1": g_d1_m1_hat["targets"],
-                "ml_g_d1_m0": g_d1_m0_hat["targets"],
-                "ml_med_d1": med_d1_hat["targets"],
-                "ml_med_d0": med_d0_hat["targets"],
-            },
-            "models": {
-                "ml_m": m_hat["models"],
-                "ml_g_d1_m1": g_d1_m1_hat["models"],
-                "ml_g_d1_m0": g_d1_m0_hat["models"],
-                "ml_med_d1": med_d1_hat["models"],
-                "ml_med_d0": med_d0_hat["models"],
-            },
-        }
-
-        psi_a, psi_b = self._score_counterfactual_outcome(y, m_hat, g_d1_m1_hat, g_d1_m0_hat, med_d1_hat, med_d0_hat, smpls)
-        psi_elements = {"psi_a": psi_a, "psi_b": psi_b}
-
-        return psi_elements, preds
-
-    def _nuisance_est_counterfactual_efficient_alt(self, smpls, external_predictions, n_jobs_cv, return_models):
         x, y = check_X_y(self._med_data.x, self._med_data.y, force_all_finite=False)
         x, d = check_X_y(x, self._med_data.d, force_all_finite=False)
         x, m = check_X_y(x, self._med_data.m, force_all_finite=False)
-        xm = np.column_stack(x, m)
+        xm = np.column_stack((x, m))
 
         # Check whether there are external predictions for each parameter.
-        m_external = external_predictions["ml_m"] is not None
-        g_1_external = external_predictions["ml_g_1"] is not None
-        g_nested_external = external_predictions["ml_g_nested"] is not None
-        m_med_external = external_predictions["ml_m_med"] is not None
+        px_external = external_predictions["ml_px"] is not None
+        pmx_external = external_predictions["ml_pmx"] is not None
+        yx_external = external_predictions["ml_yx"] is not None
+        ymx_external = external_predictions["ml_ymx"] is not None
+        nested_external = external_predictions["ml_nested"] is not None
 
         # TODO: Samples have to be split into musample and deltasample.
         # Prepare the samples
@@ -661,482 +537,232 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
         # TODO: Often required to fit learners on both samples.
         # TODO: Maybe will need to use other strategy than _dml_cv_predict()
         # Estimate the probability of treatment conditional on the covariates.
-        if m_external:
-            m_hat = {"preds": external_predictions["ml_m"], "targets": None, "models": None}
+        if px_external:
+            px_hat = {"preds": external_predictions["ml_px"], "targets": None, "models": None}
         else:
-            m_hat = _dml_cv_predict(
-                self._learner["ml_m"],
+            px_hat = _dml_cv_predict(
+                self._learner["ml_px"],
                 x,
                 d,
                 smpls=smpls,
                 n_jobs=n_jobs_cv,
-                est_params=self._get_params("ml_m"),
-                method=self._predict_method["ml_m"],
+                est_params=self._get_params("ml_px"),
+                method=self._predict_method["ml_px"],
                 return_models=return_models,
             )
 
         # Estimate the probability of treatment conditional on the mediator and covariates.
-        if m_med_external:
-            m_med_hat = {"preds": external_predictions["ml_m_med"], "targets": None, "models": None}
+        if pmx_external:
+            pmx_hat = {"preds": external_predictions["ml_pmx"], "targets": None, "models": None}
         else:
-            m_med_hat = _dml_cv_predict(
-                self._learner["ml_m_med"],
+            pmx_hat = _dml_cv_predict(
+                self._learner["ml_pmx"],
                 xm,
                 d,
                 smpls=smpls,
                 n_jobs=n_jobs_cv,
-                est_params=self._get_params("ml_m_med"),
-                method=self._predict_method["ml_m_med"],
+                est_params=self._get_params("ml_pmx"),
+                method=self._predict_method["ml_pmx"],
                 return_models=return_models,
             )
 
         # Estimate the conditional expectation of outcome Y given D, M, and X.
-        if g_1_external:
-            g_1_hat = {"preds": external_predictions["ml_g_1"], "targets": None, "models": None}
+        if yx_external:
+            yx_hat = {"preds": external_predictions["ml_yx"], "targets": None, "models": None}
         else:
-            g_1_hat = _dml_cv_predict(
-                self._learner["ml_g"],
-                xm,
+            yx_hat = _dml_cv_predict(
+                self._learner["ml_yx"],
+                x,
                 y,
                 smpls=smpls_d1,
                 n_jobs=n_jobs_cv,
-                est_params=self._get_params("ml_g_1"),
-                method=self._predict_method["ml_g"],
-                return_models=return_models,
-            )
-        if g_nested_external:
-            g_nested_hat = {"preds": external_predictions["ml_g_nested"], "targets": None, "models": None}
-        else:
-            g_nested_hat = _dml_cv_predict(
-                self._learner["ml_g_nested"],
-                x,
-                g_1_hat,
-                smpls=smpls_d1_m0,  # TODO: Change this sample
-                n_jobs=n_jobs_cv,
-                est_params=self._get_params("ml_g_nested"),
-                method=self._predict_method["ml_g_nested"],
+                est_params=self._get_params("ml_yx"),
+                method=self._predict_method["ml_yx"],
                 return_models=return_models,
             )
 
+        ymx_hat, nested_hat = self._estimate_nested_outcomes(
+            y, x, m, xm, smpls, external_predictions, n_jobs_cv, return_models, ymx_external, nested_external
+        )
         preds = {
             "predictions": {
-                "ml_m": m_hat["preds"],
-                "ml_g_1": g_1_hat["preds"],
-                "ml_g_nested": g_nested_hat["preds"],
-                "ml_m_med": m_med_hat["preds"],
+                "ml_px": px_hat["preds"],
+                "ml_pmx": pmx_hat["preds"],
+                "ml_yx": yx_hat["preds"],
+                "ml_ymx": ymx_hat["preds"],
+                "ml_nested": nested_hat["preds"],
             },
             "targets": {
-                "ml_m": m_hat["targets"],
-                "ml_g_1": g_1_hat["targets"],
-                "ml_g_nested": g_nested_hat["targets"],
-                "ml_m_med": m_med_hat["targets"],
+                "ml_px": px_hat["targets"],
+                "ml_pmx": pmx_hat["targets"],
+                "ml_yx": yx_hat["targets"],
+                "ml_ymx": ymx_hat["targets"],
+                "ml_nested": nested_hat["targets"],
             },
             "models": {
-                "ml_m": m_hat["models"],
-                "ml_g_1": g_1_hat["models"],
-                "ml_g_nested": g_nested_hat["models"],
-                "ml_m_med": m_med_hat["models"],
+                "ml_px": px_hat["models"],
+                "ml_pmx": pmx_hat["models"],
+                "ml_yx": yx_hat["models"],
+                "ml_ymx": ymx_hat["models"],
+                "ml_nested": nested_hat["models"],
             },
         }
 
-        psi_a, psi_b = self._score_counterfactual_alt_outcome(y, m_hat, g_d_hat, g_nested_hat, m_med_hat, smpls)
         psi_elements = {"psi_a": psi_a, "psi_b": psi_b}
 
         return psi_elements, preds
 
-    def _estimate_nested_outcomes(self, y, x, xm, smpls, smpls_ratio, external_predictions, n_jobs_cv, return_models, g_1_external, g_nested_external):
-        #TODO: Add smpls_ratio as a parameter
-        # Separate the training set into two disjointed sets: mu and delta.
-        train_idx, test_idx = extract_sets_from_smpls(smpls, index=0)
-        mu_idx, delta_idx = split_smpls(train_idx, smpls_ratio)
+    def _fit_predict(self, x, y, train, test, learner, nuisance, params=None, return_models=False):
+        fitted_models = {}
 
-        # Recombine the disjointed sets into a smpls like structure.
-        mu_delta_smpls = recombine_samples(mu_idx, delta_idx)
-        mu_test_smpls = recombine_samples(mu_idx, test_idx)
-        delta_test_smpls = recombine_samples(delta_idx, test_idx)
-
-        # Get samples conditional on treatment for estimation.
-        _, mu_test_smpls_d1 = _get_cond_smpls(mu_test_smpls, self.treated)
-        _, mu_delta_smpls_d1 = _get_cond_smpls(mu_delta_smpls, self.treated)
-        smpls_delta_0, _ = _get_cond_smpls(delta_test_smpls, self.treated)
-
-        if g_1_external:
-            g_1_hat = {"preds": external_predictions["ml_g_1"], "targets": None, "models": None}
+        if params is not None:
+            fitted_models[learner] = [
+                clone(self._learner[nuisance]).set_params(**params[i_fold]) for i_fold in range(self.n_folds)
+            ]
         else:
-            g_1_hat = _dml_cv_predict(
-                self._learner["ml_g"],
-                xm,
-                y,
-                smpls=mu_test_smpls_d1,
-                n_jobs=n_jobs_cv,
-                est_params=self._get_params("ml_g_1"),
-                method=self._predict_method["ml_g"],
-                return_models=return_models,
-            )
+            fitted_models[learner] = [clone(self._learner[nuisance]) for i_fold in range(self.n_folds)]
 
-        if g_nested_external:
-            g_nested_hat = {"preds": external_predictions["ml_g_nested"], "targets": None, "models": None}
-        else:
-            g_1_delta_hat = _dml_cv_predict(
-                self._learner["ml_g"],
-                xm,
-                y,
-                smpls=mu_delta_smpls_d1,
-                n_jobs=n_jobs_cv,
-                est_params=self._get_params("ml_g_1"),
-                method=self._predict_method["ml_g"],
-                return_models=return_models,
-            )
-            g_nested_hat = _dml_cv_predict(
-                self._learner["ml_g_nested"],
-                x,
-                g_1_delta_hat,
-                smpls=delta_test_smpls,  # TODO: Change this sample
-                n_jobs=n_jobs_cv,
-                est_params=self._get_params("ml_g_nested"),
-                method=self._predict_method["ml_g_nested"],
-                return_models=return_models,
-            )
+        for i_fold in range(self.n_folds):
+            fitted_models[learner].fit(x[train, :], y[train])
+            fitted_models[learner]["preds"][test] = fitted_models[learner].predict(x[test, :])
+            fitted_models[learner]["targets"][test] = y[test]
 
-        return g_1_hat, g_nested_hat
+            if return_models:
+                fitted_models[learner]["models"] = fitted_models[learner]
 
-    def _score_counterfactual_outcome(self, y, m_hat, g_d1_m1_hat, g_d1_m0_hat, med_d1_hat, med_d0_hat, smpls):
-        propensity1 = np.divide(np.multiply(self.treated, med_d0_hat), np.multiply(m_hat, med_d1_hat))
-    def _score_counterfactual_outcome(
-        self, y, m_hat, g_d_med_pot_hat, g_d_med_counter_hat, med_pot_hat, med_counter_hat, smpls
+        return fitted_models
+
+    # TODO: Clean up predict and estimate function.
+    def _estimate_nested_outcomes(
+        self, y, x, m, xm, smpls, external_predictions, n_jobs_cv, return_models, ymx_external, nested_external
     ):
-        propensity1 = np.divide(np.multiply(self.treated, med_counter_hat), np.multiply(m_hat, med_pot_hat))
-        propensity2 = np.divide(1.0 - self.treated, 1.0 - m_hat)
-        adjusted_propensity1, adjusted_propensity2 = _normalize_propensity_med(
-            normalize_ipw=self.normalize_ipw,
-            score_function="efficient",
-            outcome="counterfactual",
-            treatment_indicator=self.treated,
-            propensity_score=m_hat,
-            conditional_pot_med_prob=med_pot_hat,
-            conditional_counter_med_prob=med_counter_hat,
-        )
+        # TODO: Lets fucking go with ssm model estimation way.
+        # Separate the training set into two disjointed sets: mu and delta.
 
-        adjusted_propensity1 = np.multiply(propensity1, np.multiply(adjusted_propensity1))
-        adjusted_propensity2 = np.multiply(propensity2, np.multiply(adjusted_propensity2))
-        mu_hat = np.multiply(self.mediated, g_d_med_pot_hat) + np.multiply((1.0 - self.mediated), g_d_med_counter_hat)
-        g_mu_hat = np.multiply(g_d_med_pot_hat, med_counter_hat) + np.multiply(g_d_med_counter_hat, (1.0 - med_counter_hat))
+        ymx_hat = {
+            "models": None,
+            "targets": np.full(shape=self._dml_data.n_obs, fill_value=np.nan),
+            "preds": np.full(shape=self._dml_data.n_obs, fill_value=np.nan),
+        }
+        nested_hat = copy.deepcopy(ymx_hat)
+        ymx_mu_hat = copy.deepcopy(ymx_hat)
+        ymx_delta_hat = copy.deepcopy(ymx_hat)
 
-        u_hat = y - mu_hat
-        w_hat = mu_hat - g_mu_hat
+        fitted_models = {}
+        for learner in ["ml_ymx", "ml_nested"]:
+            est_params = self._get_params(learner)
+            nuisance = learner
 
-        # TODO: Continue here next time
-        adjusted_propensity_score1, adjusted_propensity_score2 = _normalize_propensity_med(
-            self.normalize_ipw,
-            score=self.score,
-            outcome="counterfactual",
-            treatment_indicator=self.treated,
-            propensity_score=m_hat,
-            conditional_pot_med_prob=med_pot_hat,
-            conditional_counter_med_prob=med_counter_hat,
-        )
+            if est_params is not None:
+                fitted_models[learner] = [
+                    clone(self._learner[nuisance]).set_params(**est_params[i_fold]) for i_fold in range(self.n_folds)
+                ]
+            else:
+                fitted_models[learner] = [clone(self._learner[nuisance]) for i_fold in range(self.n_folds)]
 
-        psi_a = -1.0
-        # psi_b = np.multiply(adjusted_propensity1, u_hat) + np.multiply(adjusted_propensity2, w_hat) + w_hat
-        psi_b = (
-            np.multiply(np.multiply(np.divide(self.treated, m_hat), np.divide(med_counter_hat, med_pot_hat)), u_hat)
-            + np.multiply(np.divide(1.0 - self.treated, 1.0 - m_hat), w_hat)
-            + w_hat
-        )
-        return psi_a, psi_b
+        fitted_models["ml_ymx_mu_hat"] = 2 * [[clone(self._learner["ml_ymx"]) for i_fold in range(self.n_folds)]]
+        fitted_models["ml_ymx_delta_hat"] = 2 * [[clone(self._learner["ml_ymx"]) for i_fold in range(self.n_folds)]]
 
-    def _score_counterfactual_alt_outcome(self, y, m_hat, g_1_hat, g_nested_hat, m_med_hat, smpls):
-        u_hat = y - g_1_hat
-        w_hat = g_1_hat - g_nested_hat
+        for i_fold in range(self.n_folds):
+            # ymx: fit y musample on xm musample
+            # predict ymx on xm tesample
+            # predict ymx on xm deltasample
+            # fit nested on ymx deltasample estimates and x deltasample
+            # predict nested on x tesample
 
-        propensity1 = np.divide(np.multiply(self.treated, 1.0 - m_med_hat), np.multiply(1.0 - m_hat, m_med_hat))
-        propensity2 = np.divide(1.0 - self.treated, 1.0 - m_hat)
+            train_inds = smpls[i_fold][0]
+            test_inds = smpls[i_fold][1]
 
-        adjusted_propensity1, adjusted_propensity2 = _normalize_propensity_med(
-            normalize_ipw=self.normalize_ipw,
-            score_function="efficient-alt",
-            outcome="counterfactual",
-            treatment_indicator=self.treated,
-            propensity_score=m_hat,
-            propensity_score_med=m_med_hat,
-        )
-        adjusted_propensity1 = np.multiply(propensity1, np.multiply(adjusted_propensity1))
-        adjusted_propensity2 = np.multiply(propensity2, np.multiply(adjusted_propensity2))
+            subs1_idx, subs2_idx = train_test_split(train_inds, test_size=0.5)
 
-        psi_a = -1.0
-        # psi_b = np.multiply(adjusted_propensity1, u_hat) + np.multiply(adjusted_propensity2, w_hat) + g_nested_hat
-        psi_b = (
-            np.multiply(np.multiply(np.divide(self.treated, 1.0 - m_hat), np.divide(1.0 - m_med_hat, m_med_hat)), u_hat)
-            + np.multiply(np.divide(1.0 - self.treated, 1.0 - m_hat), w_hat)
-            + w_hat
-        )
+            # Get observations in mu_sample where d has value 1.
+            subs1_d0_idx = np.intersect1d(np.where(self.treated == 0)[0], subs1_idx)
+            subs1_d1_idx = np.intersect1d(np.where(self.treated == 1)[0], subs1_idx)
+
+            # Get observations in delta_sample where d has value 0.
+            subs2_d0_idx = np.intersect1d(np.where(self.treated == 0)[0], subs2_idx)
+            subs2_d1_idx = np.intersect1d(np.where(self.treated == 1)[0], subs2_idx)
+
+            for subsample in (subs1_idx, subs2_idx):
+                # fit in 1st subsample, predict in the 2nd subsample.
+                fitted_models["ml_ymx_mu_hat"][0][i_fold].fit(xm[subs1_d1_idx, :], y[subs1_d1_idx])
+                ymx_delta_hat["preds"][subs2_idx] = fitted_models["ml_ymx_mu_hat"][0][i_fold].predict(xm[subs2_idx, :])
+                ymx_delta_hat["targets"][subs2_idx] = y[subs2_idx]
+
+                # fit in 2nd subsample, predict in the 1st subsample.
+                fitted_models["ml_ymx_mu_hat"][1][i_fold].fit(xm[subs2_d1_idx, :], y[subs2_d1_idx])
+                ymx_delta_hat["preds"][subs1_idx] = fitted_models["ml_ymx_mu_hat"][1][i_fold].predict(xm[subs1_idx, :])
+                ymx_delta_hat["targets"][subs1_idx] = y[subs1_idx]
+
+            # Predict in the original test sample
+            ymx_hat["preds"][test_inds] = fitted_models["ml_ymx_mu_hat"][0][i_fold].predict(xm[test_inds, :])
+            ymx_hat["targets"][test_inds] = y[test_inds]
+
+        for i_fold in range(self.n_folds):
+            train_inds = smpls[i_fold][0]
+            test_inds = smpls[i_fold][1]
+
+            subs1_idx, subs2_idx = train_test_split(train_inds, test_size=0.5)
+
+            # Get observations in mu_sample where d has value 1.
+            subs1_d0_idx = np.intersect1d(np.where(self.treated == 0)[0], subs1_idx)
+            subs1_d1_idx = np.intersect1d(np.where(self.treated == 1)[0], subs1_idx)
+
+            # Get observations in delta_sample where d has value 0.
+            subs2_d0_idx = np.intersect1d(np.where(self.treated == 0)[0], subs2_idx)
+            subs2_d1_idx = np.intersect1d(np.where(self.treated == 1)[0], subs2_idx)
+
+            # estimate nested conditional outcome on delta sample.
+            fitted_models["ml_nested"][i_fold].fit(x[subs2_d0_idx, :], ymx_delta_hat["preds"][subs2_d0_idx])
+
+            # predict conditional outcome
+            nested_hat["preds"][test_inds] = fitted_models["ml_nested"][i_fold].predict(x[test_inds, :])
+            nested_hat["targets"][test_inds] = ymx_delta_hat["preds"][test_inds]
+
+        if return_models:
+            ymx_hat["models"] = fitted_models["ml_ymx"]
+            nested_hat["models"] = fitted_models["ml_nested"]
+
+        return ymx_hat, nested_hat
+
+    def _score_elements(self, y, px_hat, pmx_hat, yx_hat, ymx_hat, nested_hat, smpls):
+        if self.mediation_level == self.treatment_level:
+            u_hat = y - ymx_hat
+            psi_a = -1.0
+            psi_b = ymx_hat + np.divide(np.multiply(self.treated, u_hat), px_hat)
+        else:
+
+            u_hat = y - ymx_hat
+            w_hat = ymx_hat - nested_hat
+
+            propensity1 = np.divide(np.multiply(self.treated, 1.0 - pmx_hat), np.multiply(1.0 - px_hat, pmx_hat))
+            propensity2 = np.divide(1.0 - self.treated, 1.0 - px_hat)
+
+           adjusted_propensity1, adjusted_propensity2 = _normalize_propensity_med(
+                normalize_ipw=self.normalize_ipw,
+                score_function="efficient-alt",
+                outcome="counterfactual",
+                treatment_indicator=self.treated,
+                propensity_score=px_hat,
+                propensity_score_med=pmx_hat,
+            )
+            adjusted_propensity1 = np.multiply(propensity1, np.multiply(adjusted_propensity1))
+            adjusted_propensity2 = np.multiply(propensity2, np.multiply(adjusted_propensity2))
+
+            psi_a = -1.0
+            # psi_b = np.multiply(adjusted_propensity1, u_hat) + np.multiply(adjusted_propensity2, w_hat) + g_nested_hat
+            psi_b = (
+                np.multiply(np.multiply(np.divide(self.treated, 1.0 - px_hat), np.divide(1.0 - pmx_hat, pmx_hat)), u_hat)
+                + np.multiply(np.divide(1.0 - self.treated, 1.0 - px_hat), w_hat)
+                + nested_hat
+            )
         return psi_a, psi_b
 
     # TODO: Refactor tuning to take away all of the mentions to d0, d1 and others.
     def _nuisance_tuning(
         self, smpls, param_grids, scoring_methods, n_folds_tune, n_jobs_cv, search_mode, n_iter_randomized_search
     ):
-        if self.score_function == "efficient":
-            res = self._counterfactual_tuning()
-        elif self.score_function == "efficient-alt":
-            res = self._counterfactual_alt_tuning()
-        return res
-
-    def _counterfactual_tuning(
-        self, smpls, param_grids, scoring_methods, n_folds_tune, n_jobs_cv, search_mode, n_iter_randomized_search
-    ):
-        # TODO: Apply counterfactual_tuning for score_function == "efficient_alt".
-        x, y = check_X_y(self._med_data.x, self._med_data.y, force_all_finite=False)
-        x, d = check_X_y(x, self._med_data.d, force_all_finite=False)
-        # TODO: Create new data class for mediation. Do not use z column for this.
-        _, m = check_consistent_length(
-            x, self._med_data["z"]
-        )  # Check that the mediators have the same number of samples as X and
-
-        treated = self.treated
-        mediated = self.mediated
-        smpls_d0, smpls_d1 = _get_cond_smpls(smpls, treated)
-        smpls_d0_m0, smpls_d0_m1, smpls_d1_m0, smpls_d1_m1 = _get_cond_smpls_2d(smpls, treated, mediated)
-
-        dx = np.column_stack((d, x))
-
-        # Learner for E(Y|D=d, M=d, X)
-        ml_g_d1_m1 = self.params_names[0]
-        # Learner for E(Y|D=d, M=1-d, X)
-        ml_g_d1_m0 = self.params_names[1]
-
-        train_inds = [train_index for (train_index, _) in smpls]
-        train_inds_d_lvl0 = [train_index for (train_index, _) in smpls_d0]
-        train_inds_d_lvl1 = [train_index for (train_index, _) in smpls_d1]
-
-        # TODO: Check which ml_g_1_m to use
-        if ml_g_d1_m1 == "ml_g_d0_m0":
-            # smpls_d1_m1 = smpls_d0_m0
-            # smpls_d1_m0 = smpls_d0_m1
-            train_inds_pot = [train_index for (train_index, _) in smpls_d0_m0]
-            train_inds_counter = [train_index for (train_index, _) in smpls_d0_m1]
-        else:
-            # smpls_d1_m1 = smpls_d1_m1
-            # smpls_d1_m0 = smpls_d1_m0
-            train_inds_pot = [train_index for (train_index, _) in smpls_d1_m1]
-            train_inds_counter = [train_index for (train_index, _) in smpls_d1_m0]
-
-        g_d1_m1_tune_res = _dml_tune(
-            y,
-            dx,  # used to obtain an estimation over several treatment levels (reduced variance in sensitivity)
-            train_inds_pot,
-            self._learner["ml_g"],
-            param_grids["ml_g"],
-            scoring_methods["ml_g"],
-            n_folds_tune,
-            n_jobs_cv,
-            search_mode,
-            n_iter_randomized_search,
-        )
-        g_d1_m0_tune_res = _dml_tune(
-            y,
-            dx,  # used to obtain an estimation over several treatment levels (reduced variance in sensitivity)
-            train_inds_counter,
-            self._learner["ml_g"],
-            param_grids["ml_g"],
-            scoring_methods["ml_g"],
-            n_folds_tune,
-            n_jobs_cv,
-            search_mode,
-            n_iter_randomized_search,
-        )
-
-        m_tune_res = _dml_tune(
-            y,
-            dx,  # used to obtain an estimation over several treatment levels (reduced variance in sensitivity)
-            train_inds,
-            self._learner["ml_m"],
-            param_grids["ml_m"],
-            scoring_methods["ml_m"],
-            n_folds_tune,
-            n_jobs_cv,
-            search_mode,
-            n_iter_randomized_search,
-        )
-
-        med_d0_tune_res = _dml_tune(
-            y,
-            dx,  # used to obtain an estimation over several treatment levels (reduced variance in sensitivity)
-            train_inds_d_lvl0,
-            self._learner["ml_med"],
-            param_grids["ml_med"],
-            scoring_methods["ml_med"],
-            n_folds_tune,
-            n_jobs_cv,
-            search_mode,
-            n_iter_randomized_search,
-        )
-
-        med_d1_tune_res = _dml_tune(
-            y,
-            dx,  # used to obtain an estimation over several treatment levels (reduced variance in sensitivity)
-            train_inds_d_lvl1,
-            self._learner["ml_med"],
-            param_grids["ml_med"],
-            scoring_methods["ml_med"],
-            n_folds_tune,
-            n_jobs_cv,
-            search_mode,
-            n_iter_randomized_search,
-        )
-
-        g_d1_m1_best_params = [xx.best_params_ for xx in g_d1_m1_tune_res]
-        g_d1_m0_best_params = [xx.best_params_ for xx in g_d1_m0_tune_res]
-        m_best_params = [xx.best_params_ for xx in m_tune_res]
-        med_d0_best_params = [xx.best_params_ for xx in med_d0_tune_res]
-        med_d1_best_params = [xx.best_params_ for xx in med_d1_tune_res]
-
-        params = {
-            "ml_g_d1_m1": g_d1_m1_best_params,
-            "ml_g_d1_m0": g_d1_m0_best_params,
-            "ml_m": m_best_params,
-            "ml_med_d0": med_d0_best_params,
-            "ml_med_d1": med_d1_best_params,
-        }
-        tune_res = {
-            "ml_g_d1_m1": g_d1_m1_tune_res,
-            "ml_g_d1_m0": g_d1_m0_tune_res,
-            "ml_m": m_tune_res,
-            "ml_med_d0": med_d0_tune_res,
-            "ml_med_d1": med_d1_tune_res,
-        }
-
-        res = {"params": params, "tune_res": tune_res}
-
-        return res
-
-    # TODO: Modify this method (taken from the efficient scoring) to perform the efficient-alt tuning.
-    def _counterfactual_alt_tuning(
-        self, smpls, param_grids, scoring_methods, n_folds_tune, n_jobs_cv, search_mode, n_iter_randomized_search
-    ):
-        x, y = check_X_y(self._med_data.x, self._med_data.y, force_all_finite=False)
-        x, d = check_X_y(x, self._med_data.d, force_all_finite=False)
-        # TODO: Create new data class for mediation. Do not use z column for this.
-        _, m = check_consistent_length(
-            x, self._med_data["z"]
-        )  # Check that the mediators have the same number of samples as X and
-
-        treated = self.treated
-        mediated = self.mediated
-        smpls_d0, smpls_d1 = _get_cond_smpls(smpls, treated)
-        smpls_d0_m0, smpls_d0_m1, smpls_d1_m0, smpls_d1_m1 = _get_cond_smpls_2d(smpls, treated, mediated)
-
-        dx = np.column_stack((d, x))
-
-        # Learner for E(Y|D=d, M=d, X)
-        ml_g_d1_m1 = self.params_names[0]
-        # Learner for E(Y|D=d, M=1-d, X)
-        ml_g_d1_m0 = self.params_names[1]
-
-        train_inds = [train_index for (train_index, _) in smpls]
-        train_inds_d_lvl0 = [train_index for (train_index, _) in smpls_d0]
-        train_inds_d_lvl1 = [train_index for (train_index, _) in smpls_d1]
-
-        # TODO: Check which ml_g_d_m to use
-        if ml_g_d1_m1 == "ml_g_d0_m0":
-            # smpls_d1_m1 = smpls_d0_m0
-            # smpls_d1_m0 = smpls_d0_m1
-            train_inds_pot = [train_index for (train_index, _) in smpls_d0_m0]
-            train_inds_counter = [train_index for (train_index, _) in smpls_d0_m1]
-        else:
-            # smpls_d1_m1 = smpls_d1_m1
-            # smpls_d1_m0 = smpls_d1_m0
-            train_inds_pot = [train_index for (train_index, _) in smpls_d1_m1]
-            train_inds_counter = [train_index for (train_index, _) in smpls_d1_m0]
-
-        g_d1_m1_tune_res = _dml_tune(
-            y,
-            dx,  # used to obtain an estimation over several treatment levels (reduced variance in sensitivity)
-            train_inds_pot,
-            self._learner["ml_g"],
-            param_grids["ml_g"],
-            scoring_methods["ml_g"],
-            n_folds_tune,
-            n_jobs_cv,
-            search_mode,
-            n_iter_randomized_search,
-        )
-        g_d1_m0_tune_res = _dml_tune(
-            y,
-            dx,  # used to obtain an estimation over several treatment levels (reduced variance in sensitivity)
-            train_inds_counter,
-            self._learner["ml_g"],
-            param_grids["ml_g"],
-            scoring_methods["ml_g"],
-            n_folds_tune,
-            n_jobs_cv,
-            search_mode,
-            n_iter_randomized_search,
-        )
-
-        m_tune_res = _dml_tune(
-            y,
-            dx,  # used to obtain an estimation over several treatment levels (reduced variance in sensitivity)
-            train_inds,
-            self._learner["ml_m"],
-            param_grids["ml_m"],
-            scoring_methods["ml_m"],
-            n_folds_tune,
-            n_jobs_cv,
-            search_mode,
-            n_iter_randomized_search,
-        )
-
-        med_d0_tune_res = _dml_tune(
-            y,
-            dx,  # used to obtain an estimation over several treatment levels (reduced variance in sensitivity)
-            train_inds_d_lvl0,
-            self._learner["ml_med"],
-            param_grids["ml_med"],
-            scoring_methods["ml_med"],
-            n_folds_tune,
-            n_jobs_cv,
-            search_mode,
-            n_iter_randomized_search,
-        )
-
-        med_d1_tune_res = _dml_tune(
-            y,
-            dx,  # used to obtain an estimation over several treatment levels (reduced variance in sensitivity)
-            train_inds_d_lvl1,
-            self._learner["ml_med"],
-            param_grids["ml_med"],
-            scoring_methods["ml_med1"],
-            n_folds_tune,
-            n_jobs_cv,
-            search_mode,
-            n_iter_randomized_search,
-        )
-
-        g_d1_m1_best_params = [xx.best_params_ for xx in g_d1_m1_tune_res]
-        g_d1_m0_best_params = [xx.best_params_ for xx in g_d1_m0_tune_res]
-        m_best_params = [xx.best_params_ for xx in m_tune_res]
-        med_d0_best_params = [xx.best_params_ for xx in med_d0_tune_res]
-        med_d1_best_params = [xx.best_params_ for xx in med_d1_tune_res]
-
-        params = {
-            "ml_g_d1_m1": g_d1_m1_best_params,
-            "ml_g_d1_m0": g_d1_m0_best_params,
-            "ml_m": m_best_params,
-            "ml_med_d0": med_d0_best_params,
-            "ml_med_d1": med_d1_best_params,
-        }
-        tune_res = {
-            "ml_g_d1_m1": g_d1_m1_tune_res,
-            "ml_g_d1_m0": g_d1_m0_tune_res,
-            "ml_m": m_tune_res,
-            "ml_med_d0": med_d0_tune_res,
-            "ml_med_d1": med_d1_tune_res,
-        }
-
-        res = {"params": params, "tune_res": tune_res}
-
-        return res
+        pass
 
     def _sensitivity_element_est(self, preds):
         pass
@@ -1148,6 +774,7 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
                 f"of type {str(type(med_data))} was passed."
             )
 
+    # TODO: Change this for efficient-alt only.
     def _check_score_functions(self):
         valid_score_function = ["efficient", "efficient-alt"]
         if self.score_function == "efficient":

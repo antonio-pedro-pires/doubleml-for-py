@@ -1,11 +1,13 @@
 import numpy as np
-from sklearn.model_selection import train_test_split
+from joblib import Parallel, delayed
+from sklearn import clone
+from sklearn.model_selection import train_test_split, cross_val_predict
 
 
 # TODO: refactor so that it takes multiple columns and multiple conditions for trimming.
 def _trim_probabilities(preds, trimming_threshold=None, method=None, conditions=None):
     if preds.ndim == 1:
-        if conditions!=None:
+        if conditions != None:
             return np.array(preds)[conditions]
         if method == "both":
             lower_bound = trimming_threshold
@@ -19,6 +21,7 @@ def _trim_probabilities(preds, trimming_threshold=None, method=None, conditions=
         return np.array(preds)[:, conditions]  # selects columns based on conditions
 
     return preds
+
 
 def _normalize_propensity_med(
     normalize_ipw,
@@ -85,18 +88,22 @@ def _normalize_counterfactual_alt(treatment_indicator, propensity_score, propens
     propensity_coef2 = np.multiply(np.divide(1.0 - treatment_indicator, 1.0 - propensity_score), mean_treat2)
     return [propensity_coef1, propensity_coef2]
 
-def extract_sets_from_smpls(smpls,):
+
+def extract_sets_from_smpls(
+    smpls,
+):
     """
     Separates the train and test indices from smpls and returns them
     """
-    train_smpls=[]
-    test_smpls=[]
-    for _, (train_idx, test_idx) in enumerate(smpls):
-        train_smpls.append(train_idx)
-        test_smpls.append(test_idx)
-    return [train_smpls, test_smpls]
+    train_indices = tuple([train_index for (train_index, _) in smpls])
+    test_indices = tuple([test_index for (_, test_index) in smpls])
+    return train_indices, test_indices
 
-def split_smpls(smpls, smpls_ratio, ):
+
+def split_smpls(
+    smpls,
+    smpls_ratio=0.5,
+):
     """
     Splits sample into two subsamples for the estimation of the nested estimator used with the efficient-alt scoring function.
 
@@ -110,27 +117,30 @@ def split_smpls(smpls, smpls_ratio, ):
     results : a list of tuples of ndarrays
         Contains the indexes of the subsamples (mu, delta, train and test)
     """
-    if ((smpls is None) or (not smpls)):
+    if (smpls is None) or (not smpls):
         raise ValueError("the smpls array is empty")
     if smpls_ratio == None:
         raise ValueError("smpls_ratio must be a float between 0.0 and 1.0")
 
     results = []
-    subsample1=[]
-    subsample2=[]
+    subsample1 = []
+    subsample2 = []
     for smpl in smpls:
         subsample1_idx, subsample2_idx = train_test_split(smpl, test_size=smpls_ratio)
         subsample1.append(subsample1_idx)
         subsample2.append(subsample2_idx)
-    results.append((subsample1, subsample2))
-    return results
+    return subsample1, subsample2
 
-def recombine_samples(subsmpls1, subsmpls2,):
+
+def recombine_samples(
+    subsmpls1,
+    subsmpls2,
+):
     # Take only the samples of interest and recombine them.
-        # Need indexes to know which sample to recombine
-        # Loop through each smpls to get the targeted sample
-        # Create new samples made up of subsamples
-    result=[]
+    # Need indexes to know which sample to recombine
+    # Loop through each smpls to get the targeted sample
+    # Create new samples made up of subsamples
+    result = []
     for s1, s2 in zip(subsmpls1, subsmpls2):
         result.append((s1, s2))
     return result
