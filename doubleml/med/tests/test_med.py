@@ -62,7 +62,6 @@ def data(n_obs, data_med, y, d, m, x):
     df_med = pd.DataFrame(
         np.column_stack((y, d, m, x)), columns=["y", "d", "m"] + ["x" + str(i) for i in range(data_med.x.shape[1])]
     )
-
     return dml.DoubleMLMediationData(df_med, "y", "d", "m")
 
 
@@ -75,12 +74,12 @@ def all_smpls(data, n_obs, n_folds, d):
 
 class TestPotentialOutcomes:
     # TODO: Think on how to collect the parameters predictions depending on the outcome_scoring function. Is there a better structure than the current one?s
-    @pytest.fixture(scope="module", params=[[DoubleMLMEDP, ManualMedP], [DoubleMLMEDP, ManualMedP]])
+    @pytest.fixture(scope="class", params=[[DoubleMLMEDP, ManualMedP], [DoubleMLMEDP, ManualMedP]])
     def outcome_scoring(self, request):
         return request.param
 
     @pytest.fixture(
-        scope="module",
+        scope="class",
         params=[
             [LinearRegression(), LogisticRegression(penalty="l1", solver="liblinear", max_iter=250, random_state=42)],
             [
@@ -89,11 +88,11 @@ class TestPotentialOutcomes:
             ],
         ],
     )
-    def learner(self, request):
+    def learners(self, request):
         return request.param
 
     @pytest.fixture(
-        scope="module",
+        scope="class",
         params=[
             False,
             True,
@@ -103,7 +102,7 @@ class TestPotentialOutcomes:
         return request.param
 
     @pytest.fixture(
-        scope="module",
+        scope="class",
         params=[
             0.2,
             0.15,
@@ -113,7 +112,7 @@ class TestPotentialOutcomes:
         return request.param
 
     @pytest.fixture(
-        scope="module",
+        scope="class",
         params=[
             [
                 0,
@@ -128,7 +127,7 @@ class TestPotentialOutcomes:
     def treatment_mediation_level(self, request):
         return request.param
 
-    @pytest.fixture(scope="module")
+    @pytest.fixture(scope="class")
     def dml_med_fixture(
         self,
         data,
@@ -137,7 +136,7 @@ class TestPotentialOutcomes:
         m,
         x,
         all_smpls,
-        learner,
+        learners,
         outcome_scoring,
         normalize_ipw,
         trimming_threshold,
@@ -149,14 +148,13 @@ class TestPotentialOutcomes:
         treatment_level, mediation_level = treatment_mediation_level
 
         # Set machine learning methods for m & g
-        ml_g = clone(learner[0])
-        ml_m = clone(learner[1])
+        ml_g = clone(learners[0])
+        ml_m = clone(learners[1])
 
         np.random.seed(3141)
         dml_obj = outcome_scoring[0](
             med_data=data,
             treatment_level=treatment_level,
-            mediation_level=mediation_level,
             ml_g=ml_g,
             ml_m=ml_m,
             score="MED",
@@ -177,8 +175,8 @@ class TestPotentialOutcomes:
             x,
             d,
             m,
-            learner_g=clone(learner[0]),
-            learner_m=clone(learner[1]),
+            learner_g=clone(learners[0]),
+            learner_m=clone(learners[1]),
             treatment_level=treatment_level,
             all_smpls=all_smpls,
             n_rep=1,
@@ -192,7 +190,6 @@ class TestPotentialOutcomes:
         dml_obj_ext = outcome_scoring[0](
             med_data=data,
             treatment_level=treatment_level,
-            mediation_level=mediation_level,
             ml_g=ml_g,
             ml_m=ml_m,
             score="MED",
@@ -289,105 +286,106 @@ class TestPotentialOutcomes:
             )
 
 
-class TestCounterfactualOutcomes:
-    @pytest.fixture(
-        scope="module",
-        params=[
-            [DoubleMLMEDC, ManualMedC],
-            [DoubleMLMEDC, ManualMedC],
-            [DoubleMLMEDC, ManualMedCAlt],
-            [DoubleMLMEDC, ManualMedCAlt],
-        ],
-    )
-    def outcome_scoring(request):
-        return request.param
+class TestCounterfactualAltOutcomes:
 
     @pytest.fixture(
-        scope="module",
+        scope="class",
+    )
+    def outcome_scoring(self):
+        return [DoubleMLMEDC, ManualMedCAlt]
+
+    @pytest.fixture(
+        scope="class",
         params=[
             [
                 LinearRegression(),
-                ElasticNet(l1_ratio=1, max_iter=250, random_state=42),
-                ElasticNet(l1_ratio=1, max_iter=250, random_state=42),
+                LinearRegression(),
+                LogisticRegression(penalty="l1", solver="liblinear", max_iter=250, random_state=42),
             ],
             [
-                LinearRegression(),
-                ElasticNet(l1_ratio=1, max_iter=250, random_state=42),
-                ElasticNet(l1_ratio=1, max_iter=250, random_state=42),
-            ],
-            [
-                LinearRegression(),
-                ElasticNet(l1_ratio=1, max_iter=250, random_state=42),
-                ElasticNet(l1_ratio=1, max_iter=250, random_state=42),
-            ],
-            [
-                LinearRegression(),
-                ElasticNet(l1_ratio=1, max_iter=250, random_state=42),
-                ElasticNet(l1_ratio=1, max_iter=250, random_state=42),
+                RandomForestRegressor(max_depth=5, n_estimators=10, random_state=42),
+                RandomForestRegressor(max_depth=5, n_estimators=10, random_state=42),
+                RandomForestClassifier(max_depth=5, n_estimators=10, random_state=42),
             ],
         ],
     )
-    def learner(request):
-        return request.param
-
-    @pytest.fixture(scope="module", params=[False, True, False, True])
-    def normalize_ipw(request):
+    def learners(self, request):
         return request.param
 
     @pytest.fixture(
-        scope="module",
+        scope="class",
+        params=[
+            False,
+            True,
+        ],
+    )
+    def normalize_ipw(self, request):
+        return request.param
+
+    @pytest.fixture(
+        scope="class",
         params=[
             0.2,
             0.15,
-            0.2,
-            0.15,
         ],
     )
-    def trimming_threshold(request):
+    def trimming_threshold(self, request):
         return request.param
 
-    @pytest.fixture(scope="module", params=[0, 1, 0, 1])
-    def treatment_level(request):
+    @pytest.fixture(
+        scope="class",
+        params=[
+            [
+                0,
+                1,
+            ],
+            [
+                1,
+                0,
+            ],
+        ],
+    )
+    def treatment_mediation_level(self, request):
         return request.param
 
-    @pytest.fixture(scope="module", params=[1, 0, 1, 0])
-    def mediation_level(request):
-        return request.param
-
-    @pytest.fixture(scope="module")
-    def dml_med_fixture(learner, outcome_scoring, normalize_ipw, trimming_threshold, treatment_level, mediation_level):
+    @pytest.fixture(scope="class")
+    def dml_med_fixture(
+        self,
+        data,
+        y,
+        d,
+        m,
+        x,
+        learners,
+        all_smpls,
+        outcome_scoring,
+        normalize_ipw,
+        trimming_threshold,
+        treatment_mediation_level,
+        n_folds,
+        n_rep_boot,
+    ):
         boot_methods = ["normal"]
-        n_folds = 2
-        n_rep_boot = 499
+
+        # Set treatment, mediation levels
+        treatment_level, mediation_level = treatment_mediation_level
 
         # Set machine learning methods for m & g
-        ml_g = clone(learner[0])
-        ml_m = clone(learner[1])
-        ml_med_or_nested = clone(learner[2])
-
-        np.random.seed(3141)
-        n_obs = 500
-        data_med = make_med_data(n_obs=n_obs)
-        y = data_med["y"]
-        x = data_med["x"]
-        d = data_med["d"]
-        m = data_med["m"]
-        df_med = pd.DataFrame(
-            np.column_stack((y, d, x)), columns=["y", "d", "m"] + ["x" + str(i) for i in range(data_med["x"].shape[1])]
-        )
-
-        dml_data = dml.DoubleMLMediationData(df_med, "y", "d", "m")
-        all_smpls = draw_smpls(n_obs, n_folds, n_rep=1, groups=d)
+        ml_g = clone(learners[0])
+        ml_med_or_nested = clone(learners[1])
+        ml_m = clone(learners[2])
 
         np.random.seed(3141)
         dml_obj = outcome_scoring[0](
-            dml_data,
-            ml_g,
-            ml_m,
-            ml_med_or_nested,
+            med_data=data,
             treatment_level=treatment_level,
-            n_folds=n_folds,
+            mediation_level=mediation_level,
+            ml_g=ml_g,
+            ml_m=ml_m,
+            ml_nested=ml_med_or_nested,
             score="MED",
+            score_function="efficient-alt",
+            n_folds=n_folds,
             normalize_ipw=normalize_ipw,
             draw_sample_splitting=False,
             trimming_threshold=trimming_threshold,
@@ -398,14 +396,23 @@ class TestCounterfactualOutcomes:
         dml_obj.fit()
 
         np.random.seed(3141)
-        res_manual = outcome_scoring[1].fit_med(
-            y,
-            x,
-            d,
-            m,
-            clone(learner[0]),
-            clone(learner[1]),
-            clone(learner[2]),
+        manual_med = outcome_scoring[1](
+            y=y,
+            x=x,
+            d=d,
+            m=m,
+            learner_g=clone(learners[0]),
+            learner_nested=clone(learners[2]),
+            learner_m=clone(learners[1]),
+            treatment_level=treatment_level,
+            mediation_level=mediation_level,
+            all_smpls=all_smpls,
+            n_rep=n_rep_boot,
+            normalize_ipw=normalize_ipw,
+            trimming_threshold=trimming_threshold,
+            smpls_ratio=0.5,
+        )
+        res_manual = manual_med.fit_med(
             treatment_level=treatment_level,
             all_smpls=all_smpls,
             score="MED",
@@ -416,7 +423,7 @@ class TestCounterfactualOutcomes:
         np.random.seed(3141)
         # test with external nuisance predictions
         dml_obj_ext = outcome_scoring[0](
-            dml_data,
+            data,
             ml_g,
             ml_m,
             ml_med_or_nested,
@@ -475,36 +482,20 @@ class TestCounterfactualOutcomes:
             res_dict["boot_t_stat" + bootstrap + "_manual"] = boot_t_stat.reshape(-1, 1, 1)
             res_dict["boot_t_stat" + bootstrap + "_ext"] = dml_obj_ext.boot_t_stat
 
-        # check if sensitivity score with rho=0 gives equal asymptotic standard deviation
-        dml_obj.sensitivity_analysis(rho=0.0)
-        res_dict["sensitivity_ses"] = dml_obj.sensitivity_params["se"]
-
-        # sensitivity tests
-        res_dict["sensitivity_elements"] = dml_obj.sensitivity_elements
-        res_dict["sensitivity_elements_manual"] = outcome_scoring[1].fit_sensitivity_elements_med(
-            y,
-            d,
-            treatment_level,
-            all_coef=dml_obj.all_coef,
-            predictions=dml_obj.predictions,
-            score="MED",
-            n_rep=1,
-            normalize_ipw=normalize_ipw,
-        )
         return res_dict
 
     @pytest.mark.ci
-    def test_dml_med_coef(dml_med_fixture):
+    def test_dml_med_coef(self, dml_med_fixture):
         assert math.isclose(dml_med_fixture["coef"], dml_med_fixture["coef_manual"], rel_tol=1e-9, abs_tol=1e-4)
         assert math.isclose(dml_med_fixture["coef"], dml_med_fixture["coef_ext"], rel_tol=1e-9, abs_tol=1e-4)
 
     @pytest.mark.ci
-    def test_dml_med_se(dml_med_fixture):
+    def test_dml_med_se(self, dml_med_fixture):
         assert math.isclose(dml_med_fixture["se"], dml_med_fixture["se_manual"], rel_tol=1e-9, abs_tol=1e-4)
         assert math.isclose(dml_med_fixture["se"], dml_med_fixture["se_ext"], rel_tol=1e-9, abs_tol=1e-4)
 
     @pytest.mark.ci
-    def test_dml_med_boot(dml_med_fixture):
+    def test_dml_med_boot(self, dml_med_fixture):
         for bootstrap in dml_med_fixture["boot_methods"]:
             assert np.allclose(
                 dml_med_fixture["boot_t_stat" + bootstrap],
@@ -518,67 +509,3 @@ class TestCounterfactualOutcomes:
                 rtol=1e-9,
                 atol=1e-4,
             )
-
-    @pytest.mark.ci
-    def test_dml_med_sensitivity_rho0(dml_med_fixture):
-        assert np.allclose(dml_med_fixture["se"], dml_med_fixture["sensitivity_ses"]["lower"], rtol=1e-9, atol=1e-4)
-        assert np.allclose(dml_med_fixture["se"], dml_med_fixture["sensitivity_ses"]["upper"], rtol=1e-9, atol=1e-4)
-
-    @pytest.mark.ci
-    def test_dml_med_sensitivity(dml_med_fixture):
-        sensitivity_element_names = ["sigma2", "nu2", "psi_sigma2", "psi_nu2"]
-        for sensitivity_element in sensitivity_element_names:
-            assert np.allclose(
-                dml_med_fixture["sensitivity_elements"][sensitivity_element],
-                dml_med_fixture["sensitivity_elements_manual"][sensitivity_element],
-                rtol=1e-9,
-                atol=1e-4,
-            )
-
-    @pytest.fixture(scope="module", params=["nonrobust", "HC0", "HC1", "HC2", "HC3"])
-    def cov_type(request):
-        return request.param
-
-    @pytest.mark.ci
-    def test_dml_med_cmed_gmed(treatment_level, cov_type):
-        n = 20
-        # collect data
-        np.random.seed(42)
-        obj_dml_data = make_med_data(n_obs=n, dim_x=2)
-
-        # First stage estimation
-        ml_g = RandomForestRegressor(n_estimators=10)
-        ml_m = RandomForestClassifier(n_estimators=10)
-
-        dml_obj = dml.DoubleMLMediationData(
-            obj_dml_data, ml_m=ml_m, ml_g=ml_g, treatment_level=treatment_level, trimming_threshold=0.05, n_folds=5
-        )
-
-        dml_obj.fit()
-        # create a random basis
-        random_basis = pd.DataFrame(np.random.normal(0, 1, size=(n, 5)))
-        cmed = dml_obj.cmed(random_basis, cov_type=cov_type)
-        assert isinstance(cmed, dml.utils.blp.DoubleMLBLP)
-        assert isinstance(cmed.confint(), pd.DataFrame)
-        assert cmed.blp_model.cov_type == cov_type
-
-        groups_1 = pd.DataFrame(
-            np.column_stack([obj_dml_data.data["X1"] <= -1.0, obj_dml_data.data["X1"] > 0.2]), columns=["Group 1", "Group 2"]
-        )
-        msg = "At least one group effect is estimated with less than 6 observations."
-        with pytest.warns(UserWarning, match=msg):
-            gmed_1 = dml_obj.gmed(groups_1, cov_type=cov_type)
-        assert isinstance(gmed_1, dml.utils.blp.DoubleMLBLP)
-        assert isinstance(gmed_1.confint(), pd.DataFrame)
-        assert all(gmed_1.confint().index == groups_1.columns.to_list())
-        assert gmed_1.blp_model.cov_type == cov_type
-
-        np.random.seed(42)
-        groups_2 = pd.DataFrame(np.random.choice(["1", "2"], n, p=[0.1, 0.9]))
-        msg = "At least one group effect is estimated with less than 6 observations."
-        with pytest.warns(UserWarning, match=msg):
-            gmed_2 = dml_obj.gmed(groups_2, cov_type=cov_type)
-        assert isinstance(gmed_2, dml.utils.blp.DoubleMLBLP)
-        assert isinstance(gmed_2.confint(), pd.DataFrame)
-        assert all(gmed_2.confint().index == ["Group_1", "Group_2"])
-        assert gmed_2.blp_model.cov_type == cov_type

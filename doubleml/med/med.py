@@ -35,7 +35,6 @@ class DoubleMLMEDP(LinearScoreMixin, DoubleML):
         self,
         med_data,
         treatment_level,
-        mediation_level,
         ml_g,
         ml_m,
         score="MED",
@@ -197,7 +196,7 @@ class DoubleMLMEDP(LinearScoreMixin, DoubleML):
             )
 
         # trimm external predictions
-#        m_hat["preds"] = _trimm(m_hat["preds"], self.trimming_rule, self.trimming_threshold)
+        # m_hat["preds"] = _trimm(m_hat["preds"], self.trimming_rule, self.trimming_threshold)
 
         if g_1_external:
             g_1_hat = {
@@ -371,6 +370,7 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
         ml_g,
         ml_m,
         ml_med=None,
+        ml_m_med=None,
         ml_nested=None,
         score="MED",
         score_function="efficient-alt",
@@ -405,7 +405,7 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
         self._treated = self._med_data.d == treatment_level
         self._mediated = self._med_data.m == mediation_level
 
-        self._learner = ["ml_m", "ml_g"]
+        self._learner = {"ml_m":ml_m, "ml_g":ml_g}
         self._check_learner(learner=ml_m, learner_name="ml_m", regressor=False, classifier=True)
         is_classifier_ml_g = self._check_learner(learner=ml_g, learner_name="ml_g", regressor=True, classifier=True)
         self._predict_method = {"ml_m": "predict_proba"}
@@ -414,14 +414,15 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
         else:
             self._predict_method["ml_g"] = "predict"
         if score_function == "efficient":
-            self._learner.append("ml_med")
+            self._learner["ml_med"]=ml_med
             is_ml_med_classifier = self._check_learner(learner=ml_med, learner_name="ml_med", regressor=True, classifier=True)
             if is_ml_med_classifier:
                 self._predict_method["ml_med"] = "predict_proba"
             else:
                 self._predict_method["ml_med"] = "predict"
         elif score_function == "efficient-alt":
-            self._learner.append("ml_nested")
+            self._learner["ml_nested"]=ml_nested
+            self._learner["ml_m_med"]=ml_m
             is_ml_nested_classifier = self._check_learner(
                 learner=ml_nested, learner_name="ml_nested", regressor=True, classifier=True
             )
@@ -512,15 +513,15 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
     def _nuisance_est(
         self,
         smpls,
-        external_predictions,
         n_jobs_cv,
+        external_predictions,
         return_models=False,
     ):
         # TODO: For each nuisance_est function, don't forget to trim predictions.
         if self.score_function == "efficient":
-            return self._nuisance_est_counterfactual_efficient(smpls, external_predictions, n_jobs_cv, return_models)
+            return self._nuisance_est_counterfactual_efficient(smpls=smpls, external_predictions=external_predictions, n_jobs_cv=n_jobs_cv, return_models=return_models)
         elif self.score_function == "efficient-alt":
-            return self._nuisance_est_counterfactual_efficient_alt(smpls, external_predictions, n_jobs_cv, return_models)
+            return self._nuisance_est_counterfactual_efficient_alt(smpls=smpls, external_predictions=external_predictions, n_jobs_cv=n_jobs_cv, return_models=return_models)
 
     def _nuisance_est_counterfactual_efficient(self, smpls, external_predictions, n_jobs_cv, return_models):
         x, y = check_X_y(self._med_data.x, self._med_data.y, force_all_finite=False)
@@ -645,7 +646,7 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
         x, y = check_X_y(self._med_data.x, self._med_data.y, force_all_finite=False)
         x, d = check_X_y(x, self._med_data.d, force_all_finite=False)
         x, m = check_X_y(x, self._med_data.m, force_all_finite=False)
-        xm = np.column_stack(x, m)
+        xm = np.column_stack((x, m))
 
         # Check whether there are external predictions for each parameter.
         m_external = external_predictions["ml_m"] is not None
@@ -760,6 +761,7 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
         _, mu_delta_smpls_d1 = _get_cond_smpls(mu_delta_smpls, self.treated)
         smpls_delta_0, _ = _get_cond_smpls(delta_test_smpls, self.treated)
 
+        # TODO: maybe the estimator entring in g_nested is g_d1_m_hat_list or something different. Check
         if g_1_external:
             g_1_hat = {"preds": external_predictions["ml_g_1"], "targets": None, "models": None}
         else:
