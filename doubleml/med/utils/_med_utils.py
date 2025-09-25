@@ -85,25 +85,20 @@ def _normalize_counterfactual_alt(treatment_indicator, propensity_score, propens
     propensity_coef2 = np.multiply(np.divide(1.0 - treatment_indicator, 1.0 - propensity_score), mean_treat2)
     return [propensity_coef1, propensity_coef2]
 
-def extract_sets_from_smpls(smpls, index=0):
+def extract_sets_from_smpls(smpls,):
     """
-    Extracts the train or test indices from smpls
+    Separates the train and test indices from smpls and returns them
+    """
+    train_smpls=[]
+    test_smpls=[]
+    for _, (train_idx, test_idx) in enumerate(smpls):
+        train_smpls.append(train_idx)
+        test_smpls.append(test_idx)
+    return [train_smpls, test_smpls]
 
-    Parameters
-    ----------
-    idx : integer
-        When idx equals 0, extracts the train indices from smpls
-        When idx equals 1, extracts the test indices from smpls
+def split_smpls(smpls, smpls_ratio, ):
     """
-    assert index <= 1
-    results=[]
-    for train_test_smpls in smpls:
-        results.append(train_test_smpls[index])
-    return results
-
-def divide_samples(smpls, smpls_ratio, ):
-    """
-    Separate samples for the estimation of the nested estimator to be used with the efficient-alt scoring function.
+    Splits sample into two subsamples for the estimation of the nested estimator used with the efficient-alt scoring function.
 
     Parameters
     ----------

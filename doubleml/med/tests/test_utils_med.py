@@ -7,7 +7,7 @@ from sklearn.model_selection import train_test_split, KFold
 import pytest
 import doubleml as dml
 
-from doubleml.med.utils._med_utils import _trim_probabilities, recombine_samples, divide_samples, extract_sets_from_smpls
+from doubleml.med.utils._med_utils import _trim_probabilities, recombine_samples, split_smpls, extract_sets_from_smpls
 from doubleml.tests._utils_dml_cv_predict import _dml_cv_predict_ut_version
 from doubleml.utils._estimation import _dml_cv_predict
 
@@ -87,52 +87,44 @@ def test_trim_probabilities_nd():
 @pytest.fixture(
     scope="module",
     params=[
-        [[np.linspace(0, 100, 100, endpoint=False, dtype=int)]],
-        [[np.linspace(0, 100, 100, endpoint=False, dtype=int), np.linspace(101, 200, 100, endpoint=False, dtype=int)]],
+        [np.linspace(0, 100, 100, endpoint=False, dtype=int)],
+        [np.linspace(0, 100, 100, endpoint=False, dtype=int), np.linspace(101, 200, 100, endpoint=False, dtype=int)],
     ],
 )
 def smpls(request):
-    full_smpls = request.param[0]
+    full_smpls = request.param
     train_test_smpls = []
     train_smpls = []
     test_smpls = []
     np.random.seed(10)
-    for idx, smpl in enumerate(full_smpls):
+    for _, smpl in enumerate(full_smpls):
         train_idx, test_idx = train_test_split(smpl, test_size=0.7)
         train_smpls.append(train_idx)
         test_smpls.append(test_idx)
         train_test_smpls.append((train_idx, test_idx))
 
-    return [train_smpls, test_smpls, train_test_smpls]
-
-
-@pytest.fixture(scope="module", params=[0, 1, 2])
-def idx(request):
-    return request.param
+    return train_smpls, test_smpls, train_test_smpls
 
 
 @pytest.mark.ci
-def test_separate_samples(smpls, idx):
+def test_separate_samples(smpls):
     # TODO: Create fixture for idx
-    idx = idx
-    expected_indices = smpls[idx]
+    expected_indices1 = smpls[0]
+    expected_indices2 = smpls[1]
+    expected_results = [expected_indices1, expected_indices2]
     train_test_smpls = smpls[2]
 
-    if idx > 1:
-        with pytest.raises(AssertionError):
-            extract_sets_from_smpls(train_test_smpls, idx)
-    else:
-        actual_indices = extract_sets_from_smpls(train_test_smpls, idx)
+    actual_indices = extract_sets_from_smpls(train_test_smpls)
 
-        for a, e in zip(actual_indices, expected_indices):
-            assert np.array_equal(a, e)
+    for a, e in zip(actual_indices, expected_results):
+        assert np.array_equal(a, e)
 
 
 # TODO: Modify test_divide_samples to only take 1 set of indices
 @pytest.mark.ci
-def test_divide_samples(smpls):
+def test_split_smpls(smpls):
     smpls_ratio = 0.5
-    smpl_to_divide = smpls[0]
+    smpl_to_divide, _, _ = smpls
     np.random.seed(10)
     expected_results = []
     expected_subsample1 = []
@@ -144,8 +136,8 @@ def test_divide_samples(smpls):
     expected_results.append((expected_subsample1, expected_subsample2))
 
     np.random.seed(10)
-    actual_results = divide_samples(
-        smpls,
+    actual_results = split_smpls(
+        smpl_to_divide,
         smpls_ratio,
     )
     for a, e in zip(actual_results, expected_results):
@@ -175,49 +167,3 @@ def test_recombine_samples(results_s1_s2):
     actual_results = recombine_samples(s1, s2)
     for a, e in zip(actual_results, expected_results):
         assert np.array_equal(a, e)
-
-
-@pytest.fixture(scope="module")
-def data():
-    n_folds = 2
-    n_rep_boot = 499
-    n_obs = 500
-    np.random.seed(10)
-    data_med = make_med_data(n_obs=n_obs)
-
-    y, d, m, x = data_med.y, data_med.d, data_med.m, data_med.x
-
-    df_med = pd.DataFrame(
-        np.column_stack((y, d, m, x)), columns=["y", "d", "m"] + ["x" + str(i) for i in range(data_med.x.shape[1])]
-    )
-
-    return dml.DoubleMLMediationData(df_med, "y", "d", "m")
-
-
-@pytest.fixture(
-    scope="module", params=[LinearRegression(), RandomForestClassifier(max_depth=5, n_estimators=10, random_state=42)]
-)
-def learners(request):
-    return request.param
-
-
-@pytest.fixture(scope="module", params=[0, 1])
-def treatment_level(request):
-    return request.param
-
-
-@pytest.fixture(
-    scope="module",
-)
-def nested_cv_fit_predict(data, learners, treatment_level):
-    n_jobs = None
-    est_params = None
-
-    is_classifier = DoubleMLMEDC._check_learner(learner=learners, learner_name="ml_g", regressor=True, classifier=True)
-    if is_classifier:
-        _predict_method = {"learner": "predict_proba"}
-    else:
-        _predict_method = {"learner": "predict"}
-
-    return_models = False
-    treated = data.d == treatment_level

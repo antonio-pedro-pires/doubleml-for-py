@@ -4,7 +4,8 @@ from sklearn.utils import check_consistent_length, check_X_y
 from doubleml import DoubleMLMediationData
 from doubleml.double_ml import DoubleML
 from doubleml.double_ml_score_mixins import LinearScoreMixin
-from doubleml.med.utils._med_utils import _normalize_propensity_med, divide_samples, recombine_samples
+from doubleml.med.utils._med_utils import _normalize_propensity_med, split_smpls, recombine_samples, \
+    extract_sets_from_smpls
 from doubleml.utils._checks import _check_finite_predictions, _check_score
 from doubleml.utils._estimation import _cond_targets, _dml_cv_predict, _dml_tune, _get_cond_smpls, _get_cond_smpls_2d
 from doubleml.utils._propensity_score import _trimm
@@ -556,7 +557,7 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
                 return_models=return_models,
             )
 
-        # Estimate the probability of treatment conditional on the mediator and covariates.
+        #Estimate the conditional density of the mediator given the treatment level and covariates.
         if med_d1_external:
             med_d1_hat = {"preds": external_predictions["ml_med_d1"], "targets": None, "models": None}
         else:
@@ -584,10 +585,7 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
                 return_models=return_models,
             )
 
-        # Estimate the conditional expectation of outcome Y given D, M, and X.
-        #TODO: Add smpls_ratio as a parameter
-        smpls_ratio=0.5
-        mu_delta_smpls = divide_samples(smpls, smpls_ratio)
+        # Estimate the probability of the outcome conditional on treatment level, mediation level and covariates.
         if g_d1_m1_external:
             g_d1_m1_hat = {"preds": external_predictions["ml_g_d1_m1"], "targets": None, "models": None}
         else:
@@ -662,6 +660,7 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
 
         # TODO: Often required to fit learners on both samples.
         # TODO: Maybe will need to use other strategy than _dml_cv_predict()
+        # Estimate the probability of treatment conditional on the covariates.
         if m_external:
             m_hat = {"preds": external_predictions["ml_m"], "targets": None, "models": None}
         else:
@@ -675,6 +674,23 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
                 method=self._predict_method["ml_m"],
                 return_models=return_models,
             )
+
+        # Estimate the probability of treatment conditional on the mediator and covariates.
+        if m_med_external:
+            m_med_hat = {"preds": external_predictions["ml_m_med"], "targets": None, "models": None}
+        else:
+            m_med_hat = _dml_cv_predict(
+                self._learner["ml_m_med"],
+                xm,
+                d,
+                smpls=smpls,
+                n_jobs=n_jobs_cv,
+                est_params=self._get_params("ml_m_med"),
+                method=self._predict_method["ml_m_med"],
+                return_models=return_models,
+            )
+
+        # Estimate the conditional expectation of outcome Y given D, M, and X.
         if g_1_external:
             g_1_hat = {"preds": external_predictions["ml_g_1"], "targets": None, "models": None}
         else:
@@ -699,19 +715,6 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
                 n_jobs=n_jobs_cv,
                 est_params=self._get_params("ml_g_nested"),
                 method=self._predict_method["ml_g_nested"],
-                return_models=return_models,
-            )
-        if m_med_external:
-            m_med_hat = {"preds": external_predictions["ml_m_med"], "targets": None, "models": None}
-        else:
-            m_med_hat = _dml_cv_predict(
-                self._learner["ml_m_med"],
-                xm,
-                d,
-                smpls=smpls,
-                n_jobs=n_jobs_cv,
-                est_params=self._get_params("ml_m_med"),
-                method=self._predict_method["ml_m_med"],
                 return_models=return_models,
             )
 
@@ -740,6 +743,62 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
         psi_elements = {"psi_a": psi_a, "psi_b": psi_b}
 
         return psi_elements, preds
+
+    def _estimate_nested_outcomes(self, y, x, xm, smpls, smpls_ratio, external_predictions, n_jobs_cv, return_models, g_1_external, g_nested_external):
+        #TODO: Add smpls_ratio as a parameter
+        # Separate the training set into two disjointed sets: mu and delta.
+        train_idx, test_idx = extract_sets_from_smpls(smpls, index=0)
+        mu_idx, delta_idx = split_smpls(train_idx, smpls_ratio)
+
+        # Recombine the disjointed sets into a smpls like structure.
+        mu_delta_smpls = recombine_samples(mu_idx, delta_idx)
+        mu_test_smpls = recombine_samples(mu_idx, test_idx)
+        delta_test_smpls = recombine_samples(delta_idx, test_idx)
+
+        # Get samples conditional on treatment for estimation.
+        _, mu_test_smpls_d1 = _get_cond_smpls(mu_test_smpls, self.treated)
+        _, mu_delta_smpls_d1 = _get_cond_smpls(mu_delta_smpls, self.treated)
+        smpls_delta_0, _ = _get_cond_smpls(delta_test_smpls, self.treated)
+
+        if g_1_external:
+            g_1_hat = {"preds": external_predictions["ml_g_1"], "targets": None, "models": None}
+        else:
+            g_1_hat = _dml_cv_predict(
+                self._learner["ml_g"],
+                xm,
+                y,
+                smpls=mu_test_smpls_d1,
+                n_jobs=n_jobs_cv,
+                est_params=self._get_params("ml_g_1"),
+                method=self._predict_method["ml_g"],
+                return_models=return_models,
+            )
+
+        if g_nested_external:
+            g_nested_hat = {"preds": external_predictions["ml_g_nested"], "targets": None, "models": None}
+        else:
+            g_1_delta_hat = _dml_cv_predict(
+                self._learner["ml_g"],
+                xm,
+                y,
+                smpls=mu_delta_smpls_d1,
+                n_jobs=n_jobs_cv,
+                est_params=self._get_params("ml_g_1"),
+                method=self._predict_method["ml_g"],
+                return_models=return_models,
+            )
+            g_nested_hat = _dml_cv_predict(
+                self._learner["ml_g_nested"],
+                x,
+                g_1_delta_hat,
+                smpls=delta_test_smpls,  # TODO: Change this sample
+                n_jobs=n_jobs_cv,
+                est_params=self._get_params("ml_g_nested"),
+                method=self._predict_method["ml_g_nested"],
+                return_models=return_models,
+            )
+
+        return g_1_hat, g_nested_hat
 
     def _score_counterfactual_outcome(self, y, m_hat, g_d1_m1_hat, g_d1_m0_hat, med_d1_hat, med_d0_hat, smpls):
         propensity1 = np.divide(np.multiply(self.treated, med_d0_hat), np.multiply(m_hat, med_d1_hat))
