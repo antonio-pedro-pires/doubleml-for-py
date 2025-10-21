@@ -11,7 +11,7 @@ import doubleml as dml
 from doubleml.datasets import make_med_data
 
 from ...tests._utils import draw_smpls
-from .. import DoubleMLMEDC, DoubleMLMEDP
+from .. import DoubleMLMEDC
 from ._utils_med_manual import ManualMedC, ManualMedCAlt, ManualMedP
 
 
@@ -72,220 +72,6 @@ def all_smpls(data, n_obs, n_folds, d):
     return all_smpls
 
 
-class TestPotentialOutcomes:
-    # TODO: Think on how to collect the parameters predictions depending on the outcome_scoring function. Is there a better structure than the current one?s
-    @pytest.fixture(scope="class", params=[[DoubleMLMEDP, ManualMedP], [DoubleMLMEDP, ManualMedP]])
-    def outcome_scoring(self, request):
-        return request.param
-
-    @pytest.fixture(
-        scope="class",
-        params=[
-            [LinearRegression(), LogisticRegression(penalty="l1", solver="liblinear", max_iter=250, random_state=42)],
-            [
-                RandomForestRegressor(max_depth=5, n_estimators=10, random_state=42),
-                RandomForestClassifier(max_depth=5, n_estimators=10, random_state=42),
-            ],
-        ],
-    )
-    def learners(self, request):
-        return request.param
-
-    @pytest.fixture(
-        scope="class",
-        params=[
-            False,
-            True,
-        ],
-    )
-    def normalize_ipw(self, request):
-        return request.param
-
-    @pytest.fixture(
-        scope="class",
-        params=[
-            0.2,
-            0.15,
-        ],
-    )
-    def trimming_threshold(self, request):
-        return request.param
-
-    @pytest.fixture(
-        scope="class",
-        params=[
-            [
-                0,
-                0,
-            ],
-            [
-                1,
-                1,
-            ],
-        ],
-    )
-    def treatment_mediation_level(self, request):
-        return request.param
-
-    @pytest.fixture(scope="class")
-    def dml_med_fixture(
-        self,
-        data,
-        y,
-        d,
-        m,
-        x,
-        all_smpls,
-        learners,
-        outcome_scoring,
-        normalize_ipw,
-        trimming_threshold,
-        treatment_mediation_level,
-        n_rep_boot,
-        n_folds,
-    ):
-        boot_methods = ["normal"]
-        treatment_level, mediation_level = treatment_mediation_level
-
-        # Set machine learning methods for m & g
-        ml_g = clone(learners[0])
-        ml_m = clone(learners[1])
-
-        np.random.seed(3141)
-        dml_obj = outcome_scoring[0](
-            med_data=data,
-            treatment_level=treatment_level,
-            ml_g=ml_g,
-            ml_m=ml_m,
-            score="MED",
-            score_function="efficient",
-            n_folds=2,
-            normalize_ipw=normalize_ipw,
-            draw_sample_splitting=False,
-            trimming_threshold=trimming_threshold,
-        )
-
-        # synchronize the sample splitting
-        dml_obj.set_sample_splitting(all_smpls=all_smpls)
-        dml_obj.fit()
-
-        np.random.seed(3141)
-        manual_med = outcome_scoring[1](
-            y,
-            x,
-            d,
-            m,
-            learner_g=clone(learners[0]),
-            learner_m=clone(learners[1]),
-            treatment_level=treatment_level,
-            all_smpls=all_smpls,
-            n_rep=1,
-            normalize_ipw=normalize_ipw,
-            trimming_threshold=trimming_threshold,
-        )
-        res_manual = manual_med.fit_med()
-
-        np.random.seed(3141)
-        # test with external nuisance predictions
-        dml_obj_ext = outcome_scoring[0](
-            med_data=data,
-            treatment_level=treatment_level,
-            ml_g=ml_g,
-            ml_m=ml_m,
-            score="MED",
-            score_function="efficient",
-            n_folds=2,
-            normalize_ipw=normalize_ipw,
-            draw_sample_splitting=False,
-            trimming_threshold=trimming_threshold,
-        )
-
-        # synchronize the sample splitting
-        dml_obj_ext.set_sample_splitting(all_smpls=all_smpls)
-
-        prediction_dict = {
-            "d": {
-                "ml_g_1": dml_obj.predictions["ml_g_1"].reshape(-1, 1),
-                "ml_m": dml_obj.predictions["ml_m"].reshape(-1, 1),
-            }
-        }
-        dml_obj_ext.fit(external_predictions=prediction_dict)
-
-        res_dict = {
-            "coef": dml_obj.coef.item(),
-            "coef_manual": res_manual["theta"],
-            "coef_ext": dml_obj_ext.coef.item(),
-            "se": dml_obj.se.item(),
-            "se_manual": res_manual["se"],
-            "se_ext": dml_obj_ext.se.item(),
-            "boot_methods": boot_methods,
-        }
-
-        for bootstrap in boot_methods:
-            np.random.seed(3141)
-            boot_t_stat = manual_med.boot_med(
-                thetas=res_manual["thetas"],
-                ses=res_manual["ses"],
-                all_g_hat0=res_manual["all_g_hat0"],
-                all_g_hat1=res_manual["all_g_hat1"],
-                all_m_hat=res_manual["all_m_hat"],
-                bootstrap=bootstrap,
-                n_rep_boot=n_rep_boot,
-            )
-
-            np.random.seed(3141)
-            dml_obj.bootstrap(method=bootstrap, n_rep_boot=n_rep_boot)
-            np.random.seed(3141)
-            dml_obj_ext.bootstrap(method=bootstrap, n_rep_boot=n_rep_boot)
-            res_dict["boot_t_stat" + bootstrap] = dml_obj.boot_t_stat
-            res_dict["boot_t_stat" + bootstrap + "_manual"] = boot_t_stat.reshape(-1, 1, 1)
-            res_dict["boot_t_stat" + bootstrap + "_ext"] = dml_obj_ext.boot_t_stat
-
-        # check if sensitivity score with rho=0 gives equal asymptotic standard deviation
-        # dml_obj.sensitivity_analysis(rho=0.0)
-        # res_dict["sensitivity_ses"] = dml_obj.sensitivity_params["se"]
-
-        # sensitivity tests
-        # res_dict["sensitivity_elements"] = dml_obj.sensitivity_elements
-        # res_dict["sensitivity_elements_manual"] = outcome_scoring[1].fit_sensitivity_elements_med(
-        #    y,
-        #    d,
-        #    treatment_level,
-        #    all_coef=dml_obj.all_coef,
-        #    predictions=dml_obj.predictions,
-        #    score="MED",
-        #    n_rep=1,
-        #    normalize_ipw=normalize_ipw,
-        # )
-        return res_dict
-
-    @pytest.mark.ci
-    def test_dml_med_coef(self, dml_med_fixture):
-        assert math.isclose(dml_med_fixture["coef"], dml_med_fixture["coef_manual"], rel_tol=1e-9, abs_tol=1e-4)
-        assert math.isclose(dml_med_fixture["coef"], dml_med_fixture["coef_ext"], rel_tol=1e-9, abs_tol=1e-4)
-
-    @pytest.mark.ci
-    def test_dml_med_se(self, dml_med_fixture):
-        assert math.isclose(dml_med_fixture["se"], dml_med_fixture["se_manual"], rel_tol=1e-9, abs_tol=1e-4)
-        assert math.isclose(dml_med_fixture["se"], dml_med_fixture["se_ext"], rel_tol=1e-9, abs_tol=1e-4)
-
-    @pytest.mark.ci
-    def test_dml_med_boot(self, dml_med_fixture):
-        for bootstrap in dml_med_fixture["boot_methods"]:
-            assert np.allclose(
-                dml_med_fixture["boot_t_stat" + bootstrap],
-                dml_med_fixture["boot_t_stat" + bootstrap + "_manual"],
-                rtol=1e-9,
-                atol=1e-4,
-            )
-            assert np.allclose(
-                dml_med_fixture["boot_t_stat" + bootstrap],
-                dml_med_fixture["boot_t_stat" + bootstrap + "_ext"],
-                rtol=1e-9,
-                atol=1e-4,
-            )
-
-
 class TestCounterfactualAltOutcomes:
 
     @pytest.fixture(
@@ -301,10 +87,12 @@ class TestCounterfactualAltOutcomes:
                 LinearRegression(),
                 LinearRegression(),
                 LogisticRegression(penalty="l1", solver="liblinear", max_iter=250, random_state=42),
+                LogisticRegression(penalty="l1", solver="liblinear", max_iter=250, random_state=42),
             ],
             [
                 RandomForestRegressor(max_depth=5, n_estimators=10, random_state=42),
                 RandomForestRegressor(max_depth=5, n_estimators=10, random_state=42),
+                RandomForestClassifier(max_depth=5, n_estimators=10, random_state=42),
                 RandomForestClassifier(max_depth=5, n_estimators=10, random_state=42),
             ],
         ],
@@ -374,6 +162,7 @@ class TestCounterfactualAltOutcomes:
         ml_g = clone(learners[0])
         ml_med_or_nested = clone(learners[1])
         ml_m = clone(learners[2])
+        ml_pi = clone(learners[3])
 
         np.random.seed(3141)
         dml_obj = outcome_scoring[0](
@@ -383,6 +172,7 @@ class TestCounterfactualAltOutcomes:
             ml_g=ml_g,
             ml_m=ml_m,
             ml_nested=ml_med_or_nested,
+            ml_pi=ml_pi,
             score="MED",
             score_function="efficient-alt",
             n_folds=n_folds,
@@ -402,8 +192,9 @@ class TestCounterfactualAltOutcomes:
             d=d,
             m=m,
             learner_g=clone(learners[0]),
-            learner_nested=clone(learners[2]),
             learner_m=clone(learners[1]),
+            learner_nested=clone(learners[2]),
+            learner_pi=clone(learners[3]),
             treatment_level=treatment_level,
             mediation_level=mediation_level,
             all_smpls=all_smpls,
@@ -412,24 +203,21 @@ class TestCounterfactualAltOutcomes:
             trimming_threshold=trimming_threshold,
             smpls_ratio=0.5,
         )
-        res_manual = manual_med.fit_med(
-            treatment_level=treatment_level,
-            all_smpls=all_smpls,
-            score="MED",
-            normalize_ipw=normalize_ipw,
-            trimming_threshold=trimming_threshold,
-        )
+        res_manual = manual_med.fit_med()
 
         np.random.seed(3141)
         # test with external nuisance predictions
         dml_obj_ext = outcome_scoring[0](
-            data,
-            ml_g,
-            ml_m,
-            ml_med_or_nested,
+            med_data=data,
             treatment_level=treatment_level,
-            n_folds=n_folds,
+            mediation_level=mediation_level,
+            ml_g=ml_g,
+            ml_m=ml_m,
+            ml_pi=ml_pi,
+            ml_nested=ml_med_or_nested,
             score="MED",
+            score_function="efficient-alt",
+            n_folds=n_folds,
             normalize_ipw=normalize_ipw,
             draw_sample_splitting=False,
             trimming_threshold=trimming_threshold,

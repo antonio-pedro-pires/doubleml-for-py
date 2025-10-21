@@ -1,5 +1,7 @@
 import numpy as np
-from sklearn.model_selection import train_test_split
+from joblib import Parallel, delayed
+from sklearn import clone
+from sklearn.model_selection import train_test_split, cross_val_predict
 
 
 # TODO: refactor so that it takes multiple columns and multiple conditions for trimming.
@@ -89,14 +91,11 @@ def extract_sets_from_smpls(smpls,):
     """
     Separates the train and test indices from smpls and returns them
     """
-    train_smpls=[]
-    test_smpls=[]
-    for _, (train_idx, test_idx) in enumerate(smpls):
-        train_smpls.append(train_idx)
-        test_smpls.append(test_idx)
-    return [train_smpls, test_smpls]
+    train_indices=tuple([train_index for (train_index, _) in smpls])
+    test_indices=tuple([test_index for (_, test_index) in smpls])
+    return train_indices, test_indices
 
-def split_smpls(smpls, smpls_ratio, ):
+def split_smpls(smpls, smpls_ratio=0.5, ):
     """
     Splits sample into two subsamples for the estimation of the nested estimator used with the efficient-alt scoring function.
 
@@ -122,8 +121,7 @@ def split_smpls(smpls, smpls_ratio, ):
         subsample1_idx, subsample2_idx = train_test_split(smpl, test_size=smpls_ratio)
         subsample1.append(subsample1_idx)
         subsample2.append(subsample2_idx)
-    results.append((subsample1, subsample2))
-    return results
+    return subsample1, subsample2
 
 def recombine_samples(subsmpls1, subsmpls2,):
     # Take only the samples of interest and recombine them.
@@ -134,3 +132,44 @@ def recombine_samples(subsmpls1, subsmpls2,):
     for s1, s2 in zip(subsmpls1, subsmpls2):
         result.append((s1, s2))
     return result
+
+def _fit(estimator, x, y, train_index, idx=None):
+    estimator.fit(x[train_index, :], y[train_index])
+    return estimator, idx
+
+def fit_predict_efficient_alt(estimator, x, y, smpls=None, n_jobs=None, est_params=None, method="predict", return_train_preds=False, return_models=False):
+    res = {"models": None}
+
+    y_list = [y] * len(smpls)
+    n_obs = x.shape[0]
+
+    parallel = Parallel(n_jobs=n_jobs, verbose=0, pre_dispatch="2*n_jobs")
+
+    fitted_models= parallel(
+        delayed(_fit)(clone(estimator), x, y_list[idx], train_index, idx)
+                                         for idx, (train_index, test_index) in enumerate(smpls)
+    )
+
+    preds = np.full(n_obs, np.nan)
+    targets = np.full(n_obs, np.nan)
+    train_preds = list()
+    train_targets = list()
+    for idx, (train_index, test_index) in enumerate(smpls):
+        assert idx == fitted_models[idx][1]
+        pred_fun = getattr(fitted_models[idx][0], method)
+        if method == "predict_proba":
+            preds[test_index] = pred_fun(x[test_index, :])[:, 1]
+        else:
+            preds[test_index] = pred_fun(x[test_index, :])
+
+        targets[test_index] = y[test_index]
+
+        if return_train_preds:
+            train_preds.append(pred_fun(x[train_index, :]))
+            train_targets.append(y[train_index])
+
+    res["preds"] = preds
+    res["targets"] = targets
+
+
+    return res

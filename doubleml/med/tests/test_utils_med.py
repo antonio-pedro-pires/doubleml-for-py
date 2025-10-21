@@ -2,12 +2,13 @@ import random
 
 import numpy as np
 import pandas as pd
+import sklearn.linear_model
 from sklearn.linear_model import LogisticRegression, Lasso
 from sklearn.model_selection import train_test_split, KFold
 import pytest
 import doubleml as dml
 
-from doubleml.med.utils._med_utils import _trim_probabilities, recombine_samples, split_smpls, extract_sets_from_smpls
+from doubleml.med.utils._med_utils import _trim_probabilities, recombine_samples, split_smpls, extract_sets_from_smpls, _fit
 from doubleml.tests._utils_dml_cv_predict import _dml_cv_predict_ut_version
 from doubleml.utils._estimation import _dml_cv_predict
 
@@ -93,10 +94,11 @@ def test_trim_probabilities_nd():
 )
 def smpls(request):
     full_smpls = request.param
-    train_test_smpls = []
+    np.random.seed(10)
     train_smpls = []
     test_smpls = []
-    np.random.seed(10)
+    train_test_smpls = []
+
     for _, smpl in enumerate(full_smpls):
         train_idx, test_idx = train_test_split(smpl, test_size=0.7)
         train_smpls.append(train_idx)
@@ -126,14 +128,13 @@ def test_split_smpls(smpls):
     smpls_ratio = 0.5
     smpl_to_divide, _, _ = smpls
     np.random.seed(10)
-    expected_results = []
     expected_subsample1 = []
     expected_subsample2 = []
     for smpl in smpl_to_divide:
         subsample1, subsample2 = train_test_split(smpl, test_size=smpls_ratio)
         expected_subsample1.append(subsample1)
         expected_subsample2.append(subsample2)
-    expected_results.append((expected_subsample1, expected_subsample2))
+    expected_results = [expected_subsample1, expected_subsample2]
 
     np.random.seed(10)
     actual_results = split_smpls(
@@ -167,3 +168,17 @@ def test_recombine_samples(results_s1_s2):
     actual_results = recombine_samples(s1, s2)
     for a, e in zip(actual_results, expected_results):
         assert np.array_equal(a, e)
+
+
+@pytest.fixture(scope="function")
+def learner():
+    return sklearn.linear_model.LinearRegression()
+
+
+def test_fit(learner, data, smpls):
+    x = data.x
+    y = data.y
+    for _, (train_index, test_index) in smpls:
+        actual_fit = learner.fit(x[train_index, :], y[train_index, :])
+        expected_fit = _fit(learner, x, y, train_index, idx=None)
+        assert np.array_equal(actual_fit, expected_fit)
