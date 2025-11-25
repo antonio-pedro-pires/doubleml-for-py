@@ -28,7 +28,7 @@ class ManualMedP:
         self,
         g0_params=None,
         g1_params=None,
-        m_params=None,
+        px_params=None,
     ):
         n_obs = len(self.y)
 
@@ -44,7 +44,7 @@ class ManualMedP:
                 smpls,
                 g0_params=g0_params,
                 g1_params=g1_params,
-                m_params=m_params,
+                px_params=px_params,
             )
 
             all_g_hat0.append(g_hat0)
@@ -78,7 +78,7 @@ class ManualMedP:
         smpls,
         g0_params=None,
         g1_params=None,
-        m_params=None,
+        px_params=None,
     ):
         ml_g0 = clone(self.learner_g)
         ml_g1 = clone(self.learner_g)
@@ -99,7 +99,7 @@ class ManualMedP:
         ml_m = clone(self.learner_m)
         ###Debugging
         # Turned off trimming_threshold for debugging. Turn it back on.
-        m_hat_list = fit_predict_proba(self.treated, self.x, ml_m, m_params, smpls, trimming_threshold=0)
+        m_hat_list = fit_predict_proba(self.treated, self.x, ml_m, px_params, smpls, trimming_threshold=0)
         ###
         return g_hat0_list, g_hat1_list, m_hat_list
 
@@ -255,7 +255,7 @@ class ManualMedP:
             else:
                 m_hat_adj = m_hat
             g_hat0 = predictions["ml_g_d0"][:, i_rep, 0]
-            g_hat1 = predictions["ml_g_d1"][:, i_rep, 0]
+            g_hat1 = predictions["ml_yx"][:, i_rep, 0]
 
             weights = np.ones_like()
             weights_bar = np.ones_like()
@@ -317,7 +317,7 @@ class ManualMedC:
         g_d1_m0_params=None,
         med_d1_params=None,
         med_d0_params=None,
-        m_params=None,
+        px_params=None,
         n_rep=1,
         normalize_ipw=False,
         trimming_threshold=1e-2,
@@ -352,7 +352,7 @@ class ManualMedC:
                 g_d1_m0_params=g_d1_m0_params,
                 med_d1_params=med_d1_params,
                 med_d0_params=med_d0_params,
-                m_params=m_params,
+                px_params=px_params,
                 trimming_threshold=trimming_threshold,
             )
 
@@ -407,7 +407,7 @@ class ManualMedC:
         g_d1_m0_params=None,
         med_d1_params=None,
         med_d0_params=None,
-        m_params=None,
+        px_params=None,
         trimming_threshold=1e-12,
     ):
 
@@ -440,7 +440,7 @@ class ManualMedC:
 
         ml_m = clone(learner_m)
         # TODO: reset trimming_threshold to parameter
-        m_hat_list = fit_predict_proba(treated, x, ml_m, m_params, smpls, trimming_threshold=0)
+        m_hat_list = fit_predict_proba(treated, x, ml_m, px_params, smpls, trimming_threshold=0)
 
         return g_d1_m1_hat_list, g_d1_m0_hat_list, med_d1_hat_list, med_d0_hat_list, m_hat_list
 
@@ -724,10 +724,11 @@ class ManualMedCAlt:
         x,
         d,
         m,
-        learner_g,
-        learner_m,
+        learner_yx,
+        learner_ymx,
+        learner_px,
+        learner_pmx,
         learner_nested,
-        learner_pi,
         treatment_level,
         mediation_level,
         all_smpls,
@@ -735,16 +736,19 @@ class ManualMedCAlt:
         normalize_ipw,
         trimming_threshold,
         smpls_ratio,
+        n_folds=5,
     ):
         self.n_obs = len(y)
         self.y = y
         self.x = x
         self.d = d
         self.m = m
-        self.learner_g = learner_g
-        self.learner_m = learner_m
+        self.learner_yx = learner_yx
+        self.learner_ymx = learner_ymx
+        self.learner_px = learner_px
+        self.learner_pmx = learner_pmx
         self.learner_nested = learner_nested
-        self.learner_pi = learner_pi
+
         self.treatment_level = treatment_level
         self.mediation_level = mediation_level
         self.all_smpls = all_smpls
@@ -753,43 +757,49 @@ class ManualMedCAlt:
         self.trimming_threshold = trimming_threshold
         self.treated = self.d == self.treatment_level
         self.smpls_ratio = smpls_ratio
+        self.n_folds = n_folds
 
     def fit_med(
         self,
-        g_d1_params=None,
+        yx_params=None,
+        ymx_params=None,
+        px_params=None,
+        pmx_params=None,
         nested_params=None,
-        pi_params=None,
-        m_params=None,
     ):
         thetas = np.zeros(self.n_rep)
         ses = np.zeros(self.n_rep)
 
-        # "ml_g_d1", "ml_nested", "ml_m", "ml_pi"
-        all_g_d1_hat = list()
+        # "ml_yx", "ml_nested", "ml_px", "ml_pmx"
+        all_yx_hat = list()
+        all_ymx_hat = list()
+        all_px_hat = list()
+        all_pmx_hat = list()
         all_nested_hat = list()
-        all_pi_hat = list()
-        all_m_hat = list()
 
         for i_rep in range(self.n_rep):
             smpls = self.all_smpls[i_rep]
-            g_d1_hat, nested_hat, pi_hat, m_hat = self.fit_nuisance_med(
+            yx_hat, ymx_hat, px_hat, pmx_hat, nested_hat = self.fit_nuisance_med(
                 smpls=smpls,
-                g_d1_params=g_d1_params,
+                yx_params=yx_params,
+                ymx_params=ymx_params,
+                px_params=px_params,
+                pmx_params=pmx_params,
                 nested_params=nested_params,
-                pi_params=pi_params,
-                m_params=m_params,
             )
 
-            all_g_d1_hat.append(g_d1_hat)
+            all_yx_hat.append(yx_hat)
+            all_ymx_hat.append(ymx_hat)
+            all_px_hat.append(px_hat)
+            all_pmx_hat.append(pmx_hat)
             all_nested_hat.append(nested_hat)
-            all_pi_hat.append(pi_hat)
-            all_m_hat.append(m_hat)
 
             thetas[i_rep], ses[i_rep] = self.med_dml_2(
-                g_d1_hat,
+                yx_hat,
+                ymx_hat,
+                px_hat,
+                pmx_hat,
                 nested_hat,
-                pi_hat,
-                m_hat,
                 smpls,
             )
 
@@ -801,51 +811,55 @@ class ManualMedCAlt:
             "se": se,
             "thetas": thetas,
             "ses": ses,
-            "all_g_d1_hat": g_d1_hat,
+            "all_yx_hat": yx_hat,
+            "all_ymx_hat": ymx_hat,
+            "all_px_hat": px_hat,
+            "all_pmx_hat": all_pmx_hat,
             "all_nested_hat": nested_hat,
-            "all_pi_hat": pi_hat,
-            "all_m_hat": all_m_hat,
         }
         return res
 
     def fit_nuisance_med(
         self,
         smpls,
-        pi_params=None,
-        g_d1_params=None,
+        yx_params=None,
+        ymx_params=None,
+        px_params=None,
+        pmx_params=None,
         nested_params=None,
-        m_params=None,
     ):
         xm = np.column_stack((self.x, self.m))
 
         # TODO: Separate samples into delta, musample, testsample
-        # g_d1_hat, nested_hat, pi_hat, m_hat
-        ml_g_d1 = clone(self.learner_g)
+        # yx_hat, nested_hat, pmx_hat, px_hat
+        ml_yx = clone(self.learner_yx)
+        ml_ymx = clone(self.learner_ymx)
+        ml_pmx = clone(self.learner_pmx)
         ml_nested = clone(self.learner_nested)
-        # TODO: What learner is ml_pi? Does it reuse the m_learner?
-        ml_pi = clone(self.learner_pi)
 
         # TODO: Find way to select the intersection between m and d for train_cond_xy,
         # where x, y in [0, 1] and xy = cartesian_product(x, y)
         # For 1-dimensional d and m.
-        g_d1_hat_list, nested_hat_list = self._estimate_nested_outcomes(
-            xm, smpls, ml_g_d1, ml_nested, g_d1_params, nested_params
-        )
-        # TODO: shouldn't learner_pi be a classifier??
-        if is_classifier(ml_pi):
-            # TODO: Apply trimming-threshold???
-            pi_hat_list = fit_predict_proba(self.y, self.x, ml_pi, pi_params, smpls)
+        ymx_hat_list, nested_hat_list = self._estimate_nested_outcomes(xm, smpls, ml_ymx, ml_nested, ymx_params, nested_params)
+
+        if is_classifier(ml_yx):
+            yx_hat_list = fit_predict_proba(self.y, self.x, ml_yx, yx_params, smpls)
         else:
-            pi_hat_list = fit_predict(self.y, self.x, ml_pi, pi_params, smpls)
+            yx_hat_list = fit_predict(self.y, self.x, ml_yx, yx_params, smpls)
 
-        ml_m = clone(self.learner_m)
+        ml_pmx = clone(self.learner_pmx)
+        pmx_hat_list = fit_predict_proba(self.treated, self.xm, ml_pmx, pmx_params, smpls)
+
+        ml_px = clone(self.learner_px)
         # Debugging: set trimming_threshold back to the parameter
-        m_hat_list = fit_predict_proba(self.treated, self.x, ml_m, m_params, smpls, trimming_threshold=0)
+        px_hat_list = fit_predict_proba(self.treated, self.x, ml_px, px_params, smpls, trimming_threshold=0)
 
-        # g_d1_hat, nested_hat, pi_hat, m_hat
-        return g_d1_hat_list, nested_hat_list, pi_hat_list, m_hat_list
+        # yx_hat, nested_hat, pmx_hat, px_hat
+        return yx_hat_list, ymx_hat_list, px_hat_list, pmx_hat_list, nested_hat_list
 
-    def _estimate_nested_outcomes(self, xm, smpls, ml_g_d1, ml_nested, g_d1_params, nested_params):
+    def _estimate_nested_outcomes(self, xm, smpls, ml_ymx, ml_nested, ymx_params, nested_params):
+        for i_fold in range(self.n_folds):
+            pass
         train_idx, test_idx = extract_sets_from_smpls(smpls)
         mu_idx, delta_idx = split_smpls(train_idx, self.smpls_ratio)
 
@@ -859,113 +873,122 @@ class ManualMedCAlt:
         train_cond_d1 = np.where(self.treated == 1)[0]
         mu_cond_d1 = np.where(mu_treated == 1)
 
-        is_classifier_g_d1 = is_classifier(self.learner_g)
-        # TODO: maybe the estimator entring in nested is g_d1_m_hat_list or something different. Check
-        if is_classifier_g_d1:
-            g_d1_hat_list = fit_predict_proba(self.y, xm, ml_g_d1, g_d1_params, smpls=mu_test_smpls, train_cond=mu_cond_d1)
+        is_classifier_ymx = is_classifier(self.learner_ymx)
+        # TODO: maybe the estimator entring in nested is yx_m_hat_list or something different. Check
+        if is_classifier_ymx:
+            ymx_hat_list = fit_predict_proba(self.y, xm, ml_ymx, ymx_params, smpls=mu_test_smpls, train_cond=mu_cond_d1)
         else:
-            g_d1_hat_list = fit_predict(self.y, xm, ml_g_d1, g_d1_params, smpls=mu_test_smpls, train_cond=mu_cond_d1)
+            ymx_hat_list = fit_predict(self.y, xm, ml_ymx, ymx_params, smpls=mu_test_smpls, train_cond=mu_cond_d1)
 
         delta_cond_d0 = np.where(delta_treated == 0)
         if is_classifier(ml_nested):
-            if is_classifier_g_d1:
-                g_d1_delta_hat_list = fit_predict_proba(
-                    y=self.y, x=xm, ml_model=ml_g_d1, params=g_d1_params, smpls=mu_test_smpls, train_cond=mu_cond_d1
+            if is_classifier_ymx:
+                ymx_delta_hat_list = fit_predict_proba(
+                    y=self.y, x=xm, ml_model=ml_ymx, params=ymx_params, smpls=mu_test_smpls, train_cond=mu_cond_d1
                 )
             else:
-                g_d1_delta_hat_list = fit_predict(
-                    y=self.y, x=xm, ml_model=ml_g_d1, params=g_d1_params, smpls=mu_test_smpls, train_cond=mu_cond_d1
+                ymx_delta_hat_list = fit_predict(
+                    y=self.y, x=xm, ml_model=ml_ymx, params=ymx_params, smpls=mu_test_smpls, train_cond=mu_cond_d1
                 )
 
             nested_hat_list = fit_predict_proba(
-                y=g_d1_delta_hat_list,
+                y=ymx_delta_hat_list,
                 x=self.x,
-                ml_model=nested_params,
+                ml_model=ml_nested,
                 params=nested_params,
                 smpls=delta_test_smpls,
                 train_cond=delta_cond_d0,
             )
         else:
-            if is_classifier_g_d1:
-                g_d1_delta_hat_list = fit_predict_proba(
-                    y=self.y, x=xm, ml_model=ml_g_d1, params=g_d1_params, smpls=mu_test_smpls, train_cond=mu_cond_d1
+            if is_classifier_ymx:
+                ymx_delta_hat_list = fit_predict_proba(
+                    y=self.y, x=xm, ml_model=ml_ymx, params=ymx_params, smpls=mu_test_smpls, train_cond=mu_cond_d1
                 )
             else:
-                g_d1_delta_hat_list = fit_predict(
-                    y=self.y, x=xm, ml_model=ml_g_d1, params=g_d1_params, smpls=mu_test_smpls, train_cond=mu_cond_d1
+                ymx_delta_hat_list = fit_predict(
+                    y=self.y, x=xm, ml_model=ml_ymx, params=ymx_params, smpls=mu_test_smpls, train_cond=mu_cond_d1
                 )
 
             nested_hat_list = fit_predict(
-                y=g_d1_delta_hat_list,
+                y=ymx_delta_hat_list,
                 x=self.x,
-                ml_model=nested_params,
+                ml_model=ml_nested,
                 params=nested_params,
                 smpls=delta_test_smpls,
                 train_cond=delta_cond_d0,
             )
 
-        return g_d1_hat_list, nested_hat_list
+        return ymx_hat_list, nested_hat_list
 
     def compute_residuals(
         self,
         smpls,
-        m_hat_list,
-        g_d1_m0_hat_list,
-        g_d1_hat_list,
+        yx_hat_list,
+        ymx_hat_list,
+        px_hat_list,
+        pmx_hat_list,
         nested_hat_list,
-        pi_hat_list,
     ):
 
-        g_d1_hat = np.full_like(self.y, np.nan, dtype="float64")
+        yx_hat = np.full_like(self.y, np.nan, dtype="float64")
+        ymx_hat = np.full_like(self.y, np.nan, dtype="float64")
+        px_hat = np.full_like(self.y, np.nan, dtype="float64")
+        pmx_hat = np.full_like(self.y, np.nan, dtype="float64")
         nested_hat = np.full_like(self.y, np.nan, dtype="float64")
-        pi_hat = np.full_like(self.y, np.nan, dtype="float64")
-        m_hat = np.full_like(self.y, np.nan, dtype="float64")
         u_hat = np.full_like(self.y, np.nan, dtype="float64")
         w_hat = np.full_like(self.y, np.nan, dtype="float64")
 
         for idx, (_, test_index) in enumerate(smpls):
-            g_d1_hat[test_index] = g_d1_m0_hat_list[idx]
+            yx_hat[test_index] = yx_hat_list[idx]
+            ymx_hat[test_index] = ymx_hat_list[idx]
+            px_hat[test_index] = px_hat_list[idx]
+            pmx_hat[test_index] = pmx_hat_list[idx]
             nested_hat[test_index] = nested_hat_list[idx]
-            pi_hat[test_index] = pi_hat_list[idx]
-            m_hat[test_index] = m_hat_list[idx]
-            u_hat[test_index] = self.y[test_index] - g_d1_hat_list[idx]
-            w_hat[test_index] = g_d1_hat[idx] - nested_hat_list[idx]
+            u_hat[test_index] = self.y[test_index] - ymx_hat_list[idx]
+            w_hat[test_index] = ymx_hat[idx] - nested_hat_list[idx]
 
-        _check_is_propensity(m_hat, "learner_m", "ml_m", smpls, eps=1e-12)
-        return g_d1_hat, nested_hat, pi_hat, m_hat, u_hat, w_hat
+        _check_is_propensity(px_hat, "learner_px", "ml_px", smpls, eps=1e-12)
+        _check_is_propensity(pmx_hat, "learner_pmx", "ml_pmx", smpls, eps=1e-12)
 
-    # TODO: Probably add method to get adjusted m_hat
+        return yx_hat, ymx_hat, px_hat, pmx_hat, nested_hat, u_hat, w_hat
+
+    # TODO: Probably add method to get adjusted px_hat
     def med_dml2(
         self,
         smpls,
-        m_hat_list,
-        g_d1_hat_list,
+        yx_hat_list,
+        ymx_hat_list,
+        px_hat_list,
+        pmx_hat_list,
         nested_hat_list,
-        pi_hat_list,
     ):
 
-        g_d1_hat, nested_hat, pi_hat, m_hat, u_hat, w_hat = self.compute_residuals(
-            g_d1_hat_list=g_d1_hat_list,
+        yx_hat, ymx_hat, px_hat, pmx_hat, nested_hat, u_hat, w_hat = self.compute_residuals(
+            yx_hat_list=yx_hat_list,
+            ymx_hat_list=ymx_hat_list,
+            px_hat_list=px_hat_list,
+            pmx_hat_list=pmx_hat_list,
             nested_hat_list=nested_hat_list,
-            pi_hat_list=pi_hat_list,
-            m_hat_list=m_hat_list,
             smpls=smpls,
         )
         theta_hat = self.med_orth(
+            yx_hat=yx_hat,
+            ymx_hat=ymx_hat,
+            px_hat=px_hat,
+            pmx_hat=pmx_hat,
+            nested_hat=nested_hat,
             u_hat=u_hat,
             w_hat=w_hat,
-            nested_hat=nested_hat,
-            pi_hat=pi_hat,
-            m_hat=m_hat,
         )
 
         se = np.sqrt(
             self.var_med(
                 theta_hat=theta_hat,
-                g_d1_hat=g_d1_hat,
+                yx_hat=yx_hat,
+                ymx_hat=ymx_hat,
+                px_hat=px_hat,
+                pmx_hat=pmx_hat,
                 nested_hat=nested_hat,
-                pi_hat=pi_hat,
-                m_hat=m_hat,
                 u_hat=u_hat,
                 w_hat=w_hat,
             )
@@ -975,27 +998,29 @@ class ManualMedCAlt:
 
     def med_orth(
         self,
+        yx_hat,
+        ymx_hat,
+        px_hat,
+        pmx_hat,
+        nested_hat,
         u_hat,
         w_hat,
-        nested_hat=None,
-        pi_hat=None,
-        m_hat=None,
     ):
         res = np.mean(
-            np.multiply(np.multiply(np.divide(self.treated, 1.0 - m_hat), np.divide(1.0 - pi_hat, pi_hat)), u_hat)
-            + np.multiply(np.divide(1.0 - self.treated, 1.0 - m_hat), w_hat)
+            np.multiply(np.multiply(np.divide(self.treated, 1.0 - px_hat), np.divide(1.0 - pmx_hat, pmx_hat)), u_hat)
+            + np.multiply(np.divide(1.0 - self.treated, 1.0 - px_hat), w_hat)
             + nested_hat
         )
         return res
 
-    def var_med(self, theta, treated, m_hat, u_hat, w_hat, pi_hat, nested_hat):
+    def var_med(self, theta, treated, ymx_hat, px_hat, pmx_hat, nested_hat, u_hat, w_hat):
         var = (
             1
             / self.n_obs
             * np.mean(
                 np.power(
-                    np.multiply(np.multiply(np.divide(treated, 1.0 - m_hat), np.divide(1.0 - pi_hat, pi_hat)), u_hat)
-                    + np.multiply(np.divide(1.0 - treated, 1.0 - m_hat), w_hat)
+                    np.multiply(np.multiply(np.divide(treated, 1.0 - px_hat), np.divide(1.0 - pmx_hat, pmx_hat)), u_hat)
+                    + np.multiply(np.divide(1.0 - treated, 1.0 - px_hat), w_hat)
                     + nested_hat
                     - theta,
                     2,
@@ -1009,10 +1034,11 @@ class ManualMedCAlt:
         self,
         thetas,
         ses,
-        all_g_d1_hat,
+        all_yx_hat,
+        all_ymx_hat,
+        all_px_hat,
+        all_pmx_hat,
         all_nested_hat,
-        all_pi_hat,
-        all_m_hat,
         bootstrap,
     ):
 
@@ -1023,10 +1049,11 @@ class ManualMedCAlt:
             weights = draw_weights(bootstrap, self.n_rep_boot, self.n_obs)
             boot_t_stat = self.boot_med_single_split(
                 thetas[i_rep],
-                all_g_d1_hat[i_rep],
+                all_yx_hat[i_rep],
+                all_ymx_hat[i_rep],
+                all_px_hat[i_rep],
+                all_pmx_hat[i_rep],
                 all_nested_hat[i_rep],
-                all_pi_hat[i_rep],
-                all_m_hat[i_rep],
                 smpls,
                 ses[i_rep],
                 weights,
@@ -1040,33 +1067,33 @@ class ManualMedCAlt:
     def boot_med_single_split(
         self,
         theta,
-        m_hat_list,
-        g_d1_m0_hat_list,
-        g_d1_hat_list,
+        yx_hat_list,
+        ymx_hat_list,
+        px_hat_list,
+        pmx_hat_list,
         nested_hat_list,
-        pi_hat_list,
         smpls,
         se,
         weights,
     ):
-        g_d1_hat, nested_hat, pi_hat, m_hat, u_hat, w_hat = self.compute_residuals(
+        yx_hat, ymx_hat, px_hat, pmx_hat, nested_hat, u_hat, w_hat = self.compute_residuals(
             smpls,
-            m_hat_list,
-            g_d1_m0_hat_list,
-            g_d1_hat_list,
+            yx_hat_list,
+            ymx_hat_list,
+            px_hat_list,
+            pmx_hat_list,
             nested_hat_list,
-            pi_hat_list,
         )
 
         #    if normalize_ipw:
-        #        m_hat_adj = _normalize_ipw(m_hat, treated)
+        #        px_hat_adj = _normalize_ipw(px_hat, treated)
         #    else:
-        #        m_hat_adj = m_hat
+        #        px_hat_adj = px_hat
 
         J = -1.0
         psi = (
-            np.multiply(np.multiply(np.divide(self.treated, 1.0 - m_hat), np.divide(1.0 - pi_hat, pi_hat)), u_hat)
-            + np.multiply(np.divide(1.0 - self.treated, 1.0 - m_hat), w_hat)
+            np.multiply(np.multiply(np.divide(self.treated, 1.0 - px_hat), np.divide(1.0 - pmx_hat, pmx_hat)), u_hat)
+            + np.multiply(np.divide(1.0 - self.treated, 1.0 - px_hat), w_hat)
             + nested_hat
             - theta
         )
@@ -1074,54 +1101,19 @@ class ManualMedCAlt:
 
         return boot_t_stat
 
-    def fit_sensitivity_elements_med(
-        self,
-        all_coef,
-        predictions,
-    ):
-        n_treat = 1
-
-        sigma2 = np.full(shape=(1, self.n_rep, n_treat), fill_value=np.nan)
-        nu2 = np.full(shape=(1, self.n_rep, n_treat), fill_value=np.nan)
-        psi_sigma2 = np.full(shape=(self.n_obs, self.n_rep, n_treat), fill_value=np.nan)
-        psi_nu2 = np.full(shape=(self.n_obs, self.n_rep, n_treat), fill_value=np.nan)
-
-        for i_rep in range(self.n_rep):
-            m_hat = predictions["ml_m"][:, i_rep, 0]
-            if self.normalize_ipw:
-                m_hat_adj = _normalize_ipw(m_hat, self.treated)
-            else:
-                m_hat_adj = m_hat
-            g_hat0 = predictions["ml_g_d0"][:, i_rep, 0]
-            g_hat1 = predictions["ml_g_d1"][:, i_rep, 0]
-
-            weights = np.ones_like(d)
-            weights_bar = np.ones_like(d)
-
-            sigma2_score_element = np.square(y - np.multiply(self.treated, g_hat1) - np.multiply(1.0 - self.treated, g_hat0))
-            sigma2[0, i_rep, 0] = np.mean(sigma2_score_element)
-            psi_sigma2[:, i_rep, 0] = sigma2_score_element - sigma2[0, i_rep, 0]
-
-            # calc m(W,alpha) and Riesz representer
-            m_alpha = np.multiply(weights, np.multiply(weights_bar, np.divide(1.0, m_hat_adj)))
-            rr = np.multiply(weights_bar, np.divide(self.treated, m_hat_adj))
-
-            nu2_score_element = np.multiply(2.0, m_alpha) - np.square(rr)
-            nu2[0, i_rep, 0] = np.mean(nu2_score_element)
-            psi_nu2[:, i_rep, 0] = nu2_score_element - nu2[0, i_rep, 0]
-
-        element_dict = {"sigma2": sigma2, "nu2": nu2, "psi_sigma2": psi_sigma2, "psi_nu2": psi_nu2}
-        return element_dict
-
     def tune_nuisance_med(
         self,
-        ml_g,
-        ml_m,
+        ml_yx,
+        ml_ymx,
+        ml_px,
+        ml_pmx,
+        ml_nested,
         smpls,
         n_folds_tune,
         param_grid_g,
         param_grid_m,
     ):
+        # TODO: Change this for counterfactual alt estimation.
         dx = np.column_stack((self.d, self.x))
         train_cond_d0 = np.where(self.d != self.treatment_level)[0]
         g0_tune_res = tune_grid_search(self.y, dx, ml_g, smpls, param_grid_g, n_folds_tune, train_cond=train_cond_d0)
@@ -1130,7 +1122,7 @@ class ManualMedCAlt:
         g1_tune_res = tune_grid_search(self.y, self.x, ml_g, smpls, param_grid_g, n_folds_tune, train_cond=train_cond_d1)
 
         treated = self.d == self.treatment_level
-        m_tune_res = tune_grid_search(treated, self.x, ml_m, smpls, param_grid_m, n_folds_tune)
+        m_tune_res = tune_grid_search(treated, self.x, ml_px, smpls, param_grid_m, n_folds_tune)
 
         g0_best_params = [xx.best_params_ for xx in g0_tune_res]
         g1_best_params = [xx.best_params_ for xx in g1_tune_res]

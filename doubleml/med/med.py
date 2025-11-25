@@ -1,11 +1,14 @@
 import numpy as np
+import copy
+from joblib import Parallel
+from sklearn.base import clone
+from sklearn.model_selection import train_test_split
 from sklearn.utils import check_consistent_length, check_X_y
 
 from doubleml import DoubleMLMediationData
 from doubleml.double_ml import DoubleML
 from doubleml.double_ml_score_mixins import LinearScoreMixin
-from doubleml.med.utils._med_utils import _normalize_propensity_med, split_smpls, recombine_samples, \
-    extract_sets_from_smpls
+from doubleml.med.utils._med_utils import _normalize_propensity_med, split_smpls, recombine_samples, extract_sets_from_smpls
 from doubleml.utils._checks import _check_finite_predictions, _check_score
 from doubleml.utils._estimation import _cond_targets, _dml_cv_predict, _dml_tune, _get_cond_smpls, _get_cond_smpls_2d
 from doubleml.utils._propensity_score import _trimm
@@ -405,15 +408,17 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
         self._mediation_level = mediation_level
         self._treated = self._med_data.d == treatment_level
         self._mediated = self._med_data.m == mediation_level
-        self.smpls_ratio=smpls_ratio
+        self.smpls_ratio = smpls_ratio
 
-        self._learner = {"ml_px":ml_px, "ml_pmx":ml_pmx, "ml_yx":ml_yx, "ml_ymx":ml_ymx, "ml_nested":ml_nested}
+        self._learner = {"ml_px": ml_px, "ml_pmx": ml_pmx, "ml_yx": ml_yx, "ml_ymx": ml_ymx, "ml_nested": ml_nested}
         self._check_learner(learner=ml_px, learner_name="ml_px", regressor=False, classifier=True)
         self._check_learner(learner=ml_pmx, learner_name="ml_pmx", regressor=False, classifier=True)
 
         is_classifier_ml_yx = self._check_learner(learner=ml_yx, learner_name="ml_yx", regressor=True, classifier=True)
         is_classifier_ml_ymx = self._check_learner(learner=ml_ymx, learner_name="ml_ymx", regressor=True, classifier=True)
-        is_classifier_ml_nested = self._check_learner(learner=ml_nested, learner_name="ml_nested", regressor=True, classifier=True)
+        is_classifier_ml_nested = self._check_learner(
+            learner=ml_nested, learner_name="ml_nested", regressor=True, classifier=True
+        )
 
         self._predict_method = {"ml_px": "predict_proba", "ml_pmx": "predict_proba"}
         if is_classifier_ml_yx:
@@ -576,7 +581,9 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
                 return_models=return_models,
             )
 
-        ymx_hat, nested_hat = self._estimate_nested_outcomes(y, x, xm, smpls, external_predictions, n_jobs_cv, return_models, ymx_external, nested_external)
+        ymx_hat, nested_hat = self._estimate_nested_outcomes(
+            y, x, m, xm, smpls, external_predictions, n_jobs_cv, return_models, ymx_external, nested_external
+        )
         preds = {
             "predictions": {
                 "ml_px": px_hat["preds"],
@@ -606,68 +613,124 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
 
         return psi_elements, preds
 
+    def _fit_predict(self, x, y, train, test, learner, nuisance, params=None, return_models=False):
+        fitted_models = {}
 
-    def _estimate_nested_outcomes(self, y, x, xm, smpls, external_predictions, n_jobs_cv, return_models, ymx_external, nested_external):
+        if params is not None:
+            fitted_models[learner] = [
+                clone(self._learner[nuisance]).set_params(**params[i_fold]) for i_fold in range(self.n_folds)
+            ]
+        else:
+            fitted_models[learner] = [clone(self._learner[nuisance]) for i_fold in range(self.n_folds)]
+
+        for i_fold in range(self.n_folds):
+            fitted_models[learner].fit(x[train, :], y[train])
+            fitted_models[learner]["preds"][test] = fitted_models[learner].predict(x[test, :])
+            fitted_models[learner]["targets"][test] = y[test]
+
+            if return_models:
+                fitted_models[learner]["models"] = fitted_models[learner]
+
+        return fitted_models
+
+    # TODO: Clean up predict and estimate function.
+    def _estimate_nested_outcomes(
+        self, y, x, m, xm, smpls, external_predictions, n_jobs_cv, return_models, ymx_external, nested_external
+    ):
+        # TODO: Lets fucking go with ssm model estimation way.
         # Separate the training set into two disjointed sets: mu and delta.
-        train_idx, test_idx = extract_sets_from_smpls(smpls, index=0)
-        mu_idx, delta_idx = split_smpls(train_idx, self.smpls_ratio)
 
-        # Recombine the disjointed sets into a smpls like structure.
-        mu_delta_smpls = recombine_samples(mu_idx, delta_idx)
-        mu_test_smpls = recombine_samples(mu_idx, test_idx)
-        delta_test_smpls = recombine_samples(delta_idx, test_idx)
+        ymx_hat = {
+            "models": None,
+            "targets": np.full(shape=self._dml_data.n_obs, fill_value=np.nan),
+            "preds": np.full(shape=self._dml_data.n_obs, fill_value=np.nan),
+        }
+        nested_hat = copy.deepcopy(ymx_hat)
+        ymx_mu_hat = copy.deepcopy(ymx_hat)
+        ymx_delta_hat = copy.deepcopy(ymx_hat)
 
-        # Get samples conditional on treatment for estimation.
-        _, mu_test_smpls_d1 = _get_cond_smpls(mu_test_smpls, self.treated)
-        _, mu_delta_smpls_d1 = _get_cond_smpls(mu_delta_smpls, self.treated)
-        smpls_delta_0, _ = _get_cond_smpls(delta_test_smpls, self.treated)
+        fitted_models = {}
+        for learner in ["ml_ymx", "ml_nested"]:
+            est_params = self._get_params(learner)
+            nuisance = learner
 
-        # TODO: maybe the estimator entring in g_nested is g_d1_m_hat_list or something different. Check
-        if ymx_external:
-            ymx_hat = {"preds": external_predictions["ml_ymx"], "targets": None, "models": None}
-        else:
-            ymx_hat = _dml_cv_predict(
-                self._learner["ml_ymx"],
-                xm,
-                y,
-                smpls=mu_test_smpls_d1,
-                n_jobs=n_jobs_cv,
-                est_params=self._get_params("ml_ymx"),
-                method=self._predict_method["ml_ymx"],
-                return_models=return_models,
-            )
+            if est_params is not None:
+                fitted_models[learner] = [
+                    clone(self._learner[nuisance]).set_params(**est_params[i_fold]) for i_fold in range(self.n_folds)
+                ]
+            else:
+                fitted_models[learner] = [clone(self._learner[nuisance]) for i_fold in range(self.n_folds)]
 
-        if nested_external:
-            nested_hat = {"preds": external_predictions["ml_nested"], "targets": None, "models": None}
-        else:
-            ymx_delta_hat = _dml_cv_predict(
-                self._learner["ml_ymx"],
-                xm,
-                y,
-                smpls=mu_delta_smpls_d1,
-                n_jobs=n_jobs_cv,
-                est_params=self._get_params("ml_ymx"),
-                method=self._predict_method["ml_ymx"],
-                return_models=return_models,
-            )
-            nested_hat = _dml_cv_predict(
-                self._learner["ml_nested"],
-                x,
-                ymx_delta_hat,
-                smpls=delta_test_smpls,  # TODO: Change this sample
-                n_jobs=n_jobs_cv,
-                est_params=self._get_params("ml_nested"),
-                method=self._predict_method["ml_nested"],
-                return_models=return_models,
-            )
+        fitted_models["ml_ymx_mu_hat"] = 2 * [[clone(self._learner["ml_ymx"]) for i_fold in range(self.n_folds)]]
+        fitted_models["ml_ymx_delta_hat"] = 2 * [[clone(self._learner["ml_ymx"]) for i_fold in range(self.n_folds)]]
+
+        for i_fold in range(self.n_folds):
+            # ymx: fit y musample on xm musample
+            # predict ymx on xm tesample
+            # predict ymx on xm deltasample
+            # fit nested on ymx deltasample estimates and x deltasample
+            # predict nested on x tesample
+
+            train_inds = smpls[i_fold][0]
+            test_inds = smpls[i_fold][1]
+
+            subs1_idx, subs2_idx = train_test_split(train_inds, test_size=0.5)
+
+            # Get observations in mu_sample where d has value 1.
+            subs1_d0_idx = np.intersect1d(np.where(self.treated == 0)[0], subs1_idx)
+            subs1_d1_idx = np.intersect1d(np.where(self.treated == 1)[0], subs1_idx)
+
+            # Get observations in delta_sample where d has value 0.
+            subs2_d0_idx = np.intersect1d(np.where(self.treated == 0)[0], subs2_idx)
+            subs2_d1_idx = np.intersect1d(np.where(self.treated == 1)[0], subs2_idx)
+
+            for subsample in (subs1_idx, subs2_idx):
+                # fit in 1st subsample, predict in the 2nd subsample.
+                fitted_models["ml_ymx_mu_hat"][0][i_fold].fit(xm[subs1_d1_idx, :], y[subs1_d1_idx])
+                ymx_delta_hat["preds"][subs2_idx] = fitted_models["ml_ymx_mu_hat"][0][i_fold].predict(xm[subs2_idx, :])
+                ymx_delta_hat["targets"][subs2_idx] = y[subs2_idx]
+
+                # fit in 2nd subsample, predict in the 1st subsample.
+                fitted_models["ml_ymx_mu_hat"][1][i_fold].fit(xm[subs2_d1_idx, :], y[subs2_d1_idx])
+                ymx_delta_hat["preds"][subs1_idx] = fitted_models["ml_ymx_mu_hat"][1][i_fold].predict(xm[subs1_idx, :])
+                ymx_delta_hat["targets"][subs1_idx] = y[subs1_idx]
+
+            # Predict in the original test sample
+            ymx_hat["preds"][test_inds] = fitted_models["ml_ymx_mu_hat"][0][i_fold].predict(xm[test_inds, :])
+            ymx_hat["targets"][test_inds] = y[test_inds]
+
+        for i_fold in range(self.n_folds):
+            train_inds = smpls[i_fold][0]
+            test_inds = smpls[i_fold][1]
+
+            subs1_idx, subs2_idx = train_test_split(train_inds, test_size=0.5)
+
+            # Get observations in mu_sample where d has value 1.
+            subs1_d0_idx = np.intersect1d(np.where(self.treated == 0)[0], subs1_idx)
+            subs1_d1_idx = np.intersect1d(np.where(self.treated == 1)[0], subs1_idx)
+
+            # Get observations in delta_sample where d has value 0.
+            subs2_d0_idx = np.intersect1d(np.where(self.treated == 0)[0], subs2_idx)
+            subs2_d1_idx = np.intersect1d(np.where(self.treated == 1)[0], subs2_idx)
+
+            # estimate nested conditional outcome on delta sample.
+            fitted_models["ml_nested"][i_fold].fit(x[subs2_d0_idx, :], ymx_delta_hat["preds"][subs2_d0_idx])
+
+            # predict conditional outcome
+            nested_hat["preds"][test_inds] = fitted_models["ml_nested"][i_fold].predict(x[test_inds, :])
+            nested_hat["targets"][test_inds] = ymx_delta_hat["preds"][test_inds]
+
+        if return_models:
+            ymx_hat["models"] = fitted_models["ml_ymx"]
+            nested_hat["models"] = fitted_models["ml_nested"]
 
         return ymx_hat, nested_hat
 
     def _score_elements(self, y, px_hat, pmx_hat, yx_hat, ymx_hat, nested_hat, smpls):
         if self.mediation_level == self.treatment_level:
-            u_hat = y-ymx_hat
-            psi_a=-1.0
-            psi_b=ymx_hat+ np.divide(np.multiply(self.treated, u_hat), px_hat)
+            u_hat = y - ymx_hat
+            psi_a = -1.0
+            psi_b = ymx_hat + np.divide(np.multiply(self.treated, u_hat), px_hat)
         else:
 
             u_hat = y - ymx_hat
@@ -712,7 +775,7 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
                 f"of type {str(type(med_data))} was passed."
             )
 
-    #TODO: Change this for efficient-alt only.
+    # TODO: Change this for efficient-alt only.
     def _check_score_functions(self):
         valid_score_function = ["efficient", "efficient-alt"]
         if self.score_function == "efficient":

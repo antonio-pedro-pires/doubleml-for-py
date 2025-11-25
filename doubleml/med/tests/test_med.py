@@ -86,10 +86,12 @@ class TestCounterfactualAltOutcomes:
             [
                 LinearRegression(),
                 LinearRegression(),
+                LinearRegression(),
                 LogisticRegression(penalty="l1", solver="liblinear", max_iter=250, random_state=42),
                 LogisticRegression(penalty="l1", solver="liblinear", max_iter=250, random_state=42),
             ],
             [
+                RandomForestRegressor(max_depth=5, n_estimators=10, random_state=42),
                 RandomForestRegressor(max_depth=5, n_estimators=10, random_state=42),
                 RandomForestRegressor(max_depth=5, n_estimators=10, random_state=42),
                 RandomForestClassifier(max_depth=5, n_estimators=10, random_state=42),
@@ -159,20 +161,22 @@ class TestCounterfactualAltOutcomes:
         treatment_level, mediation_level = treatment_mediation_level
 
         # Set machine learning methods for m & g
-        ml_g = clone(learners[0])
-        ml_med_or_nested = clone(learners[1])
-        ml_m = clone(learners[2])
-        ml_pi = clone(learners[3])
+        ml_y = clone(learners[0])
+        ml_ymx = clone(learners[1])
+        ml_nested = clone(learners[2])
+        ml_p = clone(learners[3])
+        ml_pmx = clone(learners[4])
 
         np.random.seed(3141)
         dml_obj = outcome_scoring[0](
             med_data=data,
             treatment_level=treatment_level,
             mediation_level=mediation_level,
-            ml_g=ml_g,
-            ml_m=ml_m,
-            ml_nested=ml_med_or_nested,
-            ml_pi=ml_pi,
+            ml_yx=ml_y,
+            ml_ymx=ml_ymx,
+            ml_px=ml_p,
+            ml_pmx=ml_pmx,
+            ml_nested=ml_nested,
             score="MED",
             score_function="efficient-alt",
             n_folds=n_folds,
@@ -191,10 +195,11 @@ class TestCounterfactualAltOutcomes:
             x=x,
             d=d,
             m=m,
-            learner_g=clone(learners[0]),
-            learner_m=clone(learners[1]),
-            learner_nested=clone(learners[2]),
-            learner_pi=clone(learners[3]),
+            ml_yx=clone(learners[0]),
+            ml_ymx=clone(learners[1]),
+            ml_px=clone(learners[3]),
+            ml_pmx=clone(learners[4]),
+            ml_nested=clone(learners[2]),
             treatment_level=treatment_level,
             mediation_level=mediation_level,
             all_smpls=all_smpls,
@@ -211,10 +216,11 @@ class TestCounterfactualAltOutcomes:
             med_data=data,
             treatment_level=treatment_level,
             mediation_level=mediation_level,
-            ml_g=ml_g,
-            ml_m=ml_m,
-            ml_pi=ml_pi,
-            ml_nested=ml_med_or_nested,
+            ml_yx=ml_y,
+            ml_ymx=ml_ymx,
+            ml_px=ml_p,
+            ml_pmx=ml_pmx,
+            ml_nested=ml_nested,
             score="MED",
             score_function="efficient-alt",
             n_folds=n_folds,
