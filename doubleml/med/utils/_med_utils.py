@@ -1,13 +1,11 @@
 import numpy as np
-from joblib import Parallel, delayed
-from sklearn import clone
-from sklearn.model_selection import train_test_split, cross_val_predict
+from sklearn.model_selection import train_test_split
 
 
 # TODO: refactor so that it takes multiple columns and multiple conditions for trimming.
 def _trim_probabilities(preds, trimming_threshold=None, method=None, conditions=None):
     if preds.ndim == 1:
-        if conditions != None:
+        if conditions is not None:
             return np.array(preds)[conditions]
         if method == "both":
             lower_bound = trimming_threshold
@@ -105,24 +103,22 @@ def split_smpls(
     smpls_ratio=0.5,
 ):
     """
-    Splits sample into two subsamples for the estimation of the nested estimator used with the efficient-alt scoring function.
-
+    Splits sample into two subsamples.
     Parameters
     ----------
     smpls_ratio : float
-        Describes the ratio of observations in the musample
+        Describes the ratio of observations in the first subsample compared to those in the second subsample
 
     Returns
     -------
     results : a list of tuples of ndarrays
-        Contains the indexes of the subsamples (mu, delta, train and test)
+        Contains the indexes of the subsamples (subsample1, subsample2, train and test)
     """
     if (smpls is None) or (not smpls):
         raise ValueError("the smpls array is empty")
-    if smpls_ratio == None:
+    if smpls_ratio is None:
         raise ValueError("smpls_ratio must be a float between 0.0 and 1.0")
 
-    results = []
     subsample1 = []
     subsample2 = []
     for smpl in smpls:
@@ -136,10 +132,17 @@ def recombine_samples(
     subsmpls1,
     subsmpls2,
 ):
-    # Take only the samples of interest and recombine them.
-    # Need indexes to know which sample to recombine
-    # Loop through each smpls to get the targeted sample
-    # Create new samples made up of subsamples
+    """
+    Recombines two subsamples into a single smpl-like structure.
+
+    Parameters
+    ----------
+    subsmpls1: list of tuples of ndarrays
+    subsmpls2: list of tuples of ndarrays
+
+    :return:
+    list of the pairwise combined inputs.
+    """
     result = []
     for s1, s2 in zip(subsmpls1, subsmpls2):
         result.append((s1, s2))

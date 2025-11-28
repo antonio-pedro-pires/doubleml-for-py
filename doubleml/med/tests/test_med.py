@@ -5,14 +5,13 @@ import pandas as pd
 import pytest
 from sklearn.base import clone
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
-from sklearn.linear_model import ElasticNet, LinearRegression, LogisticRegression
+from sklearn.linear_model import LinearRegression, LogisticRegression
 
 import doubleml as dml
 from doubleml.datasets import make_med_data
-
-from ...tests._utils import draw_smpls
-from .. import DoubleMLMEDC
-from ._utils_med_manual import ManualMedC, ManualMedCAlt, ManualMedP
+from doubleml.med import DoubleMLMEDC
+from doubleml.med.tests._utils_med_manual import ManualMedCAlt
+from doubleml.tests._utils import draw_smpls
 
 
 @pytest.fixture(scope="module")
@@ -86,16 +85,16 @@ class TestCounterfactualAltOutcomes:
             [
                 LinearRegression(),
                 LinearRegression(),
+                LogisticRegression(penalty="l1", solver="liblinear", max_iter=250, random_state=42),
+                LogisticRegression(penalty="l1", solver="liblinear", max_iter=250, random_state=42),
                 LinearRegression(),
-                LogisticRegression(penalty="l1", solver="liblinear", max_iter=250, random_state=42),
-                LogisticRegression(penalty="l1", solver="liblinear", max_iter=250, random_state=42),
             ],
             [
                 RandomForestRegressor(max_depth=5, n_estimators=10, random_state=42),
                 RandomForestRegressor(max_depth=5, n_estimators=10, random_state=42),
+                RandomForestClassifier(max_depth=5, n_estimators=10, random_state=42),
+                RandomForestClassifier(max_depth=5, n_estimators=10, random_state=42),
                 RandomForestRegressor(max_depth=5, n_estimators=10, random_state=42),
-                RandomForestClassifier(max_depth=5, n_estimators=10, random_state=42),
-                RandomForestClassifier(max_depth=5, n_estimators=10, random_state=42),
             ],
         ],
     )
@@ -161,20 +160,20 @@ class TestCounterfactualAltOutcomes:
         treatment_level, mediation_level = treatment_mediation_level
 
         # Set machine learning methods for m & g
-        ml_y = clone(learners[0])
+        ml_yx = clone(learners[0])
         ml_ymx = clone(learners[1])
-        ml_nested = clone(learners[2])
-        ml_p = clone(learners[3])
-        ml_pmx = clone(learners[4])
+        ml_px = clone(learners[2])
+        ml_pmx = clone(learners[3])
+        ml_nested = clone(learners[4])
 
         np.random.seed(3141)
         dml_obj = outcome_scoring[0](
             med_data=data,
             treatment_level=treatment_level,
             mediation_level=mediation_level,
-            ml_yx=ml_y,
+            ml_yx=ml_yx,
             ml_ymx=ml_ymx,
-            ml_px=ml_p,
+            ml_px=ml_px,
             ml_pmx=ml_pmx,
             ml_nested=ml_nested,
             score="MED",
@@ -195,15 +194,15 @@ class TestCounterfactualAltOutcomes:
             x=x,
             d=d,
             m=m,
-            ml_yx=clone(learners[0]),
-            ml_ymx=clone(learners[1]),
-            ml_px=clone(learners[3]),
-            ml_pmx=clone(learners[4]),
-            ml_nested=clone(learners[2]),
+            learner_yx=clone(learners[0]),
+            learner_ymx=clone(learners[1]),
+            learner_px=clone(learners[2]),
+            learner_pmx=clone(learners[3]),
+            learner_nested=clone(learners[4]),
             treatment_level=treatment_level,
             mediation_level=mediation_level,
             all_smpls=all_smpls,
-            n_rep=n_rep_boot,
+            n_rep=1,
             normalize_ipw=normalize_ipw,
             trimming_threshold=trimming_threshold,
             smpls_ratio=0.5,
@@ -216,9 +215,9 @@ class TestCounterfactualAltOutcomes:
             med_data=data,
             treatment_level=treatment_level,
             mediation_level=mediation_level,
-            ml_yx=ml_y,
+            ml_yx=ml_yx,
             ml_ymx=ml_ymx,
-            ml_px=ml_p,
+            ml_px=ml_px,
             ml_pmx=ml_pmx,
             ml_nested=ml_nested,
             score="MED",
@@ -234,8 +233,11 @@ class TestCounterfactualAltOutcomes:
 
         prediction_dict = {
             "d": {
-                "ml_g_1": dml_obj.predictions["ml_g_1"].reshape(-1, 1),
-                "ml_med_or_nested": dml_obj.predictions["ml_med_or_nested"].reshape(-1, 1),
+                "ml_yx": dml_obj.predictions["ml_yx"].reshape(-1, 1),
+                "ml_ymx": dml_obj.predictions["ml_ymx"].reshape(-1, 1),
+                "ml_px": dml_obj.predictions["ml_px"].reshape(-1, 1),
+                "ml_pmx": dml_obj.predictions["ml_pmx"].reshape(-1, 1),
+                "ml_nested": dml_obj.predictions["ml_nested"].reshape(-1, 1),
             }
         }
         dml_obj_ext.fit(external_predictions=prediction_dict)
@@ -252,20 +254,16 @@ class TestCounterfactualAltOutcomes:
 
         for bootstrap in boot_methods:
             np.random.seed(3141)
-            boot_t_stat = outcome_scoring[1].boot_med(
-                y,
-                d,
-                treatment_level,
-                res_manual["thetas"],
-                res_manual["ses"],
-                res_manual["all_g_hat0"],
-                res_manual["all_g_hat1"],
-                res_manual["all_m_hat"],
-                all_smpls,
-                score="MED",
+            boot_t_stat = manual_med.boot_med(
+                thetas=res_manual["thetas"],
+                ses=res_manual["ses"],
+                all_yx_hat=res_manual["all_yx_hat"],
+                all_ymx_hat=res_manual["all_ymx_hat"],
+                all_px_hat=res_manual["all_px_hat"],
+                all_pmx_hat=res_manual["all_pmx_hat"],
+                all_nested_hat=res_manual["all_nested_hat"],
                 bootstrap=bootstrap,
                 n_rep_boot=n_rep_boot,
-                normalize_ipw=normalize_ipw,
             )
 
             np.random.seed(3141)
