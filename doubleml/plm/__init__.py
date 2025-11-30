@@ -4,11 +4,7 @@ The :mod:`doubleml.plm` module implements double machine learning estimates base
 
 from .lplr import DoubleMLLPLR
 from .pliv import DoubleMLPLIV
-from .plr import DoubleMLPLR
 from .plpr import DoubleMLPLPR
+from .plr import DoubleMLPLR
 
-__all__ = [
-    "DoubleMLPLR",
-    "DoubleMLPLIV",
-    "DoubleMLPLPR",
-]
+__all__ = ["DoubleMLPLR", "DoubleMLPLIV", "DoubleMLLPLR", "DoubleMLPLPR"]
