@@ -240,10 +240,8 @@ def dml_med_counterfactual_fixture(
             all_smpls=all_smpls,
             y=y,
             d=d,
-            m=m,
             target="counterfactual",
             treatment_level=treatment_level,
-            mediation_level=mediation_level,
             bootstrap=bootstrap,
             n_rep_boot=n_rep_boot,
         )

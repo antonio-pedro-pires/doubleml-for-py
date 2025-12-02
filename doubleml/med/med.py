@@ -12,6 +12,7 @@ from doubleml.utils._checks import _check_finite_predictions, _check_score
 from doubleml.utils._estimation import _cond_targets, _dml_cv_predict, _dml_tune, _get_cond_smpls, _get_cond_smpls_2d
 
 
+# TODO: remove yx_learner in counterfactual nuisance estimation dependent on how trimming is applied
 class DoubleMLMediation(LinearScoreMixin, DoubleML):
     """Double machine learning for causal mediation analysis.
 

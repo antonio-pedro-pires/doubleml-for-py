@@ -1,5 +1,6 @@
 import numpy as np
 from sklearn.base import clone, is_classifier
+from sklearn.model_selection import train_test_split
 
 from doubleml.tests._utils import fit_predict, fit_predict_proba
 from doubleml.tests._utils_boot import boot_manual, draw_weights
@@ -168,7 +169,16 @@ def _fit_nuisance_potential_manual(
     else:
         yx_hat_list = fit_predict(y, x, ml_yx, yx_params, smpls, train_cond=train_cond_d1)
 
-    px_hat_list = fit_predict_proba(treated, x, ml_px, px_params, smpls, trimming_threshold=trimming_threshold)
+    if is_classifier(learner_px):
+        px_hat_list = fit_predict_proba(treated, x, ml_px, px_params, smpls, trimming_threshold=trimming_threshold)
+    else:
+        px_hat_list = fit_predict(
+            treated,
+            x,
+            ml_px,
+            px_params,
+            smpls,
+        )
 
     return {"yx_hat": yx_hat_list, "px_hat": px_hat_list}
 
@@ -202,7 +212,10 @@ def _fit_nuisance_counterfactual_manual(
     ml_pmx = clone(learner_pmx)
     xm = np.column_stack((x, m))
 
-    px_hat_list = fit_predict_proba(treated, x, ml_px, px_params, smpls, trimming_threshold=trimming_threshold)
+    if is_classifier(ml_px):
+        px_hat_list = fit_predict_proba(treated, x, ml_px, px_params, smpls, trimming_threshold=trimming_threshold)
+    else:
+        px_hat_list = fit_predict(treated, x, ml_px, px_params, smpls, trimming_threshold=trimming_threshold)
 
     pmx_hat_list = fit_predict_proba(treated, xm, ml_pmx, pmx_params, smpls, trimming_threshold=trimming_threshold)
 
@@ -220,12 +233,52 @@ def _fit_nuisance_counterfactual_manual(
     else:
         ymx_hat_list = fit_predict(y, x, ml_ymx, ymx_params, smpls, train_cond=train_cond_d1)
 
+    # Nested learner logic
+    nested_hat_list = []
+    for idx, (train, test) in enumerate(smpls):
+        # 1. Split train into mu and delta
+        mu, delta = train_test_split(train, test_size=0.5, random_state=42)
+
+        # 2. Fit ml_ymx on mu (D=1) and predict on delta
+        mu_d1 = mu[treated[mu] == 1]
+
+        ml_ymx_delta = clone(learner_ymx)
+        if ymx_params is not None:
+            ml_ymx_delta.set_params(**ymx_params[idx])
+
+        ml_ymx_delta.fit(np.column_stack((x[mu_d1], m[mu_d1])), y[mu_d1])
+
+        # Predict on delta
+        if is_classifier(ml_ymx_delta):
+            ymx_delta_hat = ml_ymx_delta.predict_proba(np.column_stack((x[delta], m[delta])))[:, 1]
+        else:
+            ymx_delta_hat = ml_ymx_delta.predict(np.column_stack((x[delta], m[delta])))
+
+        # 3. Fit ml_nested on delta (D=0) using ymx_delta_hat as target
+        delta_d0_indices = np.where(treated[delta] == 0)[0]
+        delta_d0 = delta[delta_d0_indices]
+        target_nested = ymx_delta_hat[delta_d0_indices]
+
+        ml_nested_fold = clone(learner_nested)
+        if nested_params is not None:
+            ml_nested_fold.set_params(**nested_params[idx])
+
+        ml_nested_fold.fit(x[delta_d0], target_nested)
+
+        # 4. Predict on test
+        if is_classifier(ml_nested_fold):
+            nested_hat = ml_nested_fold.predict_proba(x[test])[:, 1]
+        else:
+            nested_hat = ml_nested_fold.predict(x[test])
+
+        nested_hat_list.append(nested_hat)
+
     return {
         "yx_hat": yx_hat_list,
         "px_hat": px_hat_list,
         "pmx_hat": pmx_hat_list,
         "ymx_hat": ymx_hat_list,
-        # "nested_hat": nested_hat_list,
+        "nested_hat": nested_hat_list,
     }
 
 
