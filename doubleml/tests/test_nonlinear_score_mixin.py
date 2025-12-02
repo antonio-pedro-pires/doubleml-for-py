@@ -83,8 +83,8 @@ class DoubleMLPLRWithNonLinearScoreMixin(NonLinearScoreMixin, DoubleML):
         pass
 
     def _nuisance_est(self, smpls, n_jobs_cv, external_predictions, return_models=False):
-        x, y = check_X_y(self._dml_data.x, self._dml_data.y, force_all_finite=False)
-        x, d = check_X_y(x, self._dml_data.d, force_all_finite=False)
+        x, y = check_X_y(self._dml_data.x, self._dml_data.y, ensure_all_finite=False)
+        x, d = check_X_y(x, self._dml_data.d, ensure_all_finite=False)
 
         # nuisance l
         l_hat = _dml_cv_predict(
@@ -251,5 +251,31 @@ def test_nonlinear_warnings(generate_data1, coef_bounds):
     dml_plr_obj = DoubleMLPLRWithNonLinearScoreMixin(obj_dml_data, LinearRegression(), LinearRegression(), score="no_root_neg")
     msg = "Could not find a root of the score function."
     with pytest.warns(UserWarning, match=msg):
+        dml_plr_obj._coef_bounds = coef_bounds
+        dml_plr_obj.fit()
+
+
+@pytest.mark.ci
+def test_nonlinear_errors(generate_data1, coef_bounds):
+    # collect data
+    data = generate_data1
+    x_cols = data.columns[data.columns.str.startswith("X")].tolist()
+
+    np.random.seed(3141)
+    obj_dml_data = dml.DoubleMLData(data, "y", ["d"], x_cols)
+
+    dml_plr_obj = DoubleMLPLRWithNonLinearScoreMixin(obj_dml_data, LinearRegression(), LinearRegression(), score="no_root_pos")
+    dml_plr_obj._error_on_convergence_failure = True
+
+    msg = "Could not find a root of the score function."
+    with pytest.raises(ValueError, match=msg):
+        dml_plr_obj._coef_bounds = coef_bounds
+        dml_plr_obj.fit()
+
+    dml_plr_obj = DoubleMLPLRWithNonLinearScoreMixin(obj_dml_data, LinearRegression(), LinearRegression(), score="no_root_neg")
+    dml_plr_obj._error_on_convergence_failure = True
+
+    msg = "Could not find a root of the score function."
+    with pytest.raises(ValueError, match=msg):
         dml_plr_obj._coef_bounds = coef_bounds
         dml_plr_obj.fit()

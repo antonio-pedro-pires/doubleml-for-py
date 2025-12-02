@@ -4,7 +4,7 @@ import pytest
 from sklearn.linear_model import Lasso, LogisticRegression
 
 from doubleml import DoubleMLAPOS, DoubleMLData
-from doubleml.datasets import make_iivm_data, make_irm_data_discrete_treatments
+from doubleml.irm.datasets import make_iivm_data, make_irm_data_discrete_treatments
 
 n = 100
 data = make_irm_data_discrete_treatments(n_obs=n)
@@ -20,7 +20,7 @@ ml_m = LogisticRegression()
 
 @pytest.mark.ci
 def test_apos_exception_data():
-    msg = "The data must be of DoubleMLData or DoubleMLClusterData type."
+    msg = "The data must be of DoubleMLData type."
     with pytest.raises(TypeError, match=msg):
         _ = DoubleMLAPOS(pd.DataFrame(), ml_g, ml_m, treatment_levels=0)
 
@@ -57,22 +57,6 @@ def test_apos_exception_scores():
     msg = "Invalid score MAR. Valid score APO."
     with pytest.raises(ValueError, match=msg):
         _ = DoubleMLAPOS(dml_data, ml_g, ml_m, treatment_levels=0, score="MAR")
-
-
-@pytest.mark.ci
-def test_apos_exception_trimming_rule():
-    msg = "Invalid trimming_rule discard. Valid trimming_rule truncate."
-    with pytest.raises(ValueError, match=msg):
-        _ = DoubleMLAPOS(dml_data, ml_g, ml_m, treatment_levels=0, trimming_rule="discard")
-
-    # check the trimming_threshold exceptions
-    msg = "trimming_threshold has to be a float. Object of type <class 'str'> passed."
-    with pytest.raises(TypeError, match=msg):
-        _ = DoubleMLAPOS(dml_data, ml_g, ml_m, treatment_levels=0, trimming_rule="truncate", trimming_threshold="0.1")
-
-    msg = "Invalid trimming_threshold 0.6. trimming_threshold has to be between 0 and 0.5."
-    with pytest.raises(ValueError, match=msg):
-        _ = DoubleMLAPOS(dml_data, ml_g, ml_m, treatment_levels=0, trimming_rule="truncate", trimming_threshold=0.6)
 
 
 @pytest.mark.ci

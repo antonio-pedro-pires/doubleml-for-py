@@ -21,8 +21,6 @@ class DoubleMLMediationData(DoubleMLData):
         m_cols,
         x_cols=None,
         z_cols=None,
-        t_col=None,
-        s_col=None,
         use_other_treat_as_covariate=True,
         force_all_x_finite=True,
         force_all_d_finite=True,
@@ -45,11 +43,10 @@ class DoubleMLMediationData(DoubleMLData):
             d_cols,
             x_cols,
             z_cols,
-            t_col,
-            s_col,
-            use_other_treat_as_covariate,
-            force_all_x_finite,
-            force_all_d_finite,
+            cluster_cols=None,
+            use_other_treat_as_covariate=use_other_treat_as_covariate,
+            force_all_x_finite=force_all_x_finite,
+            force_all_d_finite=force_all_d_finite,
         )
 
         self._check_disjoint_sets_m_cols()
@@ -93,8 +90,6 @@ class DoubleMLMediationData(DoubleMLData):
         d,
         m,
         z=None,
-        t=None,
-        s=None,
         use_other_treat_as_covariate=True,
         force_all_x_finite=True,
         force_all_d_finite=True,
@@ -116,7 +111,7 @@ class DoubleMLMediationData(DoubleMLData):
                 + f"{str(force_all_m_finite)} of type {str(type(force_all_m_finite))} was passed."
             )
 
-        dml_data = DoubleMLData.from_arrays(x, y, d, z, t, s, use_other_treat_as_covariate, force_all_x_finite)
+        dml_data = DoubleMLData.from_arrays(x, y, d, z, None, use_other_treat_as_covariate, force_all_x_finite)
         m = check_array(m, ensure_2d=False, allow_nd=False, force_all_finite=force_all_m_finite)
         m = _assure_2d_array(m)
 
@@ -245,16 +240,12 @@ class DoubleMLMediationData(DoubleMLData):
         x_cols_set = set(self.x_cols)
         d_cols_set = set(self.d_cols)
         z_cols_set = set(self.z_cols or [])
-        t_col_set = {self.t_col} if self.t_col else set()
-        s_col_set = {self.s_col} if self.s_col else set()
 
         mediator_checks_args = [
             (y_col_set, "outcome variable", "``y_col``"),
             (d_cols_set, "treatment variable", "``d_cols``"),
             (x_cols_set, "covariate", "``x_cols``"),
             (z_cols_set, "instrumental variable", "``z_cols``"),
-            (t_col_set, "time variable", "``t_col``"),
-            (s_col_set, "score or selection variable", "``s_col``"),
         ]
 
         for set1, name, argument in mediator_checks_args:

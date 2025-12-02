@@ -172,7 +172,7 @@ def _fit_nuisance_potential_manual(
         yx_hat_list = fit_predict(y, x, ml_yx, yx_params, smpls, train_cond=train_cond_d1)
 
     if is_classifier(learner_px):
-        px_hat_list = fit_predict_proba(treated, x, ml_px, px_params, smpls, trimming_threshold=trimming_threshold)
+        px_hat_list = fit_predict_proba(treated, x, ml_px, px_params, smpls, clipping_threshold=trimming_threshold)
     else:
         px_hat_list = fit_predict(
             treated,
@@ -216,11 +216,11 @@ def _fit_nuisance_counterfactual_manual(
     xm = np.column_stack((x, m))
 
     if is_classifier(ml_px):
-        px_hat_list = fit_predict_proba(treated, x, ml_px, px_params, smpls, trimming_threshold=trimming_threshold)
+        px_hat_list = fit_predict_proba(treated, x, ml_px, px_params, smpls, clipping_threshold=trimming_threshold)
     else:
-        px_hat_list = fit_predict(treated, x, ml_px, px_params, smpls, trimming_threshold=trimming_threshold)
+        px_hat_list = fit_predict(treated, x, ml_px, px_params, smpls, clipping_threshold=trimming_threshold)
 
-    pmx_hat_list = fit_predict_proba(treated, xm, ml_pmx, pmx_params, smpls, trimming_threshold=trimming_threshold)
+    pmx_hat_list = fit_predict_proba(treated, xm, ml_pmx, pmx_params, smpls, clipping_threshold=trimming_threshold)
 
     train_cond_d1_m1 = np.where((treated == 1) & (mediated == 1))[0]
 

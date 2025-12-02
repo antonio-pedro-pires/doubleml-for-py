@@ -1,20 +1,25 @@
+import warnings
+from typing import Optional
+
 import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
 from sklearn.base import clone
 
-from doubleml.data import DoubleMLClusterData, DoubleMLData
+from doubleml.data import DoubleMLData
 from doubleml.double_ml_framework import concat
+from doubleml.double_ml_sampling_mixins import SampleSplittingMixin
 from doubleml.irm.cvar import DoubleMLCVAR
 from doubleml.irm.lpq import DoubleMLLPQ
 from doubleml.irm.pq import DoubleMLPQ
-from doubleml.utils._checks import _check_sample_splitting, _check_score, _check_trimming, _check_zero_one_treatment
+from doubleml.utils._checks import _check_score, _check_zero_one_treatment
 from doubleml.utils._descriptive import generate_summary
 from doubleml.utils._estimation import _default_kde
-from doubleml.utils.resampling import DoubleMLResampling
+from doubleml.utils.propensity_score_processing import PSProcessorConfig, init_ps_processor
 
 
-class DoubleMLQTE:
+# TODO [v0.12.0]: Remove support for 'trimming_rule' and 'trimming_threshold' (deprecated).
+class DoubleMLQTE(SampleSplittingMixin):
     """Double machine learning for quantile treatment effects
 
     Parameters
@@ -39,7 +44,7 @@ class DoubleMLQTE:
         Default is ``5``.
 
     n_rep : int
-        Number of repetitons for the sample splitting.
+        Number of repetitions for the sample splitting.
         Default is ``1``.
 
     score : str
@@ -56,13 +61,16 @@ class DoubleMLQTE:
         Default is ``'None'``, which uses :py:class:`statsmodels.nonparametric.kde.KDEUnivariate` with a
         gaussian kernel and silverman for bandwidth determination.
 
-    trimming_rule : str
-        A str (``'truncate'`` is the only choice) specifying the trimming approach.
-        Default is ``'truncate'``.
+    trimming_rule : str, optional, deprecated
+        (DEPRECATED) A str (``'truncate'`` is the only choice) specifying the trimming approach.
+        Use `ps_processor_config` instead. Will be removed in a future version.
 
-    trimming_threshold : float
-        The threshold used for trimming.
-        Default is ``1e-2``.
+    trimming_threshold : float, optional, deprecated
+        (DEPRECATED) The threshold used for trimming.
+        Use `ps_processor_config` instead. Will be removed in a future version.
+
+    ps_processor_config : PSProcessorConfig, optional
+        Configuration for propensity score processing (clipping, calibration, etc.).
 
     draw_sample_splitting : bool
         Indicates whether the sample splitting should be drawn during initialization of the object.
@@ -72,7 +80,7 @@ class DoubleMLQTE:
     --------
     >>> import numpy as np
     >>> import doubleml as dml
-    >>> from doubleml.datasets import make_irm_data
+    >>> from doubleml.irm.datasets import make_irm_data
     >>> from sklearn.ensemble import RandomForestClassifier
     >>> np.random.seed(3141)
     >>> ml_g = RandomForestClassifier(n_estimators=100, max_features=20, max_depth=10, min_samples_leaf=2)
@@ -80,7 +88,7 @@ class DoubleMLQTE:
     >>> data = make_irm_data(theta=0.5, n_obs=500, dim_x=20, return_type='DataFrame')
     >>> obj_dml_data = dml.DoubleMLData(data, 'y', 'd')
     >>> dml_qte_obj = dml.DoubleMLQTE(obj_dml_data, ml_g, ml_m, quantiles=[0.25, 0.5, 0.75])
-    >>> dml_qte_obj.fit().summary
+    >>> dml_qte_obj.fit().summary  # doctest: +SKIP
               coef   std err         t     P>|t|     2.5 %    97.5 %
     0.25  0.274825  0.347310  0.791297  0.428771 -0.405890  0.955541
     0.50  0.449150  0.192539  2.332782  0.019660  0.071782  0.826519
@@ -98,8 +106,9 @@ class DoubleMLQTE:
         score="PQ",
         normalize_ipw=True,
         kde=None,
-        trimming_rule="truncate",
-        trimming_threshold=1e-2,
+        trimming_rule="truncate",  # TODO [v0.12.0]: Remove support for 'trimming_rule' and 'trimming_threshold' (deprecated).
+        trimming_threshold=1e-2,  # TODO [v0.12.0]: Remove support for 'trimming_rule' and 'trimming_threshold' (deprecated).
+        ps_processor_config: Optional[PSProcessorConfig] = None,
         draw_sample_splitting=True,
     ):
         self._dml_data = obj_dml_data
@@ -124,18 +133,18 @@ class DoubleMLQTE:
         _check_score(self.score, valid_scores, allow_callable=False)
 
         # check data
-        self._is_cluster_data = False
-        if isinstance(obj_dml_data, DoubleMLClusterData):
-            self._is_cluster_data = True
         self._check_data(self._dml_data)
+        self._is_cluster_data = self._dml_data.is_cluster_data
 
         # initialize framework which is constructed after the fit method is called
         self._framework = None
 
-        # initialize and check trimming
+        # TODO [v0.12.0]: Remove support for 'trimming_rule' and 'trimming_threshold' (deprecated).
+        self._ps_processor_config, self._ps_processor = init_ps_processor(
+            ps_processor_config, trimming_rule, trimming_threshold
+        )
         self._trimming_rule = trimming_rule
-        self._trimming_threshold = trimming_threshold
-        _check_trimming(self._trimming_rule, self._trimming_threshold)
+        self._trimming_threshold = self._ps_processor.clipping_threshold
 
         if not isinstance(self.normalize_ipw, bool):
             raise TypeError(
@@ -147,10 +156,12 @@ class DoubleMLQTE:
 
         # perform sample splitting
         self._smpls = None
+        self._n_obs_sample_splitting = self._dml_data.n_obs
+        self._strata = self._dml_data.d
         if draw_sample_splitting:
             self.draw_sample_splitting()
             # initialize all models
-            self._modellist_0, self._modellist_1 = self._initialize_models()
+            self._initialize_dml_model()
 
     def __str__(self):
         class_name = self.__class__.__name__
@@ -251,18 +262,43 @@ class DoubleMLQTE:
         return self._normalize_ipw
 
     @property
+    def ps_processor_config(self):
+        """
+        Configuration for propensity score processing (clipping, calibration, etc.).
+        """
+        return self._ps_processor_config
+
+    @property
+    def ps_processor(self):
+        """
+        Propensity score processor.
+        """
+        return self._ps_processor
+
+    # TODO [v0.12.0]: Remove support for 'trimming_rule' and 'trimming_threshold' (deprecated).
+    @property
     def trimming_rule(self):
         """
         Specifies the used trimming rule.
         """
+        warnings.warn(
+            "'trimming_rule' is deprecated and will be removed in a future version. ", DeprecationWarning, stacklevel=2
+        )
         return self._trimming_rule
 
+    # TODO [v0.12.0]: Remove support for 'trimming_rule' and 'trimming_threshold' (deprecated).
     @property
     def trimming_threshold(self):
         """
         Specifies the used trimming threshold.
         """
-        return self._trimming_threshold
+        warnings.warn(
+            "'trimming_threshold' is deprecated and will be removed in a future version. "
+            "Use 'ps_processor_config.clipping_threshold' or 'ps_processor.clipping_threshold' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self._ps_processor.clipping_threshold
 
     @property
     def coef(self):
@@ -439,94 +475,11 @@ class DoubleMLQTE:
         if self._framework is None:
             raise ValueError("Apply fit() before bootstrap().")
         self._framework.bootstrap(method=method, n_rep_boot=n_rep_boot)
-
         return self
 
-    def draw_sample_splitting(self):
-        """
-        Draw sample splitting for DoubleML models.
-
-        The samples are drawn according to the attributes
-        ``n_folds`` and ``n_rep``.
-
-        Returns
-        -------
-        self : object
-        """
-        obj_dml_resampling = DoubleMLResampling(
-            n_folds=self.n_folds, n_rep=self.n_rep, n_obs=self._dml_data.n_obs, stratify=self._dml_data.d
-        )
-        self._smpls = obj_dml_resampling.split_samples()
+    def _initialize_dml_model(self):
         # initialize all models
         self._modellist_0, self._modellist_1 = self._initialize_models()
-
-        return self
-
-    def set_sample_splitting(self, all_smpls, all_smpls_cluster=None):
-        """
-        Set the sample splitting for DoubleML models.
-
-        The  attributes ``n_folds`` and ``n_rep`` are derived from the provided partition.
-
-        Parameters
-        ----------
-        all_smpls : list or tuple
-            If nested list of lists of tuples:
-                The outer list needs to provide an entry per repeated sample splitting (length of list is set as
-                ``n_rep``).
-                The inner list needs to provide a tuple (train_ind, test_ind) per fold (length of list is set as
-                ``n_folds``). test_ind must form a partition for each inner list.
-            If list of tuples:
-                The list needs to provide a tuple (train_ind, test_ind) per fold (length of list is set as
-                ``n_folds``). test_ind must form a partition. ``n_rep=1`` is always set.
-            If tuple:
-                Must be a tuple with two elements train_ind and test_ind. Only viable option is to set
-                train_ind and test_ind to np.arange(n_obs), which corresponds to no sample splitting.
-                ``n_folds=1`` and ``n_rep=1`` is always set.
-
-        all_smpls_cluster : list or None
-            Nested list or ``None``. The first level of nesting corresponds to the number of repetitions. The second level
-            of nesting corresponds to the number of folds. The third level of nesting contains a tuple of training and
-            testing lists. Both training and testing contain an array for each cluster variable, which form a partition of
-            the clusters.
-            Default is ``None``.
-
-        Returns
-        -------
-        self : object
-
-        Examples
-        --------
-        >>> import numpy as np
-        >>> import doubleml as dml
-        >>> from doubleml.datasets import make_plr_CCDDHNR2018
-        >>> from sklearn.ensemble import RandomForestRegressor
-        >>> from sklearn.base import clone
-        >>> np.random.seed(3141)
-        >>> learner = RandomForestRegressor(max_depth=2, n_estimators=10)
-        >>> ml_g = learner
-        >>> ml_m = learner
-        >>> obj_dml_data = make_plr_CCDDHNR2018(n_obs=10, alpha=0.5)
-        >>> dml_plr_obj = dml.DoubleMLPLR(obj_dml_data, ml_g, ml_m)
-        >>> dml_plr_obj.set_sample_splitting(smpls)
-        >>> # sample splitting with two folds and cross-fitting
-        >>> smpls = [([0, 1, 2, 3, 4], [5, 6, 7, 8, 9]),
-        >>>          ([5, 6, 7, 8, 9], [0, 1, 2, 3, 4])]
-        >>> dml_plr_obj.set_sample_splitting(smpls)
-        >>> # sample splitting with two folds and repeated cross-fitting with n_rep = 2
-        >>> smpls = [[([0, 1, 2, 3, 4], [5, 6, 7, 8, 9]),
-        >>>           ([5, 6, 7, 8, 9], [0, 1, 2, 3, 4])],
-        >>>          [([0, 2, 4, 6, 8], [1, 3, 5, 7, 9]),
-        >>>           ([1, 3, 5, 7, 9], [0, 2, 4, 6, 8])]]
-        >>> dml_plr_obj.set_sample_splitting(smpls)
-        """
-        self._smpls, self._smpls_cluster, self._n_rep, self._n_folds = _check_sample_splitting(
-            all_smpls, all_smpls_cluster, self._dml_data, self._is_cluster_data
-        )
-
-        # initialize all models
-        self._modellist_0, self._modellist_1 = self._initialize_models()
-
         return self
 
     def confint(self, joint=False, level=0.95):
@@ -613,8 +566,7 @@ class DoubleMLQTE:
             "ml_m": self._learner["ml_m"],
             "n_folds": self.n_folds,
             "n_rep": self.n_rep,
-            "trimming_rule": self.trimming_rule,
-            "trimming_threshold": self.trimming_threshold,
+            "ps_processor_config": self.ps_processor_config,
             "normalize_ipw": self.normalize_ipw,
             "draw_sample_splitting": False,
         }

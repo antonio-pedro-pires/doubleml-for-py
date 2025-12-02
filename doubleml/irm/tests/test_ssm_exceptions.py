@@ -6,7 +6,8 @@ from sklearn.linear_model import Lasso, LogisticRegression
 
 from doubleml import DoubleMLSSM
 from doubleml.data.base_data import DoubleMLBaseData
-from doubleml.datasets import make_ssm_data
+from doubleml.irm.datasets import make_ssm_data
+from doubleml.utils.propensity_score_processing import PSProcessorConfig
 
 np.random.seed(3141)
 n = 100
@@ -22,6 +23,7 @@ dml_ssm_nonignorable = DoubleMLSSM(dml_data_nonignorable, ml_g, ml_pi, ml_m, sco
 class DummyDataClass(DoubleMLBaseData):
     def __init__(self, data):
         DoubleMLBaseData.__init__(self, data)
+        self.is_cluster_data = False
 
     @property
     def n_coefs(self):
@@ -30,11 +32,15 @@ class DummyDataClass(DoubleMLBaseData):
 
 @pytest.mark.ci
 def test_ssm_exception_data():
-    msg = "The data must be of DoubleMLData or DoubleMLClusterData type."
+    msg = (
+        r"The data must be of DoubleMLData or DoubleMLClusterData or DoubleMLDIDData or DoubleMLSSMData or "
+        r"DoubleMLRDDData type\. Empty DataFrame\nColumns: \[\]\nIndex: \[\] of type "
+        r"<class 'pandas\.core\.frame\.DataFrame'> was passed\."
+    )
     with pytest.raises(TypeError, match=msg):
         _ = DoubleMLSSM(pd.DataFrame(), ml_g, ml_pi, ml_m)
 
-    msg = "The data must be of DoubleMLData type."
+    msg = "The data must be of DoubleMLSSMData type."
     with pytest.raises(TypeError, match=msg):
         _ = DoubleMLSSM(DummyDataClass(pd.DataFrame(np.zeros((100, 10)))), ml_g, ml_pi, ml_m)
 
@@ -55,22 +61,6 @@ def test_ssm_exception_scores():
     msg = "score should be either a string or a callable. 0 was passed."
     with pytest.raises(TypeError, match=msg):
         _ = DoubleMLSSM(dml_data_mar, ml_g, ml_pi, ml_m, score=0)
-
-
-@pytest.mark.ci
-def test_ssm_exception_trimming_rule():
-    msg = "Invalid trimming_rule discard. Valid trimming_rule truncate."
-    with pytest.raises(ValueError, match=msg):
-        _ = DoubleMLSSM(dml_data_mar, ml_g, ml_pi, ml_m, trimming_rule="discard")
-
-    # check the trimming_threshold exceptions
-    msg = "trimming_threshold has to be a float. Object of type <class 'str'> passed."
-    with pytest.raises(TypeError, match=msg):
-        _ = DoubleMLSSM(dml_data_mar, ml_g, ml_pi, ml_m, trimming_rule="truncate", trimming_threshold="0.1")
-
-    msg = "Invalid trimming_threshold 0.6. trimming_threshold has to be between 0 and 0.5."
-    with pytest.raises(ValueError, match=msg):
-        _ = DoubleMLSSM(dml_data_mar, ml_g, ml_pi, ml_m, trimming_rule="truncate", trimming_threshold=0.6)
 
 
 @pytest.mark.ci
@@ -195,7 +185,7 @@ class _DummyNoGetParams(_DummyNoSetParams):
         pass
 
 
-class _DummyNoClassifier(_DummyNoGetParams):
+class _DummyNoClassifier(_DummyNoGetParams, BaseEstimator):
     def get_params(self):
         pass
 
@@ -302,7 +292,7 @@ def test_double_ml_exception_evaluate_learner():
         ml_g=Lasso(),
         ml_pi=LogisticRegression(),
         ml_m=LogisticRegression(),
-        trimming_threshold=0.05,
+        ps_processor_config=PSProcessorConfig(clipping_threshold=0.05),
         n_folds=5,
         score="missing-at-random",
     )

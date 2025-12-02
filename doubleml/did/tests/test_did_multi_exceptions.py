@@ -18,6 +18,7 @@ valid_arguments = {
     "ml_g": LinearRegression(),
     "ml_m": LogisticRegression(),
     "gt_combinations": [(1, 0, 1)],
+    "panel": True,
 }
 
 
@@ -43,6 +44,12 @@ def test_input():
         invalid_arguments = {"control_group": 0}
         _ = dml.did.DoubleMLDIDMulti(**(valid_arguments | invalid_arguments))
 
+    # non boolean panel
+    msg = "panel has to be boolean. test of type <class 'str'> was passed."
+    with pytest.raises(TypeError, match=msg):
+        invalid_arguments = {"panel": "test"}
+        _ = dml.did.DoubleMLDIDMulti(**(valid_arguments | invalid_arguments))
+
     # propensity score adjustments
     msg = "in_sample_normalization indicator has to be boolean. Object of type <class 'str'> passed."
     with pytest.raises(TypeError, match=msg):
@@ -53,22 +60,6 @@ def test_input():
     msg = "Invalid score test. Valid score observational or experimental."
     with pytest.raises(ValueError, match=msg):
         invalid_arguments = {"score": "test"}
-        _ = dml.did.DoubleMLDIDMulti(**(valid_arguments | invalid_arguments))
-
-    # trimming
-    msg = "Invalid trimming_rule discard. Valid trimming_rule truncate."
-    with pytest.raises(ValueError, match=msg):
-        invalid_arguments = {"trimming_rule": "discard"}
-        _ = dml.did.DoubleMLDIDMulti(**(valid_arguments | invalid_arguments))
-
-    msg = "trimming_threshold has to be a float. Object of type <class 'str'> passed."
-    with pytest.raises(TypeError, match=msg):
-        invalid_arguments = {"trimming_threshold": "test"}
-        _ = dml.did.DoubleMLDIDMulti(**(valid_arguments | invalid_arguments))
-
-    msg = "Invalid trimming_threshold 0.6. trimming_threshold has to be between 0 and 0.5."
-    with pytest.raises(ValueError, match=msg):
-        invalid_arguments = {"trimming_threshold": 0.6}
         _ = dml.did.DoubleMLDIDMulti(**(valid_arguments | invalid_arguments))
 
 
@@ -93,7 +84,7 @@ def test_exception_learners():
 
 @pytest.mark.ci
 def test_exception_gt_combinations():
-    msg = r"gt_combinations must be one of \['standard', 'all'\]. test was passed."
+    msg = r"gt_combinations must be one of \['standard', 'all', 'universal'\]. test was passed."
     with pytest.raises(ValueError, match=msg):
         invalid_arguments = {"gt_combinations": "test"}
         _ = dml.did.DoubleMLDIDMulti(**(valid_arguments | invalid_arguments))
@@ -169,6 +160,12 @@ def test_check_external_predictions():
     # Test 5: Valid external predictions should not raise
     valid_pred = {model.gt_labels[0]: {"ml_g0": None, "ml_g1": None, "ml_m": None}}
     model._check_external_predictions(valid_pred)
+
+    model_cs = dml.did.DoubleMLDIDMulti(**valid_arguments | {"panel": False})
+    valid_pred = {
+        model.gt_labels[0]: {"ml_g_d0_t0": None, "ml_g_d0_t1": None, "ml_g_d1_t0": None, "ml_g_d1_t1": None, "ml_m": None}
+    }
+    model_cs._check_external_predictions(valid_pred)
 
 
 @pytest.mark.ci

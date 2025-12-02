@@ -8,8 +8,8 @@ from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.linear_model import LinearRegression, LogisticRegression
 
 import doubleml as dml
-from doubleml.datasets import make_med_data
 from doubleml.med import DoubleMLMediation
+from doubleml.med.datasets import make_med_data
 from doubleml.med.tests._utils_med_manual import boot_med_manual, fit_med_manual
 from doubleml.tests._utils import draw_smpls
 
@@ -240,8 +240,10 @@ def dml_med_counterfactual_fixture(
             all_smpls=all_smpls,
             y=y,
             d=d,
+            m=m,
             target="counterfactual",
             treatment_level=treatment_level,
+            mediation_level=mediation_level,
             bootstrap=bootstrap,
             n_rep_boot=n_rep_boot,
         )
