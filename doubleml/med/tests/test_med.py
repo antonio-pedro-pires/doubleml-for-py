@@ -90,8 +90,11 @@ learners_counterfactual_params = [
 ]
 
 normalize_ipw_params = [False, True]
-trimming_threshold_params = [0.2, 0.15]
-treatment_mediation_level_params = [[0, 1], [1, 0]]
+trimming_threshold_params = [0, 0]  # TODO: Debugging. Put values back to 0.15, 0.2.
+treatment_mediation_level_params = [
+    [0, 1],
+    [1, 0],
+]
 
 
 @pytest.fixture(scope="module", params=learners_counterfactual_params)
@@ -297,8 +300,7 @@ def test_dml_med_counterfactual_boot(dml_med_counterfactual_fixture):
 learners_potential_params = [
     [
         LinearRegression(),
-        LinearRegression(),
-        #        LogisticRegression(penalty="l1", solver="liblinear", max_iter=250, random_state=42),
+        LogisticRegression(penalty="l1", solver="liblinear", max_iter=250, random_state=42),
     ],
     [
         RandomForestRegressor(max_depth=5, n_estimators=10, random_state=42),

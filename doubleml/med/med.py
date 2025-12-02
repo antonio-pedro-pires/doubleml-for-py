@@ -216,16 +216,21 @@ class DoubleMLMediation(LinearScoreMixin, DoubleML):
         self._predict_method = {}
         for key, learner in self._learner.items():
             if learner is not None:
-                if learner in ["ml_px", "ml_pmx"]:
-                    is_classifier_ = self._check_learner(learner, key, regressor=False, classifier=True)
-                    if not is_classifier_:
-                        raise ValueError(f"Learner {learner} must be a classifier.")
+                if key in ["ml_px", "ml_pmx"]:
+                    _ = self._check_learner(learner, key, regressor=False, classifier=True)
+                    self._predict_method[key] = "predict_proba"
                 else:
                     is_classifier_ = self._check_learner(learner, key, regressor=True, classifier=True)
-                    if is_classifier_:
-                        self._predict_method[key] = "predict_proba"
+                    if self._med_data.binary_outcome:
+                        if is_classifier_:
+                            self._predict_method[key] = "predict_proba"
+                        else:
+                            raise ValueError(f"Learner {learner} must be classifier.")
                     else:
-                        self._predict_method[key] = "predict"
+                        if is_classifier_:
+                            raise ValueError(f"Learner {learner} must be regressor.")
+                        else:
+                            self._predict_method[key] = "predict"
 
     def _initialize_ml_nuisance_params(self):
         if self._target == "potential":
