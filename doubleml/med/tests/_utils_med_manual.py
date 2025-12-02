@@ -1,3 +1,5 @@
+import copy
+
 import numpy as np
 from sklearn.base import clone, is_classifier
 from sklearn.model_selection import train_test_split
@@ -203,6 +205,7 @@ def _fit_nuisance_counterfactual_manual(
     pmx_params,
     nested_params,
 ):
+    n_obs = len(y)
     treated = d == treatment_level
     mediated = m == mediation_level
 
@@ -233,45 +236,43 @@ def _fit_nuisance_counterfactual_manual(
     else:
         ymx_hat_list = fit_predict(y, x, ml_ymx, ymx_params, smpls, train_cond=train_cond_d1)
 
-    # Nested learner logic
-    nested_hat_list = []
+    mu_test_smpls = np.full([len(smpls), 2], np.ndarray)
+    mu_delta_smpls = copy.deepcopy(mu_test_smpls)
+    delta_test_smpls = copy.deepcopy(mu_test_smpls)
+
     for idx, (train, test) in enumerate(smpls):
-        # 1. Split train into mu and delta
-        mu, delta = train_test_split(train, test_size=0.5, random_state=42)
+        mu, delta = train_test_split(train, test_size=0.5)
+        mu_test_smpls[idx][0] = mu
+        mu_test_smpls[idx][1] = test
+        mu_delta_smpls[idx][0] = mu
+        mu_delta_smpls[idx][1] = delta
+        delta_test_smpls[idx][0] = delta
+        delta_test_smpls[idx][1] = test
 
-        # 2. Fit ml_ymx on mu (D=1) and predict on delta
-        mu_d1 = mu[treated[mu] == 1]
+    train_cond_d1 = np.where(treated == 1)[0]
+    ml_ymx = clone(learner_ymx)
+    ymx_hat_list = fit_predict(y=y, x=x, ml_model=ml_ymx, params=ymx_params, smpls=mu_test_smpls, train_cond=train_cond_d1)
 
-        ml_ymx_delta = clone(learner_ymx)
-        if ymx_params is not None:
-            ml_ymx_delta.set_params(**ymx_params[idx])
+    ymx_delta_hat_list = np.full(shape=n_obs, fill_value=np.nan)
 
-        ml_ymx_delta.fit(np.column_stack((x[mu_d1], m[mu_d1])), y[mu_d1])
+    ml_ymx_delta = clone(learner_ymx)
+    ymx_delta_preds = fit_predict(
+        y=y, x=x, ml_model=ml_ymx_delta, params=ymx_params, smpls=mu_delta_smpls, train_cond=train_cond_d1
+    )
+    # Reorder the predictions so that we can fit and predict the nested learner.
+    ymx_delta_hat_list[mu_delta_smpls[0][1]] = ymx_delta_preds[0]
+    ymx_delta_hat_list[mu_delta_smpls[1][1]] = ymx_delta_preds[1]
 
-        # Predict on delta
-        if is_classifier(ml_ymx_delta):
-            ymx_delta_hat = ml_ymx_delta.predict_proba(np.column_stack((x[delta], m[delta])))[:, 1]
-        else:
-            ymx_delta_hat = ml_ymx_delta.predict(np.column_stack((x[delta], m[delta])))
-
-        # 3. Fit ml_nested on delta (D=0) using ymx_delta_hat as target
-        delta_d0_indices = np.where(treated[delta] == 0)[0]
-        delta_d0 = delta[delta_d0_indices]
-        target_nested = ymx_delta_hat[delta_d0_indices]
-
-        ml_nested_fold = clone(learner_nested)
-        if nested_params is not None:
-            ml_nested_fold.set_params(**nested_params[idx])
-
-        ml_nested_fold.fit(x[delta_d0], target_nested)
-
-        # 4. Predict on test
-        if is_classifier(ml_nested_fold):
-            nested_hat = ml_nested_fold.predict_proba(x[test])[:, 1]
-        else:
-            nested_hat = ml_nested_fold.predict(x[test])
-
-        nested_hat_list.append(nested_hat)
+    train_cond_d0 = np.where(treated == 0)[0]
+    ml_nested = clone(learner_nested)
+    nested_hat_list = fit_predict(
+        y=ymx_delta_hat_list,
+        x=xm,
+        ml_model=ml_nested,
+        params=nested_params,
+        smpls=delta_test_smpls,
+        train_cond=train_cond_d0,
+    )
 
     return {
         "yx_hat": yx_hat_list,
