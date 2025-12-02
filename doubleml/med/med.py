@@ -1,10 +1,9 @@
-import copy
+import warnings
 from copy import deepcopy
 
 import numpy as np
-from sklearn.base import clone
 from sklearn.model_selection import train_test_split
-from sklearn.utils import check_consistent_length, check_X_y
+from sklearn.utils import check_X_y
 
 from doubleml import DoubleMLMediationData
 from doubleml.double_ml import DoubleML
@@ -13,24 +12,568 @@ from doubleml.utils._checks import _check_finite_predictions, _check_score
 from doubleml.utils._estimation import _cond_targets, _dml_cv_predict, _dml_tune, _get_cond_smpls, _get_cond_smpls_2d
 
 
-# TODO: Transplant methods into utils documents.
-# TODO: Apply threshold
-class DoubleMLMEDP(LinearScoreMixin, DoubleML):
-    """Double machine learning for the estimation of the potential outcome in causal mediation analysis.
+class DoubleMLMediation(LinearScoreMixin, DoubleML):
+    """Double machine learning for causal mediation analysis.
 
     Parameters
     ----------
     med_data : :class:`DoubleMLMediationData` object
         The :class:`DoubleMLMediationData` object providing the data and specifying the variables for the causal model.
 
+    ml_yx : estimator implementing ``fit()`` and ``predict()``
+        A machine learner implementing ``fit()`` and ``predict()`` methods (e.g.
+        :py:class:`sklearn.ensemble.RandomForestRegressor`) for the nuisance function :math:`E[Y|D,X]`.
+
+    ml_px : classifier implementing ``fit()`` and ``predict_proba()``
+        A machine learner implementing ``fit()`` and ``predict_proba()`` methods (e.g.
+        :py:class:`sklearn.ensemble.RandomForestClassifier`) for the nuisance function :math:`P(D=d|X)`.
+
+    ml_ymx : estimator implementing ``fit()`` and ``predict()``
+        A machine learner implementing ``fit()`` and ``predict()`` methods for the nuisance function :math:`E[Y|D,M,X]`.
+        Only required if ``target`` is 'counterfactual'.
+
+    ml_pmx : classifier implementing ``fit()`` and ``predict_proba()``
+        A machine learner implementing ``fit()`` and ``predict_proba()`` methods for the nuisance function :math:`P(D=d|M,X)`.
+        Only required if ``target`` is 'counterfactual'.
+
+    ml_nested : estimator implementing ``fit()`` and ``predict()``
+        A machine learner implementing ``fit()`` and ``predict()`` methods for the nested outcome.
+        Only required if ``target`` is 'counterfactual'.
+
+    target : str
+        The target parameter to estimate.
+        - 'potential': Estimate the potential outcome :math:`E[Y(d, M(d))]`.
+        - 'counterfactual': Estimate the counterfactual outcome :math:`E[Y(d, M(d'))]`.
+        Default is 'potential'.
+
+    treatment_level : int
+        The treatment level :math:`d` for the potential outcome.
+
+    mediation_level : int
+        The treatment level :math:`d'` for the mediator.
+        Only required if ``target`` is 'counterfactual'.
+
+    score : str
+        The score function to use.
+        Default is 'MED'.
+
+    score_function : str
+        The specific score type.
+        Default is 'efficient-alt'.
+
     n_folds : int
         Number of folds.
         Default is ``5``.
 
+    n_rep : int
+        Number of repetitions for the sample splitting.
+        Default is ``1``.
+
+    normalize_ipw : bool
+        Indicates whether the inverse probability weights are normalized.
+        Default is ``False``.
+
+    trimming_rule : str
+        A str (``'truncate'`` is the only choice) specifying the trimming approach.
+        Default is ``'truncate'``.
+
     trimming_threshold : float
         The threshold used for trimming.
-        Default is ``5e-2``.
+        Default is ``1e-2``.
 
+    draw_sample_splitting : bool
+        Indicates whether the sample splitting should be drawn during initialization of the object.
+        Default is ``True``.
+    """
+
+    def __init__(
+        self,
+        med_data,
+        ml_yx,
+        ml_px,
+        ml_ymx=None,
+        ml_pmx=None,
+        ml_nested=None,
+        target="potential",
+        treatment_level=1,
+        mediation_level=1,
+        score="MED",
+        score_function="efficient-alt",
+        n_folds=5,
+        n_rep=1,
+        normalize_ipw=False,
+        trimming_rule="truncate",
+        trimming_threshold=1e-2,
+        draw_sample_splitting=True,
+    ):
+        self._med_data = med_data
+        if not isinstance(med_data, DoubleMLMediationData):
+            raise TypeError(
+                "Mediation analysis requires data of type DoubleMLMediationData."
+                + f"data of type {str(type(med_data))} was provided instead."
+            )
+
+        super().__init__(med_data, n_folds, n_rep, score, draw_sample_splitting)
+
+        valid_targets = ["potential", "counterfactual"]
+        if target not in valid_targets:
+            raise ValueError(f"Invalid target {target}. " + "Valid targets " + " or ".join(valid_targets) + ".")
+        self._target = target
+
+        valid_score = ["MED"]
+        self._score = score
+        _check_score(score, valid_score)
+
+        self._score_function = score_function
+        valid_scores_types = ["efficient", "efficient-alt"]
+        _check_score(score_function, valid_scores_types)
+
+        self._treatment_level = treatment_level
+        self._mediation_level = mediation_level
+
+        self._treated = self._med_data.d == treatment_level
+        self._mediated = self._med_data.m == mediation_level
+
+        if self._target == "potential":
+            self._learner = {"ml_yx": ml_yx, "ml_px": ml_px}
+        else:
+            self._learner = {"ml_yx": ml_yx, "ml_px": ml_px, "ml_ymx": ml_ymx, "ml_pmx": ml_pmx, "ml_nested": ml_nested}
+        self._check_learners()
+
+        self._initialize_ml_nuisance_params()
+
+        self._normalize_ipw = normalize_ipw
+        self._trimming_rule = trimming_rule
+        self._trimming_threshold = trimming_threshold
+        self._external_predictions_implemented = True
+
+    @property
+    def target(self):
+        """
+        The target parameter to estimate.
+        """
+        return self._target
+
+    @property
+    def normalize_ipw(self):
+        """
+        indicates whether the  inverse probability weights are normalized
+        """
+        return self._normalize_ipw
+
+    @property
+    def trimming_rule(self):
+        """
+        Specifies the used trimming rule.
+        """
+        return self._trimming_rule
+
+    @property
+    def trimming_threshold(self):
+        """
+        Indicates the trimming threshold.
+        """
+        return self._trimming_threshold
+
+    @property
+    def treatment_level(self):
+        """
+        Chosen treatment level.
+        """
+        return self._treatment_level
+
+    @property
+    def mediation_level(self):
+        """
+        Chosen mediation level.
+        """
+        return self._mediation_level
+
+    @property
+    def treated(self):
+        """
+        Indicator for observations with chosen treatment level.
+        """
+        return self._treated
+
+    @property
+    def mediated(self):
+        """
+        Indicator for observations with chosen mediation level.
+        """
+        return self._mediated
+
+    def _check_learners(self):
+        if self._target == "potential":
+            required_learners = ["ml_yx", "ml_px"]
+        else:
+            required_learners = ["ml_yx", "ml_px", "ml_ymx", "ml_pmx", "ml_nested"]
+
+        for learner in required_learners:
+            if self._learner[learner] is None:
+                raise ValueError(f"Learner {learner} is required for target {self._target}.")
+
+        self._predict_method = {}
+        for key, learner in self._learner.items():
+            if learner is not None:
+                if learner in ["ml_px", "ml_pmx"]:
+                    is_classifier_ = self._check_learner(learner, key, regressor=False, classifier=True)
+                    if not is_classifier_:
+                        raise ValueError(f"Learner {learner} must be a classifier.")
+                else:
+                    is_classifier_ = self._check_learner(learner, key, regressor=True, classifier=True)
+                    if is_classifier_:
+                        self._predict_method[key] = "predict_proba"
+                    else:
+                        self._predict_method[key] = "predict"
+
+    def _initialize_ml_nuisance_params(self):
+        if self._target == "potential":
+            learners = ["ml_yx", "ml_px"]
+        else:
+            learners = ["ml_yx", "ml_px", "ml_ymx", "ml_pmx", "ml_nested"]
+
+        self._params = {learner: {key: [None] * self.n_rep for key in self._dml_data.d_cols} for learner in learners}
+
+    def _nuisance_est(
+        self,
+        smpls,
+        n_jobs_cv,
+        external_predictions,
+        return_models=False,
+    ):
+        x, y = check_X_y(self._med_data.x, self._med_data.y, force_all_finite=False)
+        x, d = check_X_y(x, self._med_data.d, force_all_finite=False)
+
+        if self._target == "potential":
+            # Check whether there are external predictions for each parameter.
+            px_external = external_predictions["ml_px"] is not None
+            yx_external = external_predictions["ml_yx"] is not None
+
+            # Prepare the samples
+            _, smpls_d1 = _get_cond_smpls(smpls, self.treated)
+
+            if px_external:
+                px_hat = {"preds": external_predictions["ml_px"], "targets": None, "models": None}
+            else:
+                px_hat = _dml_cv_predict(
+                    self._learner["ml_px"],
+                    x,
+                    self.treated,
+                    smpls=smpls,
+                    n_jobs=n_jobs_cv,
+                    est_params=self._get_params("ml_px"),
+                    method=self._predict_method["ml_px"],
+                    return_models=return_models,
+                )
+
+            if yx_external:
+                yx_hat = {
+                    "preds": external_predictions["ml_yx"],
+                    "targets": _cond_targets(y, cond_sample=(self.treated == 1)),
+                    "models": None,
+                }
+            else:
+                yx_hat = _dml_cv_predict(
+                    self._learner["ml_yx"],
+                    x,
+                    y,
+                    smpls=smpls_d1,
+                    n_jobs=n_jobs_cv,
+                    est_params=self._get_params("ml_yx"),
+                    method=self._predict_method["ml_yx"],
+                    return_models=return_models,
+                )
+            _check_finite_predictions(yx_hat["preds"], self._learner["ml_yx"], "ml_yx", smpls)
+            # adjust target values to consider only compatible subsamples
+            yx_hat["targets"] = _cond_targets(yx_hat["targets"], cond_sample=(self.treated == 1))
+
+            preds = {
+                "predictions": {
+                    "ml_px": px_hat["preds"],
+                    "ml_yx": yx_hat["preds"],
+                },
+                "targets": {
+                    "ml_px": px_hat["targets"],
+                    "ml_yx": yx_hat["targets"],
+                },
+                "models": {
+                    "ml_px": px_hat["models"],
+                    "ml_yx": yx_hat["models"],
+                },
+            }
+
+            psi_a, psi_b = self._score_elements(y, px_hat["preds"], yx_hat["preds"])
+            psi_elements = {"psi_a": psi_a, "psi_b": psi_b}
+
+        else:  # target == "counterfactual"
+            x, m = check_X_y(x, self._med_data.m, force_all_finite=False)
+            xm = np.column_stack((x, m))
+
+            # Check whether there are external predictions for each parameter.
+            px_external = external_predictions["ml_px"] is not None
+            pmx_external = external_predictions["ml_pmx"] is not None
+            yx_external = external_predictions["ml_yx"] is not None
+            ymx_external = external_predictions["ml_ymx"] is not None
+            nested_external = external_predictions["ml_nested"] is not None
+
+            # Prepare the samples
+            smpls_d0, smpls_d1 = _get_cond_smpls(smpls, self.treated)
+            _, _, smpls_d1_m0, smpls_d1_m1 = _get_cond_smpls_2d(smpls, self.treated, self.mediated)
+
+            # Estimate the probability of treatment conditional on the covariates.
+            if px_external:
+                px_hat = {"preds": external_predictions["ml_px"], "targets": None, "models": None}
+            else:
+                px_hat = _dml_cv_predict(
+                    self._learner["ml_px"],
+                    x,
+                    d,
+                    smpls=smpls,
+                    n_jobs=n_jobs_cv,
+                    est_params=self._get_params("ml_px"),
+                    method=self._predict_method["ml_px"],
+                    return_models=return_models,
+                )
+
+            # Estimate the probability of treatment conditional on the mediator and covariates.
+            if pmx_external:
+                pmx_hat = {"preds": external_predictions["ml_pmx"], "targets": None, "models": None}
+            else:
+                pmx_hat = _dml_cv_predict(
+                    self._learner["ml_pmx"],
+                    xm,
+                    d,
+                    smpls=smpls,
+                    n_jobs=n_jobs_cv,
+                    est_params=self._get_params("ml_pmx"),
+                    method=self._predict_method["ml_pmx"],
+                    return_models=return_models,
+                )
+
+            # Estimate the conditional expectation of outcome Y given D, M, and X.
+            if yx_external:
+                yx_hat = {"preds": external_predictions["ml_yx"], "targets": None, "models": None}
+            else:
+                yx_hat = _dml_cv_predict(
+                    self._learner["ml_yx"],
+                    x,
+                    y,
+                    smpls=smpls_d1,
+                    n_jobs=n_jobs_cv,
+                    est_params=self._get_params("ml_yx"),
+                    method=self._predict_method["ml_yx"],
+                    return_models=return_models,
+                )
+
+            if ymx_external:
+                ymx_hat = {"preds": external_predictions["ml_ymx"], "targets": None, "models": None}
+            else:
+                mu_test_smpls = np.full([len(smpls), 2], object)
+                for idx, (train, test) in enumerate(smpls):
+                    mu, delta = train_test_split(train, test_size=0.5)
+                    mu_test_smpls[idx][0] = mu
+                    mu_test_smpls[idx][1] = test
+                mu_test_d0, mu_test_d1 = _get_cond_smpls(mu_test_smpls, self.treated)
+                ymx_hat = _dml_cv_predict(
+                    self._learner["ml_ymx"],
+                    xm,
+                    y,
+                    smpls=mu_test_d1,
+                    n_jobs=n_jobs_cv,
+                    est_params=self._get_params("ml_ymx"),
+                    method=self._predict_method["ml_ymx"],
+                    return_models=return_models,
+                )
+
+            if nested_external:
+                nested_hat = {"preds": external_predictions["ml_nested"], "targets": None, "models": None}
+            else:
+                mu_test_smpls = np.full([len(smpls), 2], object)
+                mu_delta_smpls = deepcopy(mu_test_smpls)
+                delta_test_smpls = deepcopy(mu_test_smpls)
+
+                # TODO: Probably will need to copy the ml_ymx learner to have a ml_ymx_delta learner.
+                for idx, (train, test) in enumerate(smpls):
+                    mu, delta = train_test_split(train, test_size=0.5)
+                    mu_test_smpls[idx][0] = mu
+                    mu_test_smpls[idx][1] = test
+                    mu_delta_smpls[idx][0] = mu
+                    mu_delta_smpls[idx][1] = delta
+                    delta_test_smpls[idx][0] = delta
+                    delta_test_smpls[idx][1] = test
+                mu_delta_d0, mu_delta_d1 = _get_cond_smpls(mu_delta_smpls, self.treated)
+                delta_test_d0, delta_test_d1 = _get_cond_smpls(delta_test_smpls, self.treated)
+
+                ymx_delta_hat = _dml_cv_predict(
+                    self._learner["ml_ymx"],
+                    xm,
+                    y,
+                    smpls=mu_delta_d1,
+                    n_jobs=n_jobs_cv,
+                    est_params=self._get_params("ml_ymx"),
+                    method=self._predict_method["ml_ymx"],
+                    return_models=return_models,
+                )
+                nested_hat = _dml_cv_predict(
+                    self._learner["ml_nested"],
+                    x,
+                    ymx_delta_hat["preds"],
+                    smpls=delta_test_d0,
+                    n_jobs=n_jobs_cv,
+                    est_params=self._get_params("ml_nested"),
+                    method=self._predict_method["ml_nested"],
+                    return_models=return_models,
+                )
+
+            preds = {
+                "predictions": {
+                    "ml_px": px_hat["preds"],
+                    "ml_pmx": pmx_hat["preds"],
+                    "ml_yx": yx_hat["preds"],
+                    "ml_ymx": ymx_hat["preds"],
+                    "ml_nested": nested_hat["preds"],
+                },
+                "targets": {
+                    "ml_px": px_hat["targets"],
+                    "ml_pmx": pmx_hat["targets"],
+                    "ml_yx": yx_hat["targets"],
+                    "ml_ymx": ymx_hat["targets"],
+                    "ml_nested": nested_hat["targets"],
+                },
+                "models": {
+                    "ml_px": px_hat["models"],
+                    "ml_pmx": pmx_hat["models"],
+                    "ml_yx": yx_hat["models"],
+                    "ml_ymx": ymx_hat["models"],
+                    "ml_nested": nested_hat["models"],
+                },
+            }
+
+            psi_a, psi_b = self._score_elements(
+                y, px_hat["preds"], yx_hat["preds"], pmx_hat["preds"], ymx_hat["preds"], nested_hat["preds"]
+            )
+            psi_elements = {"psi_a": psi_a, "psi_b": psi_b}
+
+        return psi_elements, preds
+
+    def _score_elements(self, y, px_hat, yx_hat, pmx_hat=None, ymx_hat=None, nested_hat=None):
+        if self._target == "potential":
+            u_hat = y - yx_hat
+            psi_a = -1.0
+            psi_b = np.multiply(np.divide(self.treated, px_hat), u_hat) + yx_hat
+        else:
+            u_hat = y - ymx_hat
+            w_hat = ymx_hat - nested_hat
+            psi_a = -1.0
+
+            t1 = np.multiply(
+                np.multiply(np.divide(self.treated, 1.0 - px_hat), np.divide(1.0 - pmx_hat, pmx_hat)),
+                u_hat,
+            )
+            t2 = np.multiply(np.divide(1.0 - self.treated, 1.0 - px_hat), w_hat)
+            psi_b = t1 + t2 + nested_hat
+
+        return psi_a, psi_b
+
+    def _nuisance_tuning(
+        self, smpls, param_grids, scoring_methods, n_folds_tune, n_jobs_cv, search_mode, n_iter_randomized_search
+    ):
+        x, y = check_X_y(self._med_data.x, self._med_data.y, force_all_finite=False)
+        x, d = check_X_y(x, self._med_data.d, force_all_finite=False)
+
+        if scoring_methods is None:
+            scoring_methods = {}
+
+        train_inds = [train_index for (train_index, _) in smpls]
+        _, smpls_d1 = _get_cond_smpls(smpls, self.treated)
+        train_inds_d1 = [train_index for (train_index, _) in smpls_d1]
+
+        res = {"params": {}, "tune_res": {}}
+
+        # Tune ml_px
+        if "ml_px" in param_grids:
+            res["tune_res"]["ml_px"] = _dml_tune(
+                d,
+                x,
+                train_inds,
+                self._learner["ml_px"],
+                param_grids["ml_px"],
+                scoring_methods.get("ml_px"),
+                n_folds_tune,
+                n_jobs_cv,
+                search_mode,
+                n_iter_randomized_search,
+            )
+            res["params"]["ml_px"] = [xx.best_params_ for xx in res["tune_res"]["ml_px"]]
+
+        # Tune ml_yx
+        if "ml_yx" in param_grids:
+            res["tune_res"]["ml_yx"] = _dml_tune(
+                y,
+                x,
+                train_inds_d1,
+                self._learner["ml_yx"],
+                param_grids["ml_yx"],
+                scoring_methods.get("ml_yx"),
+                n_folds_tune,
+                n_jobs_cv,
+                search_mode,
+                n_iter_randomized_search,
+            )
+            res["params"]["ml_yx"] = [xx.best_params_ for xx in res["tune_res"]["ml_yx"]]
+
+        if self._target == "counterfactual":
+            x, m = check_X_y(x, self._med_data.m, force_all_finite=False)
+            xm = np.column_stack((x, m))
+
+            # Tune ml_pmx
+            if "ml_pmx" in param_grids:
+                res["tune_res"]["ml_pmx"] = _dml_tune(
+                    d,
+                    xm,
+                    train_inds,
+                    self._learner["ml_pmx"],
+                    param_grids["ml_pmx"],
+                    scoring_methods.get("ml_pmx"),
+                    n_folds_tune,
+                    n_jobs_cv,
+                    search_mode,
+                    n_iter_randomized_search,
+                )
+                res["params"]["ml_pmx"] = [xx.best_params_ for xx in res["tune_res"]["ml_pmx"]]
+
+            # Tune ml_ymx
+            if "ml_ymx" in param_grids:
+                res["tune_res"]["ml_ymx"] = _dml_tune(
+                    y,
+                    xm,
+                    train_inds_d1,
+                    self._learner["ml_ymx"],
+                    param_grids["ml_ymx"],
+                    scoring_methods.get("ml_ymx"),
+                    n_folds_tune,
+                    n_jobs_cv,
+                    search_mode,
+                    n_iter_randomized_search,
+                )
+                res["params"]["ml_ymx"] = [xx.best_params_ for xx in res["tune_res"]["ml_ymx"]]
+
+        return res
+
+    def _sensitivity_element_est(self, preds):
+        pass
+
+
+# TODO: Transplant methods into utils documents.
+# TODO: Apply threshold
+class DoubleMLMEDP(DoubleMLMediation):
+    """
+    Double machine learning for the estimation of the potential outcome in causal mediation analysis.
+
+    .. deprecated:: 0.10.0
+        The class `DoubleMLMEDP` is deprecated and will be removed in a future version.
+        Please use `DoubleMLMediation` with `target='potential'` instead.
     """
 
     def __init__(
@@ -50,318 +593,38 @@ class DoubleMLMEDP(LinearScoreMixin, DoubleML):
         fewsplits=False,
         draw_sample_splitting=True,
     ):
-        self._med_data = med_data
-
-        if not isinstance(med_data, DoubleMLMediationData):
-            raise TypeError(
-                "Mediation analysis requires data of type DoubleMLMediationData."
-                + f"data of type {str(type(med_data))} was provided instead."
-            )
-
-        super().__init__(med_data, n_folds, n_rep, score, draw_sample_splitting)
-        valid_score = ["MED"]
-        self._score = score
-        _check_score(score, valid_score)
-
-        self._score_function = score_function
-        valid_scores_types = ["efficient", "efficient-alt"]
-        _check_score(score_function, valid_scores_types)
-
-        self._treatment_level = treatment_level
-        self._treated = self._med_data.d == treatment_level
-        self._mediated = self._med_data.m == treatment_level
-
-        self._learner = {"ml_m": ml_m, "ml_g": ml_g}
-        self._predict_method = {"ml_m": "predict_proba"}
-        self._check_learner(learner=ml_m, learner_name="ml_m", regressor=False, classifier=True)
-        is_classifier_ml_g = self._check_learner(learner=ml_g, learner_name="ml_g", regressor=True, classifier=True)
-        if is_classifier_ml_g:
-            self._predict_method["ml_g"] = "predict_proba"
-        else:
-            self._predict_method["ml_g"] = "predict"
-        self._initialize_ml_nuisance_params()
-
-        self._normalize_ipw = normalize_ipw
-        self._external_predictions_implemented = True
-
-    @property
-    def normalize_ipw(self):
-        """
-        indicates whether the  inverse probability weights are normalized
-        """
-        return self._normalize_ipw
-
-    @property
-    def trimming_rule(self):
-        """
-        Specifies the used trimming rule.
-        """
-        return self.trimming_rule
-
-    @property
-    def trimming_threshold(self):
-        """
-        Indicates the trimming threshold.
-        """
-        return self.trimming_threshold
-
-    @property
-    def order(self):
-        """
-        Indicates the order of the polynomials used to estimate any conditional probability or conditional mean outcome.
-        """
-        return self.order
-
-    @property
-    def few_splits(self):
-        """
-        Indicates whether the same training data is used for estimating nested models of nuisance parameters.
-        """
-        return self.few_splits
-
-    @property
-    def score_function(self):
-        """
-        Indicates the type of the score function.
-        """
-        return self._score_function
-
-    @property
-    def treated(self):
-        """
-        Indicator for observations with chosen treatment level.
-        """
-        return self._treated
-
-    @property
-    def treatment_level(self):
-        """
-        Chosen treatment level.
-        """
-        return self._treatment_level
-
-    @property
-    def mediated(self):
-        """
-        Indicator for observations with chosen mediation level.
-        """
-        return self._mediated
-
-    @property
-    def mediation_level(self):
-        """
-        Chosen mediation level.
-        """
-        return self._mediation_level
-
-    @property
-    def is_potential_outcome(self):
-        """
-        Indicates whether the current score function computes the potential outcome: Y(d, m(d)).
-        """
-        return self.treatment_level == self.mediation_level
-
-    def _initialize_ml_nuisance_params(self):
-        valid_learner = ["ml_m", "ml_g_1"]
-        self._params = {learner: {key: [None] * self.n_rep for key in self._med_data.d_cols} for learner in valid_learner}
-
-    def _nuisance_est(
-        self,
-        smpls,
-        n_jobs_cv,
-        external_predictions,
-        return_models=True,
-    ):
-
-        x, y = check_X_y(self._med_data.x, self._med_data.y, force_all_finite=False)
-        x, d = check_X_y(x, self._med_data.d, force_all_finite=False)
-
-        # Check whether there are external predictions for each parameter.
-        m_external = external_predictions["ml_m"] is not None
-        g_1_external = external_predictions["ml_g_1"] is not None
-
-        # Prepare the samples
-        _, smpls_d1 = _get_cond_smpls(smpls, self.treated)
-
-        if m_external:
-            m_hat = {"preds": external_predictions["ml_m"], "targets": None, "models": None}
-        else:
-            m_hat = _dml_cv_predict(
-                self._learner["ml_m"],
-                x,
-                self.treated,
-                smpls=smpls,
-                n_jobs=n_jobs_cv,
-                est_params=self._get_params("ml_m"),
-                method=self._predict_method["ml_m"],
-                return_models=return_models,
-            )
-
-        # trimm external predictions
-        # m_hat["preds"] = _trimm(m_hat["preds"], self.trimming_rule, self.trimming_threshold)
-
-        if g_1_external:
-            g_1_hat = {
-                "preds": external_predictions["ml_g_1"],
-                "targets": _cond_targets(y, cond_sample=(self.treated == 1)),
-                "models": None,
-            }
-        else:
-            g_1_hat = _dml_cv_predict(
-                self._learner["ml_g"],
-                x,
-                y,
-                smpls=smpls_d1,
-                n_jobs=n_jobs_cv,
-                est_params=self._get_params("ml_g_1"),
-                method=self._predict_method["ml_g"],
-                return_models=return_models,
-            )
-        _check_finite_predictions(g_1_hat["preds"], self._learner["ml_g"], "ml_g", smpls)
-        # adjust target values to consider only compatible subsamples
-        g_1_hat["targets"] = _cond_targets(g_1_hat["targets"], cond_sample=(self.treated == 1))
-
-        preds = {
-            "predictions": {
-                "ml_m": m_hat["preds"],
-                "ml_g_1": g_1_hat["preds"],
-            },
-            "targets": {
-                "ml_m": m_hat["targets"],
-                "ml_g_1": g_1_hat["targets"],
-            },
-            "models": {
-                "ml_m": m_hat["models"],
-                "ml_g_1": g_1_hat["models"],
-            },
-        }
-
-        psi_a, psi_b = self._score_elements(y, m_hat["preds"], g_1_hat["preds"])
-        psi_elements = {"psi_a": psi_a, "psi_b": psi_b}
-
-        return psi_elements, preds
-
-    def _score_elements(self, y, m_hat, g_1_hat):
-        u_hat = y - g_1_hat
-        # adjusted_propensity = _normalize_propensity_med(
-        #    self.normalize_ipw,
-        #    self.score,
-        #    self.score_function,
-        #    self.treated,
-        # )
-        psi_a = -1.0
-        psi_b = np.multiply(np.divide(self.treated, m_hat), u_hat) + g_1_hat
-        return psi_a, psi_b
-
-    # TODO: Refactor tuning to take away all of the mentions to d0, d1 and others.
-    def _nuisance_tuning(
-        self, smpls, param_grids, scoring_methods, n_folds_tune, n_jobs_cv, search_mode, n_iter_randomized_search
-    ):
-        x, y = check_X_y(self._med_data.x, self._med_data.y, force_all_finite=False)
-        x, d = check_X_y(x, self._med_data.d, force_all_finite=False)
-        # TODO: Create new data class for mediation. Do not use z column for this.
-        _, m = check_consistent_length(
-            x, self._med_data["z"]
-        )  # Check that the mediators have the same number of samples as X and
-
-        dx = np.column_stack((d, x))
-
-        treated = self.treated
-        _, smpls_d1 = _get_cond_smpls(smpls, treated)
-
-        train_inds = [train_index for (train_index, _) in smpls]
-        # train_inds_1 = [train_index for (train_index, _) in smpls_d1]
-        train_inds_g = None
-
-        # TODO: Check what this does
-        if scoring_methods is None:
-            scoring_methods = {"ml_g_1": None, "ml_m": None}
-
-        g_1_tune_res = _dml_tune(
-            y,
-            dx,  # used to obtain an estimation over several treatment levels (reduced variance in sensitivity)
-            train_inds_g,
-            self._learner["ml_g"],
-            param_grids["ml_g"],
-            scoring_methods["ml_g"],
-            n_folds_tune,
-            n_jobs_cv,
-            search_mode,
-            n_iter_randomized_search,
-        )
-        m_tune_res = _dml_tune(
-            treated,
-            x,
-            train_inds,
-            self._learner["ml_m"],
-            param_grids["ml_m"],
-            scoring_methods["ml_m"],
-            n_folds_tune,
-            n_jobs_cv,
-            search_mode,
-            n_iter_randomized_search,
+        warnings.warn(
+            "The class `DoubleMLMEDP` is deprecated and will be removed in a future version. "
+            "Please use `DoubleMLMediation` with `target='potential'` instead.",
+            FutureWarning,
+            stacklevel=2,
         )
 
-        g_1_best_params = [xx.best_params_ for xx in g_1_tune_res]
-        m_best_params = [xx.best_params_ for xx in m_tune_res]
-
-        params = {"ml_g_1": g_1_best_params, "ml_m": m_best_params}
-        tune_res = {"ml_g_1": g_1_tune_res, "ml_m": m_tune_res}
-
-        res = {"params": params, "tune_res": tune_res}
-        return res
-
-    def _sensitivity_element_est(self, preds):
-        pass
-
-    def _check_data(self, med_data):
-        if not isinstance(med_data, DoubleMLMediationData):
-            raise TypeError(
-                f"The data must be of DoubleMLMediationData type. {str(med_data)} "
-                f"of type {str(type(med_data))} was passed."
-            )
-
-    def _check_score_functions(self):
-        valid_score_function = ["efficient", "efficient-alt"]
-        if self.score_function == "efficient":
-            if self._med_data.n_meds > 1:
-                raise ValueError(
-                    f"score_function defined as {self.score_function}. "
-                    + f"Mediation analysis based on {self.score_function} scores assumes only one mediation variable. "
-                    + f"Data contains {self._med_data.n_meds} mediation variables. "
-                    + "Please choose another score_function for mediation analysis."
-                )
-            if not self._med_data.binary_meds.all():
-                raise ValueError(
-                    "Mediation analysis based on efficient scores requires a binary mediation variable"
-                    + "with integer values equal to 0 or 1 and no missing values."
-                    + f"Actual data contains {np.unique(self._med_data.data.m)}"
-                    + "unique values and/or may contain missing values."
-                )
-        if self.score_function in valid_score_function and not self._med_data.force_all_m_finite:
-            raise ValueError(
-                f"Mediation analysis based on {str(valid_score_function)} "
-                f"requires finite mediation variables with no missing values."
-            )
-        # TODO: Probably want to check that elements of mediation variables are floats or ints.
+        super().__init__(
+            med_data=med_data,
+            target="potential",
+            treatment_level=treatment_level,
+            mediation_level=treatment_level,  # Implied for potential outcome
+            ml_yx=ml_g,
+            ml_px=ml_m,
+            score=score,
+            score_function=score_function,
+            n_folds=n_folds,
+            n_rep=n_rep,
+            normalize_ipw=normalize_ipw,
+            trimming_rule=trimming_rule,
+            trimming_threshold=trimming_threshold,
+            draw_sample_splitting=draw_sample_splitting,
+        )
 
 
-class DoubleMLMEDC(LinearScoreMixin, DoubleML):
-    """Double machine learning for the estimation of the counterfactual outcome in causal mediation analysis.
+class DoubleMLMEDC(DoubleMLMediation):
+    """
+    Double machine learning for the estimation of the counterfactual outcome in causal mediation analysis.
 
-    Parameters
-    ----------
-    med_data : :class:`DoubleMLMediationData` object
-        The :class:`DoubleMLMediationData` object providing the data and specifying the variables for the causal model.
-
-    n_folds : int
-        Number of folds.
-        Default is ``5``.
-
-    trimming_threshold : float
-        The threshold used for trimming.
-        Default is ``5e-2``.
-
+    .. deprecated:: 0.10.0
+        The class `DoubleMLMEDC` is deprecated and will be removed in a future version.
+        Please use `DoubleMLMediation` with `target='counterfactual'` instead.
     """
 
     def __init__(
@@ -378,7 +641,6 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
         score_function="efficient-alt",
         n_folds=5,
         n_rep=1,
-        smpls_ratio=0.5,
         normalize_ipw=False,
         trimming_rule="truncate",
         trimming_threshold=1e-2,
@@ -386,406 +648,29 @@ class DoubleMLMEDC(LinearScoreMixin, DoubleML):
         fewsplits=False,
         draw_sample_splitting=True,
     ):
-        self._med_data = med_data
-
-        if not isinstance(med_data, DoubleMLMediationData):
-            raise TypeError(
-                "Mediation analysis requires data of type DoubleMLMediationData."
-                + f"data of type {str(type(med_data))} was provided instead."
-            )
-
-        super().__init__(med_data, n_folds, n_rep, score, draw_sample_splitting)
-        valid_score = ["MED"]
-        self._score = score
-        _check_score(score, valid_score)
-
-        self._score_function = score_function
-        valid_scores_types = ["efficient", "efficient-alt"]
-        _check_score(score_function, valid_scores_types)
-
-        self._treatment_level = treatment_level
-        self._mediation_level = mediation_level
-        self._treated = self._med_data.d == treatment_level
-        self._mediated = self._med_data.m == mediation_level
-        self.smpls_ratio = smpls_ratio
-
-        self._learner = {"ml_px": ml_px, "ml_pmx": ml_pmx, "ml_yx": ml_yx, "ml_ymx": ml_ymx, "ml_nested": ml_nested}
-        self._check_learner(learner=ml_px, learner_name="ml_px", regressor=False, classifier=True)
-        self._check_learner(learner=ml_pmx, learner_name="ml_pmx", regressor=False, classifier=True)
-
-        is_classifier_ml_yx = self._check_learner(learner=ml_yx, learner_name="ml_yx", regressor=True, classifier=True)
-        is_classifier_ml_ymx = self._check_learner(learner=ml_ymx, learner_name="ml_ymx", regressor=True, classifier=True)
-        is_classifier_ml_nested = self._check_learner(
-            learner=ml_nested, learner_name="ml_nested", regressor=True, classifier=True
+        warnings.warn(
+            "The class `DoubleMLMEDC` is deprecated and will be removed in a future version. "
+            "Please use `DoubleMLMediation` with `target='counterfactual'` instead.",
+            FutureWarning,
+            stacklevel=2,
         )
 
-        self._predict_method = {"ml_px": "predict_proba", "ml_pmx": "predict_proba"}
-        if is_classifier_ml_yx:
-            self._predict_method["ml_yx"] = "predict_proba"
-        else:
-            self._predict_method["ml_yx"] = "predict"
-        if is_classifier_ml_ymx:
-            self._predict_method["ml_ymx"] = "predict_proba"
-        else:
-            self._predict_method["ml_ymx"] = "predict"
-        if is_classifier_ml_nested:
-            self._predict_method["ml_nested"] = "predict_proba"
-        else:
-            self._predict_method["ml_nested"] = "predict"
-        self._initialize_ml_nuisance_params()
-
-        self._normalize_ipw = normalize_ipw
-        self._external_predictions_implemented = True
-
-    @property
-    def normalize_ipw(self):
-        """
-        indicates whether the  inverse probability weights are normalized
-        """
-        return self._normalize_ipw
-
-    @property
-    def trimming_rule(self):
-        """
-        Specifies the used trimming rule.
-        """
-        return self.trimming_rule
-
-    @property
-    def trimming_threshold(self):
-        """
-        Indicates the trimming threshold.
-        """
-        return self.trimming_threshold
-
-    @property
-    def order(self):
-        """
-        Indicates the order of the polynomials used to estimate any conditional probability or conditional mean outcome.
-        """
-        return self.order
-
-    @property
-    def few_splits(self):
-        """
-        Indicates whether the same training data is used for estimating nested models of nuisance parameters.
-        """
-        return self.few_splits
-
-    @property
-    def score_function(self):
-        """
-        Indicates the type of the score function.
-        """
-        return self._score_function
-
-    @property
-    def treated(self):
-        """
-        Indicator for observations with chosen treatment level.
-        """
-        return self._treated
-
-    @property
-    def treatment_level(self):
-        """
-        Chosen treatment level.
-        """
-        return self._treatment_level
-
-    @property
-    def mediated(self):
-        """
-        Indicator for observations with chosen mediation level.
-        """
-        return self._mediated
-
-    @property
-    def mediation_level(self):
-        """
-        Chosen mediation level.
-        """
-        return self._mediation_level
-
-    def _initialize_ml_nuisance_params(self):
-        valid_learner = ["ml_px", "ml_pmx", "ml_yx", "ml_ymx", "ml_nested"]
-        self._params = {learner: {key: [None] * self.n_rep for key in self._med_data.d_cols} for learner in valid_learner}
-
-    def _nuisance_est(
-        self,
-        smpls,
-        n_jobs_cv,
-        external_predictions,
-        return_models=False,
-    ):
-        # TODO: For each nuisance_est function, don't forget to trim predictions.
-        x, y = check_X_y(self._med_data.x, self._med_data.y, force_all_finite=False)
-        x, d = check_X_y(x, self._med_data.d, force_all_finite=False)
-        x, m = check_X_y(x, self._med_data.m, force_all_finite=False)
-        xm = np.column_stack((x, m))
-
-        # Check whether there are external predictions for each parameter.
-        px_external = external_predictions["ml_px"] is not None
-        pmx_external = external_predictions["ml_pmx"] is not None
-        yx_external = external_predictions["ml_yx"] is not None
-        ymx_external = external_predictions["ml_ymx"] is not None
-        nested_external = external_predictions["ml_nested"] is not None
-
-        # TODO: Samples have to be split into musample and deltasample.
-        # Prepare the samples
-        smpls_d0, smpls_d1 = _get_cond_smpls(smpls, self.treated)
-        _, _, smpls_d1_m0, smpls_d1_m1 = _get_cond_smpls_2d(smpls, self.treated, self.mediated)
-
-        # TODO: Often required to fit learners on both samples.
-        # TODO: Maybe will need to use other strategy than _dml_cv_predict()
-        # Estimate the probability of treatment conditional on the covariates.
-        if px_external:
-            px_hat = {"preds": external_predictions["ml_px"], "targets": None, "models": None}
-        else:
-            px_hat = _dml_cv_predict(
-                self._learner["ml_px"],
-                x,
-                d,
-                smpls=smpls,
-                n_jobs=n_jobs_cv,
-                est_params=self._get_params("ml_px"),
-                method=self._predict_method["ml_px"],
-                return_models=return_models,
-            )
-
-        # Estimate the probability of treatment conditional on the mediator and covariates.
-        if pmx_external:
-            pmx_hat = {"preds": external_predictions["ml_pmx"], "targets": None, "models": None}
-        else:
-            pmx_hat = _dml_cv_predict(
-                self._learner["ml_pmx"],
-                xm,
-                d,
-                smpls=smpls,
-                n_jobs=n_jobs_cv,
-                est_params=self._get_params("ml_pmx"),
-                method=self._predict_method["ml_pmx"],
-                return_models=return_models,
-            )
-
-        # Estimate the conditional expectation of outcome Y given D, M, and X.
-        if yx_external:
-            yx_hat = {"preds": external_predictions["ml_yx"], "targets": None, "models": None}
-        else:
-            yx_hat = _dml_cv_predict(
-                self._learner["ml_yx"],
-                x,
-                y,
-                smpls=smpls_d1,
-                n_jobs=n_jobs_cv,
-                est_params=self._get_params("ml_yx"),
-                method=self._predict_method["ml_yx"],
-                return_models=return_models,
-            )
-
-        if ymx_external:
-            ymx_hat = {"preds": external_predictions["ml_ymx"], "targets": None, "models": None}
-        else:
-            mu_test_smpls = np.full([len(smpls), 2], np.ndarray)
-            for idx, (train, test) in enumerate(smpls):
-                mu, delta = train_test_split(train, test_size=0.5)
-                mu_test_smpls[idx][0] = mu
-                mu_test_smpls[idx][1] = test
-            mu_test_d0, mu_test_d1 = _get_cond_smpls(mu_test_smpls, self.treated)
-            ymx_hat = _dml_cv_predict(
-                self._learner["ml_ymx"],
-                x,
-                y,
-                smpls=mu_test_d1,
-                n_jobs=n_jobs_cv,
-                est_params=self._get_params("ml_ymx"),
-                method=self._predict_method["ml_ymx"],
-                return_models=return_models,
-            )
-        if nested_external:
-            nested_hat = {"preds": external_predictions["ml_nested"], "targets": None, "models": None}
-        else:
-            mu_test_smpls = np.full([len(smpls), 2], np.ndarray)
-            mu_delta_smpls = deepcopy(mu_test_smpls)
-            delta_test_smpls = deepcopy(mu_test_smpls)
-
-            for idx, (train, test) in enumerate(smpls):
-                mu, delta = train_test_split(train, test_size=0.5)
-                mu_test_smpls[idx][0] = mu
-                mu_test_smpls[idx][1] = test
-                mu_delta_smpls[idx][0] = mu
-                mu_delta_smpls[idx][1] = delta
-                delta_test_smpls[idx][0] = delta
-                delta_test_smpls[idx][1] = test
-            mu_delta_d0, mu_delta_d1 = _get_cond_smpls(mu_delta_smpls, self.treated)
-            delta_test_d0, delta_test_d1 = _get_cond_smpls(delta_test_smpls, self.treated)
-
-            ymx_delta_hat = _dml_cv_predict(
-                self._learner["ml_ymx"],
-                x,
-                y,
-                smpls=mu_delta_d1,
-                n_jobs=n_jobs_cv,
-                est_params=self._get_params("ml_ymx"),
-                method=self._predict_method["ml_ymx"],
-                return_models=return_models,
-            )
-            nested_hat = _dml_cv_predict(
-                self._learner["ml_ymx"],
-                xm,
-                ymx_delta_hat["preds"],
-                smpls=delta_test_d0,
-                n_jobs=n_jobs_cv,
-                est_params=self._get_params("ml_ymx"),
-                method=self._predict_method["ml_ymx"],
-                return_models=return_models,
-            )
-
-        preds = {
-            "predictions": {
-                "ml_px": px_hat["preds"],
-                "ml_pmx": pmx_hat["preds"],
-                "ml_yx": yx_hat["preds"],
-                "ml_ymx": ymx_hat["preds"],
-                "ml_nested": nested_hat["preds"],
-            },
-            "targets": {
-                "ml_px": px_hat["targets"],
-                "ml_pmx": pmx_hat["targets"],
-                "ml_yx": yx_hat["targets"],
-                "ml_ymx": ymx_hat["targets"],
-                "ml_nested": nested_hat["targets"],
-            },
-            "models": {
-                "ml_px": px_hat["models"],
-                "ml_pmx": pmx_hat["models"],
-                "ml_yx": yx_hat["models"],
-                "ml_ymx": ymx_hat["models"],
-                "ml_nested": nested_hat["models"],
-            },
-        }
-
-        psi_a, psi_b = self._score_elements(
-            y, px_hat["preds"], pmx_hat["preds"], yx_hat["preds"], ymx_hat["preds"], nested_hat["preds"], smpls
+        super().__init__(
+            med_data=med_data,
+            target="counterfactual",
+            treatment_level=treatment_level,
+            mediation_level=mediation_level,
+            ml_yx=ml_yx,
+            ml_px=ml_px,
+            ml_ymx=ml_ymx,
+            ml_pmx=ml_pmx,
+            ml_nested=ml_nested,
+            score=score,
+            score_function=score_function,
+            n_folds=n_folds,
+            n_rep=n_rep,
+            normalize_ipw=normalize_ipw,
+            trimming_rule=trimming_rule,
+            trimming_threshold=trimming_threshold,
+            draw_sample_splitting=draw_sample_splitting,
         )
-        psi_elements = {"psi_a": psi_a, "psi_b": psi_b}
-        return psi_elements, preds
-
-    # TODO: Clean up predict and estimate function.
-    # TODO: Add predict_proba method
-    def _estimate_nested_outcomes(
-        self, y, x, m, xm, smpls, external_predictions, n_jobs_cv, return_models, ymx_external, nested_external
-    ):
-
-        ymx_hat = {
-            "models": None,
-            "targets": np.full(shape=self._dml_data.n_obs, fill_value=np.nan),
-            "preds": np.full(shape=self._dml_data.n_obs, fill_value=np.nan),
-        }
-        nested_hat = copy.deepcopy(ymx_hat)
-        ymx_delta_hat = copy.deepcopy(ymx_hat)
-
-        fitted_models = {}
-        for learner in ["ml_ymx", "ml_nested"]:
-            est_params = self._get_params(learner)
-            nuisance = learner
-
-            if est_params is not None:
-                fitted_models[learner] = [
-                    clone(self._learner[nuisance]).set_params(**est_params[i_fold]) for i_fold in range(self.n_folds)
-                ]
-            else:
-                fitted_models[learner] = [clone(self._learner[nuisance]) for i_fold in range(self.n_folds)]
-
-        fitted_models["ml_ymx_mu_hat"] = [clone(self._learner["ml_ymx"]) for i_fold in range(self.n_folds)]
-        fitted_models["ml_ymx_delta_hat"] = [clone(self._learner["ml_ymx"]) for i_fold in range(self.n_folds)]
-
-        for i_fold in range(self.n_folds):
-
-            # Split training dataset into two non-overlapping subsets.
-            train_inds = smpls[i_fold][0]
-            test_inds = smpls[i_fold][1]
-
-            mu_idx, delta_idx = train_test_split(train_inds, test_size=0.5)
-
-            # Get observations in mu_sample where d is the same as 1-treatment value(d0) or treatment value(d1).
-            mu_d1_idx = np.intersect1d(np.where(self.treated == 1)[0], mu_idx)
-
-            # same, but for the delta subsample.
-            delta_d0_idx = np.intersect1d(np.where(self.treated == 0)[0], delta_idx)
-
-            # Fit in the mu sample and predict in the delta sample
-            fitted_models["ml_ymx_mu_hat"][i_fold].fit(xm[mu_d1_idx, :], y[mu_d1_idx])
-            ymx_delta_hat["preds"][delta_idx] = fitted_models["ml_ymx_mu_hat"][i_fold].predict(xm[delta_idx, :])
-            ymx_delta_hat["targets"][delta_idx] = y[delta_idx]
-
-            # Predict in the original test sample
-            ymx_hat["preds"][test_inds] = fitted_models["ml_ymx_mu_hat"][i_fold].predict(xm[test_inds, :])
-            ymx_hat["targets"][test_inds] = y[test_inds]
-
-            # Fit the nested learner on the delta sample, predict on the test sample
-            fitted_models["ml_nested"][i_fold].fit(x[delta_d0_idx, :], ymx_delta_hat["preds"][delta_d0_idx])
-            nested_hat["preds"][test_inds] = fitted_models["ml_nested"][i_fold].predict(x[test_inds, :])
-            nested_hat["targets"][test_inds] = ymx_hat["preds"][test_inds]
-        return ymx_hat, nested_hat
-
-    def _score_elements(self, y, px_hat_preds, pmx_hat_preds, yx_hat_preds, ymx_hat_preds, nested_preds, smpls):
-        if self.mediation_level == self.treatment_level:
-            u_hat = y - ymx_hat_preds
-            psi_a = -1.0
-            psi_b = yx_hat_preds + np.divide(np.multiply(self.treated, u_hat), px_hat_preds)
-        else:
-            u_hat = y - ymx_hat_preds
-            w_hat = ymx_hat_preds - nested_preds
-
-            psi_a = -1.0
-            psi_b = (
-                np.multiply(
-                    np.multiply(np.divide(self.treated, 1.0 - px_hat_preds), np.divide(1.0 - pmx_hat_preds, pmx_hat_preds)),
-                    u_hat,
-                )
-                + np.multiply(np.divide(1.0 - self.treated, 1.0 - px_hat_preds), w_hat)
-                + nested_preds
-            )
-        return psi_a, psi_b
-
-    # TODO: Refactor tuning to take away all of the mentions to d0, d1 and others.
-    def _nuisance_tuning(
-        self, smpls, param_grids, scoring_methods, n_folds_tune, n_jobs_cv, search_mode, n_iter_randomized_search
-    ):
-        pass
-
-    def _sensitivity_element_est(self, preds):
-        pass
-
-    def _check_data(self, med_data):
-        if not isinstance(med_data, DoubleMLMediationData):
-            raise TypeError(
-                f"The data must be of DoubleMLMediationData type. {str(med_data)} "
-                f"of type {str(type(med_data))} was passed."
-            )
-
-    # TODO: Change this for efficient-alt only.
-    def _check_score_functions(self):
-        valid_score_function = ["efficient", "efficient-alt"]
-        if self.score_function == "efficient":
-            if self._med_data.n_meds > 1:
-                raise ValueError(
-                    f"score_function defined as {self.score_function}. "
-                    + f"Mediation analysis based on {self.score_function} scores assumes only one mediation variable. "
-                    + f"Data contains {self._med_data.n_meds} mediation variables. "
-                    + "Please choose another score_function for mediation analysis."
-                )
-            if not self._med_data.binary_meds.all():
-                raise ValueError(
-                    "Mediation analysis based on efficient scores requires a binary mediation variable"
-                    + "with integer values equal to 0 or 1 and no missing values."
-                    + f"Actual data contains {np.unique(self._med_data.data.m)}"
-                    + "unique values and/or may contain missing values."
-                )
-        if self.score_function in valid_score_function and not self._med_data.force_all_m_finite:
-            raise ValueError(
-                f"Mediation analysis based on {str(valid_score_function)} "
-                f"requires finite mediation variables with no missing values."
-            )
-        # TODO: Probably want to check that elements of mediation variables are floats or ints.
