@@ -1,5 +1,3 @@
-import importlib.metadata
-
 from .data import (
     DoubleMLClusterData,
     DoubleMLData,
@@ -11,7 +9,7 @@ from .data import (
 )
 from .did.did import DoubleMLDID
 from .did.did_cs import DoubleMLDIDCS
-from .double_ml_framework import DoubleMLFramework, concat
+from .double_ml_framework import DoubleMLCore, DoubleMLFramework, concat
 from .irm.apo import DoubleMLAPO
 from .irm.apos import DoubleMLAPOS
 from .irm.cvar import DoubleMLCVAR
@@ -21,6 +19,7 @@ from .irm.lpq import DoubleMLLPQ
 from .irm.pq import DoubleMLPQ
 from .irm.qte import DoubleMLQTE
 from .irm.ssm import DoubleMLSSM
+from .med.med import DoubleMLMediation
 from .plm.lplr import DoubleMLLPLR
 from .plm.pliv import DoubleMLPLIV
 from .plm.plr import DoubleMLPLR
@@ -29,6 +28,7 @@ from .utils.policytree import DoubleMLPolicyTree
 
 __all__ = [
     "concat",
+    "DoubleMLCore",
     "DoubleMLFramework",
     "DoubleMLPLR",
     "DoubleMLPLIV",
@@ -52,6 +52,16 @@ __all__ = [
     "DoubleMLBLP",
     "DoubleMLPolicyTree",
     "DoubleMLSSM",
+    "DoubleMLLPLR",
+    "DoubleMLMediation",
 ]
 
-__version__ = importlib.metadata.version("doubleml")
+try:
+    from ._version import version as __version__
+except ImportError:
+    import importlib.metadata
+
+    try:
+        __version__ = importlib.metadata.version("doubleml")
+    except importlib.metadata.PackageNotFoundError:
+        __version__ = "0.0.0+unknown"
