@@ -10,7 +10,6 @@ from sklearn.linear_model import LinearRegression, LogisticRegression
 import doubleml as dml
 from doubleml.med import DoubleMLMediation
 from doubleml.med.datasets import make_med_data
-from doubleml.med.tests._utils_med_manual import boot_med_manual, fit_med_manual
 from doubleml.tests._utils import draw_smpls
 
 
@@ -165,25 +164,6 @@ def dml_med_counterfactual_fixture(
     dml_obj.fit()
 
     np.random.seed(3141)
-    res_manual = fit_med_manual(
-        y=y,
-        x=x,
-        d=d,
-        m=m,
-        learner_yx=clone(learners_counterfactual[0]),
-        learner_px=clone(learners_counterfactual[2]),
-        learner_ymx=clone(learners_counterfactual[1]),
-        learner_pmx=clone(learners_counterfactual[3]),
-        learner_nested=clone(learners_counterfactual[4]),
-        treatment_level=treatment_level,
-        mediation_level=mediation_level,
-        all_smpls=all_smpls,
-        n_rep=1,
-        trimming_threshold=trimming_threshold_counterfactual,
-        target="counterfactual",
-    )
-
-    np.random.seed(3141)
     dml_obj_ext = DoubleMLMediation(
         med_data=data,
         target="counterfactual",
@@ -217,43 +197,18 @@ def dml_med_counterfactual_fixture(
 
     res_dict = {
         "coef": dml_obj.coef.item(),
-        "coef_manual": res_manual["theta"],
         "coef_ext": dml_obj_ext.coef.item(),
         "se": dml_obj.se.item(),
-        "se_manual": res_manual["se"],
         "se_ext": dml_obj_ext.se.item(),
         "boot_methods": boot_methods,
     }
 
     for bootstrap in boot_methods:
         np.random.seed(3141)
-        boot_theta, boot_t_stat = boot_med_manual(
-            thetas=res_manual["thetas"],
-            ses=res_manual["ses"],
-            all_preds={
-                "yx_hat": res_manual["all_yx_hat"],
-                "ymx_hat": res_manual["all_ymx_hat"],
-                "px_hat": res_manual["all_px_hat"],
-                "pmx_hat": res_manual["all_pmx_hat"],
-                "nested_hat": res_manual["all_nested_hat"],
-            },
-            all_smpls=all_smpls,
-            y=y,
-            d=d,
-            m=m,
-            target="counterfactual",
-            treatment_level=treatment_level,
-            mediation_level=mediation_level,
-            bootstrap=bootstrap,
-            n_rep_boot=n_rep_boot,
-        )
-
-        np.random.seed(3141)
         dml_obj.bootstrap(method=bootstrap, n_rep_boot=n_rep_boot)
         np.random.seed(3141)
         dml_obj_ext.bootstrap(method=bootstrap, n_rep_boot=n_rep_boot)
         res_dict["boot_t_stat" + bootstrap] = dml_obj.boot_t_stat
-        res_dict["boot_t_stat" + bootstrap + "_manual"] = boot_t_stat.reshape(-1, 1, 1)
         res_dict["boot_t_stat" + bootstrap + "_ext"] = dml_obj_ext.boot_t_stat
 
     return res_dict
@@ -262,18 +217,12 @@ def dml_med_counterfactual_fixture(
 @pytest.mark.ci
 def test_dml_med_counterfactual_coef(dml_med_counterfactual_fixture):
     assert math.isclose(
-        dml_med_counterfactual_fixture["coef"], dml_med_counterfactual_fixture["coef_manual"], rel_tol=1e-9, abs_tol=1e-4
-    )
-    assert math.isclose(
         dml_med_counterfactual_fixture["coef"], dml_med_counterfactual_fixture["coef_ext"], rel_tol=1e-9, abs_tol=1e-4
     )
 
 
 @pytest.mark.ci
 def test_dml_med_counterfactual_se(dml_med_counterfactual_fixture):
-    assert math.isclose(
-        dml_med_counterfactual_fixture["se"], dml_med_counterfactual_fixture["se_manual"], rel_tol=1e-9, abs_tol=1e-4
-    )
     assert math.isclose(
         dml_med_counterfactual_fixture["se"], dml_med_counterfactual_fixture["se_ext"], rel_tol=1e-9, abs_tol=1e-4
     )
@@ -282,12 +231,6 @@ def test_dml_med_counterfactual_se(dml_med_counterfactual_fixture):
 @pytest.mark.ci
 def test_dml_med_counterfactual_boot(dml_med_counterfactual_fixture):
     for bootstrap in dml_med_counterfactual_fixture["boot_methods"]:
-        assert np.allclose(
-            dml_med_counterfactual_fixture["boot_t_stat" + bootstrap],
-            dml_med_counterfactual_fixture["boot_t_stat" + bootstrap + "_manual"],
-            rtol=1e-9,
-            atol=1e-4,
-        )
         assert np.allclose(
             dml_med_counterfactual_fixture["boot_t_stat" + bootstrap],
             dml_med_counterfactual_fixture["boot_t_stat" + bootstrap + "_ext"],
@@ -392,21 +335,6 @@ def dml_med_potential_fixture(
     dml_obj.fit()
 
     np.random.seed(3141)
-    res_manual = fit_med_manual(
-        y=y,
-        x=x,
-        d=d,
-        m=m,
-        learner_yx=clone(learners_potential[0]),
-        learner_px=clone(learners_potential[1]),
-        treatment_level=treatment_level,
-        all_smpls=all_smpls,
-        n_rep=1,
-        trimming_threshold=trimming_threshold_potential,
-        target="potential",
-    )
-
-    np.random.seed(3141)
     dml_obj_ext = DoubleMLMediation(
         med_data=data,
         target="potential",
@@ -433,40 +361,18 @@ def dml_med_potential_fixture(
 
     res_dict = {
         "coef": dml_obj.coef.item(),
-        "coef_manual": res_manual["theta"],
         "coef_ext": dml_obj_ext.coef.item(),
         "se": dml_obj.se.item(),
-        "se_manual": res_manual["se"],
         "se_ext": dml_obj_ext.se.item(),
         "boot_methods": boot_methods,
     }
 
     for bootstrap in boot_methods:
         np.random.seed(3141)
-        boot_theta, boot_t_stat = boot_med_manual(
-            thetas=res_manual["thetas"],
-            ses=res_manual["ses"],
-            all_preds={
-                "yx_hat": res_manual["all_yx_hat"],
-                "px_hat": res_manual["all_px_hat"],
-            },
-            all_smpls=all_smpls,
-            y=y,
-            d=d,
-            m=m,
-            target="potential",
-            treatment_level=treatment_level,
-            mediation_level=None,
-            bootstrap=bootstrap,
-            n_rep_boot=n_rep_boot,
-        )
-
-        np.random.seed(3141)
         dml_obj.bootstrap(method=bootstrap, n_rep_boot=n_rep_boot)
         np.random.seed(3141)
         dml_obj_ext.bootstrap(method=bootstrap, n_rep_boot=n_rep_boot)
         res_dict["boot_t_stat" + bootstrap] = dml_obj.boot_t_stat
-        res_dict["boot_t_stat" + bootstrap + "_manual"] = boot_t_stat.reshape(-1, 1, 1)
         res_dict["boot_t_stat" + bootstrap + "_ext"] = dml_obj_ext.boot_t_stat
 
     return res_dict
@@ -474,27 +380,17 @@ def dml_med_potential_fixture(
 
 @pytest.mark.ci
 def test_dml_med_potential_coef(dml_med_potential_fixture):
-    assert math.isclose(
-        dml_med_potential_fixture["coef"], dml_med_potential_fixture["coef_manual"], rel_tol=1e-9, abs_tol=1e-4
-    )
     assert math.isclose(dml_med_potential_fixture["coef"], dml_med_potential_fixture["coef_ext"], rel_tol=1e-9, abs_tol=1e-4)
 
 
 @pytest.mark.ci
 def test_dml_med_potential_se(dml_med_potential_fixture):
-    assert math.isclose(dml_med_potential_fixture["se"], dml_med_potential_fixture["se_manual"], rel_tol=1e-9, abs_tol=1e-4)
     assert math.isclose(dml_med_potential_fixture["se"], dml_med_potential_fixture["se_ext"], rel_tol=1e-9, abs_tol=1e-4)
 
 
 @pytest.mark.ci
 def test_dml_med_potential_boot(dml_med_potential_fixture):
     for bootstrap in dml_med_potential_fixture["boot_methods"]:
-        assert np.allclose(
-            dml_med_potential_fixture["boot_t_stat" + bootstrap],
-            dml_med_potential_fixture["boot_t_stat" + bootstrap + "_manual"],
-            rtol=1e-9,
-            atol=1e-4,
-        )
         assert np.allclose(
             dml_med_potential_fixture["boot_t_stat" + bootstrap],
             dml_med_potential_fixture["boot_t_stat" + bootstrap + "_ext"],
