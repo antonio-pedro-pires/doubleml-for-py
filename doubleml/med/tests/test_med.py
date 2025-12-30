@@ -16,7 +16,7 @@ from doubleml.tests._utils import draw_smpls
 
 @pytest.fixture(scope="module")
 def n_folds():
-    return 2
+    return 5
 
 
 @pytest.fixture(scope="module")
@@ -157,14 +157,15 @@ def dml_med_counterfactual_fixture(
         score_function="efficient-alt",
         n_folds=n_folds,
         normalize_ipw=normalize_ipw_counterfactual,
-        draw_sample_splitting=False,
         trimming_threshold=trimming_threshold_counterfactual,
     )
 
-    dml_obj.set_sample_splitting(all_smpls=all_smpls)
     dml_obj.fit()
 
-    np.random.seed(3141)
+    # Extract internal splits for manual verification
+    smpls = dml_obj.smpls
+    smpls_inner = dml_obj._smpls_inner
+
     dml_obj_ext = DoubleMLMediation(
         med_data=data,
         target="counterfactual",
@@ -179,11 +180,13 @@ def dml_med_counterfactual_fixture(
         score_function="efficient-alt",
         n_folds=n_folds,
         normalize_ipw=normalize_ipw_counterfactual,
-        draw_sample_splitting=False,
         trimming_threshold=trimming_threshold_counterfactual,
     )
 
-    dml_obj_ext.set_sample_splitting(all_smpls=all_smpls)
+    # Pass the splits from dml_obj to dml_obj_ext manually to ensure consistency
+    dml_obj_ext._smpls = dml_obj.smpls
+    dml_obj_ext._smpls_inner = dml_obj._smpls_inner
+    dml_obj_ext.fit()
 
     prediction_dict = {
         "d": {
@@ -194,6 +197,10 @@ def dml_med_counterfactual_fixture(
             "ml_nested": dml_obj.predictions["ml_nested"].reshape(-1, 1),
         }
     }
+
+    for i in range(dml_obj_ext.n_folds_inner):
+        prediction_dict["d"][f"ml_ymx_inner_{i}"] = dml_obj_ext.predictions[f"ml_ymx_inner_{i}"][:, :, 0]
+
     dml_obj_ext.fit(external_predictions=prediction_dict)
 
     res_dict = {
@@ -328,12 +335,14 @@ def dml_med_potential_fixture(
         score_function="efficient-alt",
         n_folds=n_folds,
         normalize_ipw=normalize_ipw_potential,
-        draw_sample_splitting=False,
         trimming_threshold=trimming_threshold_potential,
     )
 
-    dml_obj.set_sample_splitting(all_smpls=all_smpls)
+    # dml_obj.set_sample_splitting(all_smpls=all_smpls)
     dml_obj.fit()
+
+    smpls = dml_obj.smpls
+    smpls_inner = getattr(dml_obj, "_smpls_inner", None)
 
     np.random.seed(3141)
     dml_obj_ext = DoubleMLMediation(
@@ -346,11 +355,13 @@ def dml_med_potential_fixture(
         score_function="efficient-alt",
         n_folds=n_folds,
         normalize_ipw=normalize_ipw_potential,
-        draw_sample_splitting=False,
         trimming_threshold=trimming_threshold_potential,
     )
 
-    dml_obj_ext.set_sample_splitting(all_smpls=all_smpls)
+    # Pass the splits from dml_obj to dml_obj_ext manually to ensure consistency
+    dml_obj_ext._smpls = dml_obj.smpls
+    dml_obj_ext._smpls_inner = getattr(dml_obj, "_smpls_inner", None)
+    dml_obj_ext.fit()
 
     prediction_dict = {
         "d": {

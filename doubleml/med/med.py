@@ -1,15 +1,21 @@
 import warnings
-from copy import deepcopy
 
 import numpy as np
-from sklearn.model_selection import train_test_split
+from sklearn.base import clone
+from sklearn.model_selection import cross_val_predict
 from sklearn.utils import check_X_y
 
 from doubleml import DoubleMLMediationData
 from doubleml.double_ml import DoubleML
 from doubleml.double_ml_score_mixins import LinearScoreMixin
 from doubleml.utils._checks import _check_finite_predictions, _check_score
-from doubleml.utils._estimation import _cond_targets, _dml_cv_predict, _dml_tune, _get_cond_smpls, _get_cond_smpls_2d
+from doubleml.utils._estimation import (
+    _cond_targets,
+    _dml_cv_predict,
+    _dml_tune,
+    _get_cond_smpls, _double_dml_cv_predict,
+)
+from doubleml.utils._tune_optuna import _dml_tune_optuna
 
 
 # TODO: remove yx_learner in counterfactual nuisance estimation dependent on how trimming is applied
@@ -102,6 +108,7 @@ class DoubleMLMediation(LinearScoreMixin, DoubleML):
         score_function="efficient-alt",
         n_folds=5,
         n_rep=1,
+        n_folds_inner=5,
         normalize_ipw=False,
         trimming_rule="truncate",
         trimming_threshold=1e-2,
@@ -114,7 +121,8 @@ class DoubleMLMediation(LinearScoreMixin, DoubleML):
                 + f"data of type {str(type(med_data))} was provided instead."
             )
 
-        super().__init__(med_data, n_folds, n_rep, score, draw_sample_splitting)
+        self.n_folds_inner = n_folds_inner
+        super().__init__(med_data, n_folds, n_rep, score, draw_sample_splitting, double_sample_splitting=True)
 
         valid_targets = ["potential", "counterfactual"]
         if target not in valid_targets:
@@ -204,6 +212,10 @@ class DoubleMLMediation(LinearScoreMixin, DoubleML):
         """
         return self._mediated
 
+    @property
+    def _score_element_names(self):
+        return ["psi_a", "psi_b"]
+
     def _check_learners(self):
         if self._target == "potential":
             required_learners = ["ml_yx", "ml_px"]
@@ -236,10 +248,13 @@ class DoubleMLMediation(LinearScoreMixin, DoubleML):
     def _initialize_ml_nuisance_params(self):
         if self._target == "potential":
             learners = ["ml_yx", "ml_px"]
+            params_names = learners
         else:
             learners = ["ml_yx", "ml_px", "ml_ymx", "ml_pmx", "ml_nested"]
+            inner_ymx_names = [f"ml_ymx_inner_{i}" for i in range(self.n_folds)]
+            params_names = learners + inner_ymx_names
 
-        self._params = {learner: {key: [None] * self.n_rep for key in self._dml_data.d_cols} for learner in learners}
+        self._params = {learner: {key: [None] * self.n_rep for key in self._dml_data.d_cols} for learner in params_names}
 
     def _nuisance_est(
         self,
@@ -248,8 +263,8 @@ class DoubleMLMediation(LinearScoreMixin, DoubleML):
         external_predictions,
         return_models=False,
     ):
-        x, y = check_X_y(self._med_data.x, self._med_data.y, force_all_finite=False)
-        x, d = check_X_y(x, self._med_data.d, force_all_finite=False)
+        x, y = check_X_y(self._med_data.x, self._med_data.y, ensure_all_finite=True)
+        x, d = check_X_y(x, self._med_data.d, ensure_all_finite=True)
 
         if self._target == "potential":
             # Check whether there are external predictions for each parameter.
@@ -313,7 +328,7 @@ class DoubleMLMediation(LinearScoreMixin, DoubleML):
             psi_elements = {"psi_a": psi_a, "psi_b": psi_b}
 
         else:  # target == "counterfactual"
-            x, m = check_X_y(x, self._med_data.m, force_all_finite=False)
+            x, m = check_X_y(x, self._med_data.m, ensure_all_finite=True)
             xm = np.column_stack((x, m))
 
             # Check whether there are external predictions for each parameter.
@@ -325,7 +340,6 @@ class DoubleMLMediation(LinearScoreMixin, DoubleML):
 
             # Prepare the samples
             smpls_d0, smpls_d1 = _get_cond_smpls(smpls, self.treated)
-            _, _, smpls_d1_m0, smpls_d1_m1 = _get_cond_smpls_2d(smpls, self.treated, self.mediated)
 
             # Estimate the probability of treatment conditional on the covariates.
             if px_external:
@@ -373,59 +387,52 @@ class DoubleMLMediation(LinearScoreMixin, DoubleML):
                 )
 
             if ymx_external:
-                ymx_hat = {"preds": external_predictions["ml_ymx"], "targets": None, "models": None}
+                # expect per-inner-fold keys ml_ymx_inner_i
+                missing = [
+                    i
+                    for i in range(self.n_folds_inner)
+                    if (f"ml_ymx_inner_{i}") not in external_predictions.keys() or external_predictions[
+                        f"ml_ymx_inner_{i}"] is None
+                ]
+                if len(missing) > 0:
+                    raise ValueError(
+                        "When providing external predictions for ml_ymx, also inner predictions for all inner folds "
+                        f"have to be provided (missing: {', '.join([str(i) for i in missing])})."
+                    )
+                ymx_hat_inner = [external_predictions[f"ml_ymx_inner_{i}"] for i in range(self.n_folds_inner)]
+                ymx_hat = {
+                    "preds": external_predictions["ml_ymx"],
+                    "preds_inner": ymx_hat_inner,
+                    "targets": self._dml_data.y,
+                    "models": None,
+                }
             else:
-                mu_test_smpls = np.full([len(smpls), 2], object)
-                for idx, (train, test) in enumerate(smpls):
-                    mu, delta = train_test_split(train, test_size=0.5)
-                    mu_test_smpls[idx][0] = mu
-                    mu_test_smpls[idx][1] = test
-                mu_test_d0, mu_test_d1 = _get_cond_smpls(mu_test_smpls, self.treated)
-                ymx_hat = _dml_cv_predict(
-                    self._learner["ml_ymx"],
-                    xm,
-                    y,
-                    smpls=mu_test_d1,
+                # TODO: Have to filter and only have observations where d=1
+                ymx_hat = _double_dml_cv_predict(
+                    estimator=self._learner["ml_ymx"],
+                    estimator_name=self._learner["ml_ymx"],
+                    x=xm,
+                    y=y,
+                    smpls=smpls_d1,
+                    smpls_inner=self._DoubleML__smpls__inner,
                     n_jobs=n_jobs_cv,
                     est_params=self._get_params("ml_ymx"),
                     method=self._predict_method["ml_ymx"],
-                    return_models=return_models,
                 )
 
             if nested_external:
                 nested_hat = {"preds": external_predictions["ml_nested"], "targets": None, "models": None}
             else:
-                mu_test_smpls = np.full([len(smpls), 2], object)
-                mu_delta_smpls = deepcopy(mu_test_smpls)
-                delta_test_smpls = deepcopy(mu_test_smpls)
+                ymx_inner_preds = np.zeros_like(y)
+                for pred, (train, test) in zip(ymx_hat["preds_inner"], smpls):
+                    ymx_inner_preds[train] += pred[train]
+                ymx_inner_preds /= len(ymx_hat["preds_inner"])
 
-                # TODO: Probably will need to copy the ml_ymx learner to have a ml_ymx_delta learner.
-                for idx, (train, test) in enumerate(smpls):
-                    mu, delta = train_test_split(train, test_size=0.5)
-                    mu_test_smpls[idx][0] = mu
-                    mu_test_smpls[idx][1] = test
-                    mu_delta_smpls[idx][0] = mu
-                    mu_delta_smpls[idx][1] = delta
-                    delta_test_smpls[idx][0] = delta
-                    delta_test_smpls[idx][1] = test
-                mu_delta_d0, mu_delta_d1 = _get_cond_smpls(mu_delta_smpls, self.treated)
-                delta_test_d0, delta_test_d1 = _get_cond_smpls(delta_test_smpls, self.treated)
-
-                ymx_delta_hat = _dml_cv_predict(
-                    self._learner["ml_ymx"],
-                    xm,
-                    y,
-                    smpls=mu_delta_d1,
-                    n_jobs=n_jobs_cv,
-                    est_params=self._get_params("ml_ymx"),
-                    method=self._predict_method["ml_ymx"],
-                    return_models=return_models,
-                )
                 nested_hat = _dml_cv_predict(
                     self._learner["ml_nested"],
-                    x,
-                    ymx_delta_hat["preds"],
-                    smpls=delta_test_d0,
+                    xm,
+                    ymx_inner_preds,
+                    smpls=smpls_d0,
                     n_jobs=n_jobs_cv,
                     est_params=self._get_params("ml_nested"),
                     method=self._predict_method["ml_nested"],
@@ -439,6 +446,9 @@ class DoubleMLMediation(LinearScoreMixin, DoubleML):
                     "ml_yx": yx_hat["preds"],
                     "ml_ymx": ymx_hat["preds"],
                     "ml_nested": nested_hat["preds"],
+                    # store inner predictions as separate keys per inner fold
+                    # ml_M inner
+                    **{f"ml_ymx_inner_{i}": ymx_hat["preds_inner"][i] for i in range(len(ymx_hat["preds_inner"]))},
                 },
                 "targets": {
                     "ml_px": px_hat["targets"],
@@ -446,6 +456,16 @@ class DoubleMLMediation(LinearScoreMixin, DoubleML):
                     "ml_yx": yx_hat["targets"],
                     "ml_ymx": ymx_hat["targets"],
                     "ml_nested": nested_hat["targets"],
+                    **(
+                        {
+                            f"ml_ymx_inner_{i}": (
+                                ymx_hat.get("targets_inner")[i]
+                                if ymx_hat.get("targets_inner") is not None and i < len(ymx_hat["targets_inner"])
+                                else None
+                            )
+                            for i in range(len(ymx_hat.get("preds_inner", [])))
+                        }
+                    ),
                 },
                 "models": {
                     "ml_px": px_hat["models"],
@@ -485,8 +505,8 @@ class DoubleMLMediation(LinearScoreMixin, DoubleML):
     def _nuisance_tuning(
         self, smpls, param_grids, scoring_methods, n_folds_tune, n_jobs_cv, search_mode, n_iter_randomized_search
     ):
-        x, y = check_X_y(self._med_data.x, self._med_data.y, force_all_finite=False)
-        x, d = check_X_y(x, self._med_data.d, force_all_finite=False)
+        x, y = check_X_y(self._med_data.x, self._med_data.y, ensure_all_finite=True)
+        x, d = check_X_y(x, self._med_data.d, ensure_all_finite=True)
 
         if scoring_methods is None:
             scoring_methods = {}
@@ -530,7 +550,7 @@ class DoubleMLMediation(LinearScoreMixin, DoubleML):
             res["params"]["ml_yx"] = [xx.best_params_ for xx in res["tune_res"]["ml_yx"]]
 
         if self._target == "counterfactual":
-            x, m = check_X_y(x, self._med_data.m, force_all_finite=False)
+            x, m = check_X_y(x, self._med_data.m, ensure_all_finite=True)
             xm = np.column_stack((x, m))
 
             # Tune ml_pmx
@@ -566,6 +586,104 @@ class DoubleMLMediation(LinearScoreMixin, DoubleML):
                 res["params"]["ml_ymx"] = [xx.best_params_ for xx in res["tune_res"]["ml_ymx"]]
 
         return res
+
+    def _nuisance_tuning_optuna(self, optuna_params, scoring_methods, cv, optuna_settings):
+        x, y = check_X_y(self._med_data.x, self._med_data.y, ensure_all_finite=True)
+        x, d = check_X_y(x, self._med_data.d, ensure_all_finite=True)
+
+        if scoring_methods is None:
+            scoring_methods = {"ml_yx": None, "ml_px": None, "ml_ymx": None, "ml_pmx": None}
+
+        res = {"params": {}, "tune_res": {}}
+
+        if "ml_px" in optuna_params:
+            res["tune_res"]["ml_px"] = _dml_tune_optuna(
+                d,
+                x,
+                self._learner["ml_px"],
+                optuna_params["ml_px"],
+                scoring_methods.get("ml_px"),
+                cv,
+                optuna_settings,
+                learner_name="ml_px",
+                params_name="ml_px",
+            )
+            res["params"]["ml_px"] = [xx.best_params_ for xx in res["tune_res"]["ml_px"]]
+
+        if "ml_yx" in optuna_params:
+            res["tune_res"]["ml_yx"] = _dml_tune_optuna(
+                y[d == 1],
+                x[d == 1],
+                self._learner["ml_yx"],
+                optuna_params["ml_yx"],
+                scoring_methods.get("ml_yx"),
+                cv,
+                optuna_settings,
+                learner_name="ml_yx",
+                params_name="ml_yx",
+            )
+            res["params"]["ml_yx"] = [xx.best_params_ for xx in res["tune_res"]["ml_yx"]]
+
+        if self._target == "counterfactual":
+            x, m = check_X_y(x, self._med_data.m, force_all_finite=False)
+            xm = np.column_stack((x, m))
+
+            if "ml_pmx" in optuna_params:
+                res["tune_res"]["ml_pmx"] = _dml_tune_optuna(
+                    d,
+                    xm,
+                    self._learner["ml_pmx"],
+                    optuna_params["ml_pmx"],
+                    scoring_methods.get("ml_pmx"),
+                    cv,
+                    optuna_settings,
+                    learner_name="ml_pmx",
+                    params_name="ml_pmx",
+                )
+                res["params"]["ml_pmx"] = [xx.best_params_ for xx in res["tune_res"]["ml_pmx"]]
+
+            if "ml_ymx" in optuna_params:
+                # ml_ymx is tuned on the subsample with D=1
+                xm_d1 = xm[self.treated]
+                y_d1 = y[self.treated]
+                res["tune_res"]["ml_ymx"] = _dml_tune_optuna(
+                    y_d1,
+                    xm_d1,
+                    self._learner["ml_ymx"],
+                    optuna_params["ml_ymx"],
+                    scoring_methods.get("ml_ymx"),
+                    cv,
+                    optuna_settings,
+                    learner_name="ml_ymx",
+                    params_name="ml_ymx",
+                )
+                res["params"]["ml_ymx"] = [xx.best_params_ for xx in res["tune_res"]["ml_ymx"]]
+
+            # TODO: Add logic to tune the nested parameter
+            if "ml_nested" in optuna_params:
+                # Logic: Use ml_ymx to predict targets for ml_nested on D=1
+                # If ml_ymx was tuned, use the tuned estimator; otherwise use the base learner
+                if "ml_ymx" in res["tune_res"]:
+                    ymx_best_est = res["tune_res"]["ml_ymx"][0].best_estimator_
+                else:
+                    ymx_best_est = self._learner["ml_ymx"]
+
+                # Generate targets: E[Y|D=1, M, X]
+                ymx_hat = cross_val_predict(clone(ymx_best_est), xm_d1, y_d1, cv=cv, method=self._predict_method["ml_ymx"])
+
+                # Tune ml_nested: x -> ymx_hat
+                res["tune_res"]["ml_nested"] = _dml_tune_optuna(
+                    ymx_hat,
+                    x_d1,  # Target, Features
+                    self._learner["ml_nested"],
+                    optuna_params["ml_nested"],
+                    scoring_methods.get("ml_nested"),
+                    cv,
+                    optuna_settings,
+                    learner_name="ml_nested",
+                    params_name="ml_nested",
+                )
+                res["params"]["ml_nested"] = [xx.best_params_ for xx in res["tune_res"]["ml_nested"]]
 
     def _sensitivity_element_est(self, preds):
         pass
