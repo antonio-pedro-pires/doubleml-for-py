@@ -1,12 +1,10 @@
-import copy
-
 import numpy as np
 from sklearn.base import clone, is_classifier
-from sklearn.model_selection import train_test_split
 
 from doubleml.tests._utils import fit_predict, fit_predict_proba
 from doubleml.tests._utils_boot import boot_manual, draw_weights
 from doubleml.utils._checks import _check_is_propensity
+from doubleml.utils._estimation import _dml_cv_predict, _double_dml_cv_predict, _get_cond_smpls
 
 
 def fit_med_manual(
@@ -23,6 +21,7 @@ def fit_med_manual(
     treatment_level=1,
     mediation_level=1,
     all_smpls=None,
+    all_smpls_inner=None,
     n_rep=1,
     trimming_threshold=1e-2,
 ):
@@ -43,6 +42,7 @@ def fit_med_manual(
 
     for i_rep in range(n_rep):
         smpls = all_smpls[i_rep]
+        smpls_inner = all_smpls_inner[i_rep] if all_smpls_inner is not None else None
         preds = fit_nuisance_med_manual(
             y,
             x,
@@ -54,6 +54,7 @@ def fit_med_manual(
             learner_pmx,
             learner_nested,
             smpls,
+            smpls_inner,
             target,
             treatment_level,
             mediation_level,
@@ -101,6 +102,7 @@ def fit_nuisance_med_manual(
     learner_pmx,
     learner_nested,
     smpls,
+    smpls_inner,
     target,
     treatment_level,
     mediation_level,
@@ -137,6 +139,7 @@ def fit_nuisance_med_manual(
             learner_pmx,
             learner_nested,
             smpls,
+            smpls_inner,
             treatment_level,
             mediation_level,
             trimming_threshold,
@@ -196,6 +199,7 @@ def _fit_nuisance_counterfactual_manual(
     learner_pmx,
     learner_nested,
     smpls,
+    smpls_inner,
     treatment_level,
     mediation_level,
     trimming_threshold,
@@ -236,43 +240,69 @@ def _fit_nuisance_counterfactual_manual(
     else:
         ymx_hat_list = fit_predict(y, x, ml_ymx, ymx_params, smpls, train_cond=train_cond_d1)
 
-    mu_test_smpls = np.full([len(smpls), 2], np.ndarray)
-    mu_delta_smpls = copy.deepcopy(mu_test_smpls)
-    delta_test_smpls = copy.deepcopy(mu_test_smpls)
+    # smpls_d1 derivation
+    smpls_d1 = []
+    for train, test in smpls:
+        train_d1 = train[treated[train] == 1]
+        test_d1 = test[treated[test] == 1]
+        smpls_d1.append((train_d1, test_d1))
 
-    for idx, (train, test) in enumerate(smpls):
-        mu, delta = train_test_split(train, test_size=0.5)
-        mu_test_smpls[idx][0] = mu
-        mu_test_smpls[idx][1] = test
-        mu_delta_smpls[idx][0] = mu
-        mu_delta_smpls[idx][1] = delta
-        delta_test_smpls[idx][0] = delta
-        delta_test_smpls[idx][1] = test
+    # Inner smpls filtering
+    if smpls_inner is None:
+        # Fallback if no inner splits provided (should not happen if test is updated)
+        raise ValueError("smpls_inner is required for manual double_dml verification")
 
-    train_cond_d1 = np.where(treated == 1)[0]
+    smpls_inner_d1 = []
+    for outer_fold_idx, inner_folds in enumerate(smpls_inner):
+        filtered_inner_folds = []
+        for train_inner, test_inner in inner_folds:
+            train_inner_d1 = train_inner[treated[train_inner] == 1]
+            test_inner_d1 = test_inner[treated[test_inner] == 1]
+            filtered_inner_folds.append((train_inner_d1, test_inner_d1))
+        smpls_inner_d1.append(filtered_inner_folds)
+
+    # ymx estimation
     ml_ymx = clone(learner_ymx)
-    ymx_hat_list = fit_predict(y=y, x=x, ml_model=ml_ymx, params=ymx_params, smpls=mu_test_smpls, train_cond=train_cond_d1)
-
-    ymx_delta_hat_list = np.full(shape=n_obs, fill_value=np.nan)
-
-    ml_ymx_delta = clone(learner_ymx)
-    ymx_delta_preds = fit_predict(
-        y=y, x=x, ml_model=ml_ymx_delta, params=ymx_params, smpls=mu_delta_smpls, train_cond=train_cond_d1
+    ymx_hat = _double_dml_cv_predict(
+        ml_ymx,
+        "ml_ymx",  # Dummy name
+        xm,
+        y,
+        smpls=smpls_d1,
+        smpls_inner=smpls_inner_d1,
+        n_jobs=None,
+        est_params=ymx_params,
+        method="predict_proba" if is_classifier(ml_ymx) else "predict",
     )
-    # Reorder the predictions so that we can fit and predict the nested learner.
-    ymx_delta_hat_list[mu_delta_smpls[0][1]] = ymx_delta_preds[0]
-    ymx_delta_hat_list[mu_delta_smpls[1][1]] = ymx_delta_preds[1]
+    ymx_hat_list = ymx_hat["preds"]
 
-    train_cond_d0 = np.where(treated == 0)[0]
+    # nested estimation
+    nested_targets_inner = []
+    for i, (train_d1, _) in enumerate(smpls_d1):
+        nested_targets_inner.append(ymx_hat["preds_inner"][i][train_d1])
+
     ml_nested = clone(learner_nested)
-    nested_hat_list = fit_predict(
-        y=ymx_delta_hat_list,
-        x=xm,
-        ml_model=ml_nested,
-        params=nested_params,
-        smpls=delta_test_smpls,
-        train_cond=train_cond_d0,
+    nested_hat = _dml_cv_predict(
+        ml_nested,
+        x,
+        nested_targets_inner,
+        smpls=smpls_d1,
+        n_jobs=None,
+        est_params=nested_params,
+        method="predict_proba" if is_classifier(ml_nested) else "predict",
+        return_models=True,
     )
+    nested_hat_list = nested_hat["preds"]  # This covers D=1
+
+    # Predict on D=0 fold-wise
+    smpls_d0, _ = _get_cond_smpls(smpls, np.logical_not(treated))
+    for i, (_, test_d0) in enumerate(smpls_d0):
+        if len(test_d0) > 0:
+            model = nested_hat["models"][i]
+            if is_classifier(ml_nested):
+                nested_hat_list[test_d0] = model.predict_proba(x[test_d0])[:, 1]
+            else:
+                nested_hat_list[test_d0] = model.predict(x[test_d0])
 
     return {
         "yx_hat": yx_hat_list,
