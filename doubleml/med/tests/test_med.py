@@ -15,7 +15,7 @@ from doubleml.tests._utils import draw_smpls
 
 @pytest.fixture(scope="module")
 def n_folds():
-    return 2
+    return 5
 
 
 @pytest.fixture(scope="module")
@@ -194,10 +194,12 @@ def dml_med_counterfactual_fixture(
             "ml_px": dml_obj.predictions["ml_px"].reshape(-1, 1),
             "ml_pmx": dml_obj.predictions["ml_pmx"].reshape(-1, 1),
             "ml_nested": dml_obj.predictions["ml_nested"].reshape(-1, 1),
-            "ml_ymx_inner_0": dml_obj.predictions["ml_ymx_inner_0"].reshape(-1, 1),
-            "ml_ymx_inner_1": dml_obj.predictions["ml_ymx_inner_1"].reshape(-1, 1),
         }
     }
+
+    for i in range(dml_obj_ext.n_folds_inner):
+        prediction_dict["d"][f"ml_ymx_inner_{i}"] = dml_obj_ext.predictions[f"ml_ymx_inner_{i}"][:, :, 0]
+
     dml_obj_ext.fit(external_predictions=prediction_dict)
 
     res_dict = {
