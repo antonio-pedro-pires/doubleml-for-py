@@ -74,10 +74,6 @@ class DoubleMLMediationData(DoubleMLData):
             f"Covariates: {self.x_cols}\n"
             f"Instrument variable(s): {self.z_cols}\n"
         )
-        if self.t_col is not None:
-            data_summary += f"Time variable: {self.t_col}\n"
-        if self.s_col is not None:
-            data_summary += f"Score/Selection variable: {self.s_col}\n"
 
         data_summary += f"No. Observations: {self.n_obs}\n"
         return data_summary
