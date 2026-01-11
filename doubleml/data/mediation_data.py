@@ -125,8 +125,6 @@ class DoubleMLMediationData(DoubleMLData):
             m_cols,
             dml_data.x_cols,
             dml_data.z_cols,
-            dml_data.t_col,
-            dml_data.s_col,
             dml_data.use_other_treat_as_covariate,
             dml_data.force_all_x_finite,
         )
