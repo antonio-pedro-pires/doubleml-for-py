@@ -502,188 +502,98 @@ class DoubleMLMediation(LinearScoreMixin, DoubleML):
 
         return psi_a, psi_b
 
-    def _nuisance_tuning(
-        self, smpls, param_grids, scoring_methods, n_folds_tune, n_jobs_cv, search_mode, n_iter_randomized_search
-    ):
-        x, y = check_X_y(self._med_data.x, self._med_data.y, ensure_all_finite=True)
-        x, d = check_X_y(x, self._med_data.d, ensure_all_finite=True)
-
-        if scoring_methods is None:
-            scoring_methods = {}
-
-        train_inds = [train_index for (train_index, _) in smpls]
-        _, smpls_d1 = _get_cond_smpls(smpls, self.treated)
-        train_inds_d1 = [train_index for (train_index, _) in smpls_d1]
-
-        res = {"params": {}, "tune_res": {}}
-
-        # Tune ml_px
-        if "ml_px" in param_grids:
-            res["tune_res"]["ml_px"] = _dml_tune(
-                d,
-                x,
-                train_inds,
-                self._learner["ml_px"],
-                param_grids["ml_px"],
-                scoring_methods.get("ml_px"),
-                n_folds_tune,
-                n_jobs_cv,
-                search_mode,
-                n_iter_randomized_search,
-            )
-            res["params"]["ml_px"] = [xx.best_params_ for xx in res["tune_res"]["ml_px"]]
-
-        # Tune ml_yx
-        if "ml_yx" in param_grids:
-            res["tune_res"]["ml_yx"] = _dml_tune(
-                y,
-                x,
-                train_inds_d1,
-                self._learner["ml_yx"],
-                param_grids["ml_yx"],
-                scoring_methods.get("ml_yx"),
-                n_folds_tune,
-                n_jobs_cv,
-                search_mode,
-                n_iter_randomized_search,
-            )
-            res["params"]["ml_yx"] = [xx.best_params_ for xx in res["tune_res"]["ml_yx"]]
-
-        if self._target == "counterfactual":
-            x, m = check_X_y(x, self._med_data.m, ensure_all_finite=True)
-            xm = np.column_stack((x, m))
-
-            # Tune ml_pmx
-            if "ml_pmx" in param_grids:
-                res["tune_res"]["ml_pmx"] = _dml_tune(
-                    d,
-                    xm,
-                    train_inds,
-                    self._learner["ml_pmx"],
-                    param_grids["ml_pmx"],
-                    scoring_methods.get("ml_pmx"),
-                    n_folds_tune,
-                    n_jobs_cv,
-                    search_mode,
-                    n_iter_randomized_search,
-                )
-                res["params"]["ml_pmx"] = [xx.best_params_ for xx in res["tune_res"]["ml_pmx"]]
-
-            # Tune ml_ymx
-            if "ml_ymx" in param_grids:
-                res["tune_res"]["ml_ymx"] = _dml_tune(
-                    y,
-                    xm,
-                    train_inds_d1,
-                    self._learner["ml_ymx"],
-                    param_grids["ml_ymx"],
-                    scoring_methods.get("ml_ymx"),
-                    n_folds_tune,
-                    n_jobs_cv,
-                    search_mode,
-                    n_iter_randomized_search,
-                )
-                res["params"]["ml_ymx"] = [xx.best_params_ for xx in res["tune_res"]["ml_ymx"]]
-
-        return res
-
-    def _nuisance_tuning_optuna(self, optuna_params, scoring_methods, cv, optuna_settings):
+    def _nuisance_tuning_optuna(self, optuna_params, scoring_methods, cv, optuna_settings,):
         x, y = check_X_y(self._med_data.x, self._med_data.y, ensure_all_finite=True)
         x, d = check_X_y(x, self._med_data.d, ensure_all_finite=True)
 
         if scoring_methods is None:
             scoring_methods = {"ml_yx": None, "ml_px": None, "ml_ymx": None, "ml_pmx": None}
 
-        res = {"params": {}, "tune_res": {}}
+        treated_mask = self.treated
+        not_treated_max = np.logical_not(treated_mask)
 
-        if "ml_px" in optuna_params:
-            res["tune_res"]["ml_px"] = _dml_tune_optuna(
-                d,
-                x,
-                self._learner["ml_px"],
-                optuna_params["ml_px"],
-                scoring_methods.get("ml_px"),
-                cv,
-                optuna_settings,
-                learner_name="ml_px",
-                params_name="ml_px",
-            )
-            res["params"]["ml_px"] = [xx.best_params_ for xx in res["tune_res"]["ml_px"]]
+        px_tune_res = _dml_tune_optuna(
+            d,
+            x,
+            self._learner["ml_px"],
+            optuna_params["ml_px"],
+            scoring_methods["ml_px"],
+            cv,
+            optuna_settings,
+            learner_name="ml_px",
+            params_name="ml_px",
+        )
 
-        if "ml_yx" in optuna_params:
-            res["tune_res"]["ml_yx"] = _dml_tune_optuna(
-                y[d == 1],
-                x[d == 1],
+        if self.target == "potential":
+            yx_tune_res = _dml_tune_optuna(
+                y[treated_mask],
+                x[treated_mask],
                 self._learner["ml_yx"],
                 optuna_params["ml_yx"],
-                scoring_methods.get("ml_yx"),
+                scoring_methods["ml_yx"],
                 cv,
                 optuna_settings,
                 learner_name="ml_yx",
                 params_name="ml_yx",
             )
-            res["params"]["ml_yx"] = [xx.best_params_ for xx in res["tune_res"]["ml_yx"]]
-
-        if self._target == "counterfactual":
+            results = {"ml_px": px_tune_res, "ml_yx": yx_tune_res}
+        else:
             x, m = check_X_y(x, self._med_data.m, force_all_finite=False)
             xm = np.column_stack((x, m))
 
-            if "ml_pmx" in optuna_params:
-                res["tune_res"]["ml_pmx"] = _dml_tune_optuna(
-                    d,
-                    xm,
-                    self._learner["ml_pmx"],
-                    optuna_params["ml_pmx"],
-                    scoring_methods.get("ml_pmx"),
-                    cv,
-                    optuna_settings,
-                    learner_name="ml_pmx",
-                    params_name="ml_pmx",
-                )
-                res["params"]["ml_pmx"] = [xx.best_params_ for xx in res["tune_res"]["ml_pmx"]]
+            pmx_tune_res = _dml_tune_optuna(
+                d,
+                xm,
+                self._learner["ml_pmx"],
+                optuna_params["ml_pmx"],
+                scoring_methods["ml_pmx"],
+                cv,
+                optuna_settings,
+                learner_name="ml_pmx",
+                params_name="ml_pmx",
+            )
 
-            if "ml_ymx" in optuna_params:
-                # ml_ymx is tuned on the subsample with D=1
-                xm_d1 = xm[self.treated]
-                y_d1 = y[self.treated]
-                res["tune_res"]["ml_ymx"] = _dml_tune_optuna(
-                    y_d1,
-                    xm_d1,
-                    self._learner["ml_ymx"],
-                    optuna_params["ml_ymx"],
-                    scoring_methods.get("ml_ymx"),
-                    cv,
-                    optuna_settings,
-                    learner_name="ml_ymx",
-                    params_name="ml_ymx",
-                )
-                res["params"]["ml_ymx"] = [xx.best_params_ for xx in res["tune_res"]["ml_ymx"]]
+            ymx_tune_res = _dml_tune_optuna(
+                y[treated_mask],
+                xm[treated_mask],
+                self._learner["ml_ymx"],
+                optuna_params["ml_ymx"],
+                scoring_methods["ml_ymx"],
+                cv,
+                optuna_settings,
+                learner_name="ml_ymx",
+                params_name="ml_ymx",
+            )
 
-            # TODO: Add logic to tune the nested parameter
-            if "ml_nested" in optuna_params:
-                # Logic: Use ml_ymx to predict targets for ml_nested on D=1
-                # If ml_ymx was tuned, use the tuned estimator; otherwise use the base learner
-                if "ml_ymx" in res["tune_res"]:
-                    ymx_best_est = res["tune_res"]["ml_ymx"][0].best_estimator_
-                else:
-                    ymx_best_est = self._learner["ml_ymx"]
+            #Create targets for ml_nested
+            ml_ymx = cross_val_predict(
+                estimator=clone(ymx_tune_res.best_estimator),
+                X=xm[treated_mask],
+                y=y[treated_mask],
+                cv=cv,
+                method=self._predict_method["ml_ymx"],
+            )
 
-                # Generate targets: E[Y|D=1, M, X]
-                ymx_hat = cross_val_predict(clone(ymx_best_est), xm_d1, y_d1, cv=cv, method=self._predict_method["ml_ymx"])
+            nested_tune_res = _dml_tune_optuna(
+                y=ml_ymx[not_treated_max],
+                x=x[not_treated_max],
+                learner=self._learner["ml_nested"],
+                param_grid_func=optuna_params["ml_nested"],
+                scoring_method=scoring_methods["ml_nested"],
+                cv=cv,
+                optuna_settings=optuna_settings,
+                learner_name="ml_nested",
+                params_name="ml_nested",
+            )
 
-                # Tune ml_nested: x -> ymx_hat
-                res["tune_res"]["ml_nested"] = _dml_tune_optuna(
-                    ymx_hat,
-                    x_d1,  # Target, Features
-                    self._learner["ml_nested"],
-                    optuna_params["ml_nested"],
-                    scoring_methods.get("ml_nested"),
-                    cv,
-                    optuna_settings,
-                    learner_name="ml_nested",
-                    params_name="ml_nested",
-                )
-                res["params"]["ml_nested"] = [xx.best_params_ for xx in res["tune_res"]["ml_nested"]]
+            results = {
+                "ml_px": px_tune_res,
+                "ml_ymx": ymx_tune_res,
+                "ml_pmx": pmx_tune_res,
+                "ml_nested": nested_tune_res,
+            }
+
+        return results
 
     def _sensitivity_element_est(self, preds):
         pass
