@@ -1,7 +1,6 @@
 import warnings
 
 import numpy as np
-from sklearn.base import clone
 from sklearn.model_selection import cross_val_predict
 from sklearn.utils import check_X_y
 
@@ -12,8 +11,8 @@ from doubleml.utils._checks import _check_finite_predictions, _check_score
 from doubleml.utils._estimation import (
     _cond_targets,
     _dml_cv_predict,
-    _dml_tune,
-    _get_cond_smpls, _double_dml_cv_predict,
+    _double_dml_cv_predict,
+    _get_cond_smpls,
 )
 from doubleml.utils._tune_optuna import _dml_tune_optuna
 
@@ -96,8 +95,8 @@ class DoubleMLMediation(LinearScoreMixin, DoubleML):
     def __init__(
         self,
         med_data,
-        ml_yx,
         ml_px,
+        ml_yx=None,
         ml_ymx=None,
         ml_pmx=None,
         ml_nested=None,
@@ -121,6 +120,8 @@ class DoubleMLMediation(LinearScoreMixin, DoubleML):
                 + f"data of type {str(type(med_data))} was provided instead."
             )
 
+        if target == "potential" and ml_yx is None:
+            raise ValueError("ml_yx is required when target is 'potential'")
         self.n_folds_inner = n_folds_inner
         super().__init__(med_data, n_folds, n_rep, score, draw_sample_splitting, double_sample_splitting=True)
 
@@ -146,7 +147,7 @@ class DoubleMLMediation(LinearScoreMixin, DoubleML):
         if self._target == "potential":
             self._learner = {"ml_yx": ml_yx, "ml_px": ml_px}
         else:
-            self._learner = {"ml_yx": ml_yx, "ml_px": ml_px, "ml_ymx": ml_ymx, "ml_pmx": ml_pmx, "ml_nested": ml_nested}
+            self._learner = {"ml_px": ml_px, "ml_ymx": ml_ymx, "ml_pmx": ml_pmx, "ml_nested": ml_nested}
         self._check_learners()
 
         self._initialize_ml_nuisance_params()
@@ -220,7 +221,7 @@ class DoubleMLMediation(LinearScoreMixin, DoubleML):
         if self._target == "potential":
             required_learners = ["ml_yx", "ml_px"]
         else:
-            required_learners = ["ml_yx", "ml_px", "ml_ymx", "ml_pmx", "ml_nested"]
+            required_learners = ["ml_px", "ml_ymx", "ml_pmx", "ml_nested"]
 
         for learner in required_learners:
             if self._learner[learner] is None:
@@ -250,7 +251,7 @@ class DoubleMLMediation(LinearScoreMixin, DoubleML):
             learners = ["ml_yx", "ml_px"]
             params_names = learners
         else:
-            learners = ["ml_yx", "ml_px", "ml_ymx", "ml_pmx", "ml_nested"]
+            learners = ["ml_px", "ml_ymx", "ml_pmx", "ml_nested"]
             inner_ymx_names = [f"ml_ymx_inner_{i}" for i in range(self.n_folds)]
             params_names = learners + inner_ymx_names
 
@@ -334,7 +335,6 @@ class DoubleMLMediation(LinearScoreMixin, DoubleML):
             # Check whether there are external predictions for each parameter.
             px_external = external_predictions["ml_px"] is not None
             pmx_external = external_predictions["ml_pmx"] is not None
-            yx_external = external_predictions["ml_yx"] is not None
             ymx_external = external_predictions["ml_ymx"] is not None
             nested_external = external_predictions["ml_nested"] is not None
 
@@ -371,28 +371,13 @@ class DoubleMLMediation(LinearScoreMixin, DoubleML):
                     return_models=return_models,
                 )
 
-            # Estimate the conditional expectation of outcome Y given D, M, and X.
-            if yx_external:
-                yx_hat = {"preds": external_predictions["ml_yx"], "targets": None, "models": None}
-            else:
-                yx_hat = _dml_cv_predict(
-                    self._learner["ml_yx"],
-                    x,
-                    y,
-                    smpls=smpls_d1,
-                    n_jobs=n_jobs_cv,
-                    est_params=self._get_params("ml_yx"),
-                    method=self._predict_method["ml_yx"],
-                    return_models=return_models,
-                )
-
             if ymx_external:
                 # expect per-inner-fold keys ml_ymx_inner_i
                 missing = [
                     i
                     for i in range(self.n_folds_inner)
-                    if (f"ml_ymx_inner_{i}") not in external_predictions.keys() or external_predictions[
-                        f"ml_ymx_inner_{i}"] is None
+                    if (f"ml_ymx_inner_{i}") not in external_predictions.keys()
+                    or external_predictions[f"ml_ymx_inner_{i}"] is None
                 ]
                 if len(missing) > 0:
                     raise ValueError(
@@ -443,7 +428,6 @@ class DoubleMLMediation(LinearScoreMixin, DoubleML):
                 "predictions": {
                     "ml_px": px_hat["preds"],
                     "ml_pmx": pmx_hat["preds"],
-                    "ml_yx": yx_hat["preds"],
                     "ml_ymx": ymx_hat["preds"],
                     "ml_nested": nested_hat["preds"],
                     # store inner predictions as separate keys per inner fold
@@ -453,7 +437,6 @@ class DoubleMLMediation(LinearScoreMixin, DoubleML):
                 "targets": {
                     "ml_px": px_hat["targets"],
                     "ml_pmx": pmx_hat["targets"],
-                    "ml_yx": yx_hat["targets"],
                     "ml_ymx": ymx_hat["targets"],
                     "ml_nested": nested_hat["targets"],
                     **(
@@ -470,20 +453,19 @@ class DoubleMLMediation(LinearScoreMixin, DoubleML):
                 "models": {
                     "ml_px": px_hat["models"],
                     "ml_pmx": pmx_hat["models"],
-                    "ml_yx": yx_hat["models"],
                     "ml_ymx": ymx_hat["models"],
                     "ml_nested": nested_hat["models"],
                 },
             }
 
             psi_a, psi_b = self._score_elements(
-                y, px_hat["preds"], yx_hat["preds"], pmx_hat["preds"], ymx_hat["preds"], nested_hat["preds"]
+                y, px_hat=px_hat["preds"], pmx_hat=pmx_hat["preds"], ymx_hat=ymx_hat["preds"], nested_hat=nested_hat["preds"]
             )
             psi_elements = {"psi_a": psi_a, "psi_b": psi_b}
 
         return psi_elements, preds
 
-    def _score_elements(self, y, px_hat, yx_hat, pmx_hat=None, ymx_hat=None, nested_hat=None):
+    def _score_elements(self, y, px_hat, yx_hat=None, pmx_hat=None, ymx_hat=None, nested_hat=None):
         if self._target == "potential":
             u_hat = y - yx_hat
             psi_a = -1.0
@@ -501,6 +483,20 @@ class DoubleMLMediation(LinearScoreMixin, DoubleML):
             psi_b = t1 + t2 + nested_hat
 
         return psi_a, psi_b
+
+    def _nuisance_tuning(
+        self,
+        smpls,
+        param_grids,
+        scoring_methods,
+        n_folds_tune,
+        n_jobs_cv,
+        search_mode,
+        n_iter_randomized_search,
+    ):
+        raise NotImplementedError(
+            "Nuisance tuning is not implemented for DoubleMLMediation. Please use the method _nuisance_tuning_optuna instead."
+        )
 
     def _nuisance_tuning_optuna(self, optuna_params, scoring_methods, cv, optuna_settings):
         x, y = check_X_y(self._med_data.x, self._med_data.y, ensure_all_finite=True)
@@ -524,7 +520,7 @@ class DoubleMLMediation(LinearScoreMixin, DoubleML):
             params_name="ml_px",
         )
 
-        if self.target=="potential":
+        if self.target == "potential":
             yx_tune_res = _dml_tune_optuna(
                 y=y[treated_mask],
                 x=x[treated_mask],
@@ -537,13 +533,13 @@ class DoubleMLMediation(LinearScoreMixin, DoubleML):
                 params_name="ml_yx",
             )
 
-            results={
+            results = {
                 "ml_px": px_tune_res,
                 "ml_yx": yx_tune_res,
             }
 
         else:
-            x, m = check_X_y(x, self._med_data.m, force_all_finite=False)
+            x, m = check_X_y(x, self._med_data.m, ensure_all_finite=False)
             xm = np.column_stack((x, m))
 
             pmx_tune_res = _dml_tune_optuna(
@@ -570,13 +566,13 @@ class DoubleMLMediation(LinearScoreMixin, DoubleML):
                 params_name="ml_ymx",
             )
 
-            #Prepare targets for the nested estimator
+            # Prepare targets for the nested estimator
             ymx_hat = cross_val_predict(
                 estimator=self._learner["ml_nested"],
-                X=xm[treated_mask],
-                y=y[treated_mask],
+                X=xm,
+                y=y,
                 cv=cv,
-                method=self._learner["ml_nested"],
+                method=self._predict_method["ml_nested"],
             )
 
             nested_tune_res = _dml_tune_optuna(
@@ -590,7 +586,7 @@ class DoubleMLMediation(LinearScoreMixin, DoubleML):
                 learner_name="ml_nested",
                 params_name="ml_nested",
             )
-            results={
+            results = {
                 "ml_px": px_tune_res,
                 "ml_ymx": ymx_tune_res,
                 "ml_pmx": pmx_tune_res,
@@ -598,6 +594,7 @@ class DoubleMLMediation(LinearScoreMixin, DoubleML):
             }
 
         return results
+
     def _sensitivity_element_est(self, preds):
         pass
 

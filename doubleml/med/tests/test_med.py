@@ -74,13 +74,11 @@ def all_smpls(data, n_obs, n_folds, d):
 learners_counterfactual_params = [
     [
         LinearRegression(),
-        LinearRegression(),
         LogisticRegression(penalty="l1", solver="liblinear", max_iter=250, random_state=42),
         LogisticRegression(penalty="l1", solver="liblinear", max_iter=250, random_state=42),
         LinearRegression(),
     ],
     [
-        RandomForestRegressor(max_depth=5, n_estimators=10, random_state=42),
         RandomForestRegressor(max_depth=5, n_estimators=10, random_state=42),
         RandomForestClassifier(max_depth=5, n_estimators=10, random_state=42),
         RandomForestClassifier(max_depth=5, n_estimators=10, random_state=42),
@@ -135,11 +133,10 @@ def dml_med_counterfactual_fixture(
     treatment_level, mediation_level = treatment_mediation_level_counterfactual
 
     # Set machine learning methods
-    ml_yx = clone(learners_counterfactual[0])
-    ml_ymx = clone(learners_counterfactual[1])
-    ml_px = clone(learners_counterfactual[2])
-    ml_pmx = clone(learners_counterfactual[3])
-    ml_nested = clone(learners_counterfactual[4])
+    ml_ymx = clone(learners_counterfactual[0])
+    ml_px = clone(learners_counterfactual[1])
+    ml_pmx = clone(learners_counterfactual[2])
+    ml_nested = clone(learners_counterfactual[3])
 
     np.random.seed(3141)
     dml_obj = DoubleMLMediation(
@@ -147,7 +144,6 @@ def dml_med_counterfactual_fixture(
         target="counterfactual",
         treatment_level=treatment_level,
         mediation_level=mediation_level,
-        ml_yx=ml_yx,
         ml_ymx=ml_ymx,
         ml_px=ml_px,
         ml_pmx=ml_pmx,
@@ -170,7 +166,6 @@ def dml_med_counterfactual_fixture(
         target="counterfactual",
         treatment_level=treatment_level,
         mediation_level=mediation_level,
-        ml_yx=ml_yx,
         ml_ymx=ml_ymx,
         ml_px=ml_px,
         ml_pmx=ml_pmx,
@@ -189,7 +184,6 @@ def dml_med_counterfactual_fixture(
 
     prediction_dict = {
         "d": {
-            "ml_yx": dml_obj.predictions["ml_yx"].reshape(-1, 1),
             "ml_ymx": dml_obj.predictions["ml_ymx"].reshape(-1, 1),
             "ml_px": dml_obj.predictions["ml_px"].reshape(-1, 1),
             "ml_pmx": dml_obj.predictions["ml_pmx"].reshape(-1, 1),
