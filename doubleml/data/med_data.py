@@ -108,7 +108,7 @@ class DoubleMLMEDData(DoubleMLData):
             )
 
         dml_data = DoubleMLData.from_arrays(x, y, d, z, None, use_other_treat_as_covariate, force_all_x_finite)
-        m = check_array(m, ensure_2d=False, allow_nd=False, force_all_finite=force_all_m_finite)
+        m = check_array(m, ensure_2d=False, allow_nd=False, ensure_all_finite=force_all_m_finite)
         m = _assure_2d_array(m)
 
         if m.shape[1] == 1:
