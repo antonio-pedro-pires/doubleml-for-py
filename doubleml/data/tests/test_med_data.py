@@ -3,8 +3,8 @@ import pandas as pd
 import pytest
 from sklearn.utils.multiclass import type_of_target
 
-from doubleml import DoubleMLMediationData
-from doubleml.datasets import make_med_data
+from doubleml import DoubleMLMEDData
+from doubleml.med.datasets import make_med_data
 
 
 @pytest.mark.ci
@@ -13,7 +13,7 @@ def test_obj_vs_from_arrays():
     med_data = make_med_data()
 
     # data created from arrays
-    data_from_array = DoubleMLMediationData.from_arrays(
+    data_from_array = DoubleMLMEDData.from_arrays(
         med_data.data[med_data.x_cols],
         med_data.data[med_data.y_col],
         med_data.data[med_data.d_cols],
@@ -28,7 +28,7 @@ def test_from_arrays():
     med_data = make_med_data()
 
     # test force_all_m_finite=False
-    _ = DoubleMLMediationData.from_arrays(
+    _ = DoubleMLMEDData.from_arrays(
         med_data.data[med_data.x_cols],
         med_data.data[med_data.y_col],
         med_data.data[med_data.d_cols],
@@ -37,7 +37,7 @@ def test_from_arrays():
     )
 
     # test force_all_m_finite="allow_nan"
-    _ = DoubleMLMediationData.from_arrays(
+    _ = DoubleMLMEDData.from_arrays(
         med_data.data[med_data.x_cols],
         med_data.data[med_data.y_col],
         med_data.data[med_data.d_cols],
@@ -47,7 +47,7 @@ def test_from_arrays():
 
     msg = r"Invalid force_all_m_finite " r"nope" r". " r"force_all_m_finite must be True, False or 'allow-nan'."
     with pytest.raises(ValueError, match=msg):
-        _ = DoubleMLMediationData.from_arrays(
+        _ = DoubleMLMEDData.from_arrays(
             med_data.data[med_data.x_cols],
             med_data.data[med_data.y_col],
             med_data.data[med_data.d_cols],
@@ -61,7 +61,7 @@ def test_from_arrays():
         r"5 of type <class 'int'> was passed."
     )
     with pytest.raises(TypeError, match=msg):
-        _ = DoubleMLMediationData.from_arrays(
+        _ = DoubleMLMEDData.from_arrays(
             med_data.data[med_data.x_cols],
             med_data.data[med_data.y_col],
             med_data.data[med_data.d_cols],
@@ -80,7 +80,7 @@ def test_check_disjoint_sets():
         r"and mediation variable\(s\) \(``m_cols``\)."
     )
     with pytest.raises(ValueError, match=msg):
-        _ = DoubleMLMediationData(
+        _ = DoubleMLMEDData(
             df,
             y_col="yy",
             d_cols="dd1",
@@ -96,7 +96,7 @@ def test_check_disjoint_sets():
         r"and mediation variable\(s\) \(``m_cols``\)."
     )
     with pytest.raises(ValueError, match=msg):
-        _ = DoubleMLMediationData(
+        _ = DoubleMLMEDData(
             df,
             y_col="yy",
             d_cols="dd1",
@@ -109,7 +109,7 @@ def test_check_disjoint_sets():
 
     msg = r"At least one variable/column is set as covariate \(``x_cols``\) " r"and mediation variable\(s\) \(``m_cols``\)."
     with pytest.raises(ValueError, match=msg):
-        _ = DoubleMLMediationData(
+        _ = DoubleMLMEDData(
             df,
             y_col="yy",
             d_cols="dd1",
@@ -125,7 +125,7 @@ def test_check_disjoint_sets():
         r"and mediation variable\(s\) \(``m_cols``\)."
     )
     with pytest.raises(ValueError, match=msg):
-        _ = DoubleMLMediationData(
+        _ = DoubleMLMEDData(
             df,
             y_col="yy",
             d_cols="dd1",
@@ -138,7 +138,7 @@ def test_check_disjoint_sets():
 
     msg = r"At least one variable/column is set as time variable \(``t_col``\) " r"and mediation variable\(s\) \(``m_cols``\)."
     with pytest.raises(ValueError, match=msg):
-        _ = DoubleMLMediationData(
+        _ = DoubleMLMEDData(
             df,
             y_col="yy",
             d_cols="dd1",
@@ -154,7 +154,7 @@ def test_check_disjoint_sets():
         r"and mediation variable\(s\) \(``m_cols``\)."
     )
     with pytest.raises(ValueError, match=msg):
-        _ = DoubleMLMediationData(
+        _ = DoubleMLMEDData(
             df,
             y_col="yy",
             d_cols="dd1",
@@ -171,7 +171,7 @@ def test_m_cols_setter():
     np.random.seed(3141)
     df = pd.DataFrame(np.tile(np.arange(10), (4, 1)), columns=["y", "d", "x1", "x2", "m1", "m2", "m3", "z1", "t1", "s1"])
 
-    med_data = DoubleMLMediationData(
+    med_data = DoubleMLMEDData(
         df,
         y_col="y",
         d_cols="d",
@@ -234,7 +234,7 @@ def test_data_summary_str():
     df["time_var"] = 1
     df["score_var"] = 0.5
 
-    med_data_with_optional = DoubleMLMediationData(
+    med_data_with_optional = DoubleMLMEDData(
         data=df,
         y_col="y",
         d_cols="d",
@@ -252,7 +252,7 @@ def test_data_summary_str():
 def test_get_optional_col_sets():
     np.random.seed(3141)
     df = pd.DataFrame(np.tile(np.arange(10), (4, 1)), columns=["y", "d", "x1", "x2", "m1", "m2", "m3", "z", "t", "s"])
-    med_data = DoubleMLMediationData(
+    med_data = DoubleMLMEDData(
         df,
         y_col="y",
         d_cols="d",
@@ -269,7 +269,7 @@ def test_get_optional_col_sets():
     # Since x_cols is defined, m3 is not in x_cols
     assert "m3" not in med_data.x_cols
 
-    med_data = DoubleMLMediationData(
+    med_data = DoubleMLMEDData(
         df,
         y_col="y",
         d_cols="d",
@@ -290,7 +290,7 @@ def test_check_binary_mediators():
         np.concat((np.tile(np.arange(7), (4, 1)), np.random.randint(0, 2, size=(4, 3))), axis=1),
         columns=["y", "d", "x1", "x2", "z1", "t1", "s1", "m1", "m2", "m3"],
     )
-    med_data = DoubleMLMediationData(
+    med_data = DoubleMLMEDData(
         df,
         y_col="y",
         d_cols="d",
@@ -350,7 +350,7 @@ def test_check_binary_mediators():
 def test_dml_datatype():
     data_array = np.zeros((100, 10))
     with pytest.raises(TypeError):
-        _ = DoubleMLMediationData(data_array, y_col="y", d_cols=["d"], m_cols=["m"])
+        _ = DoubleMLMEDData(data_array, y_col="y", d_cols=["d"], m_cols=["m"])
 
 
 @pytest.mark.ci
@@ -360,12 +360,12 @@ def test_duplicates():
 
     msg = r"Invalid mediation variable\(s\) m_cols: Contains duplicate values."
     with pytest.raises(ValueError, match=msg):
-        _ = DoubleMLMediationData(dml_med_data.data, y_col="y", d_cols=["d"], m_cols=["X3", "X2", "X3"])
+        _ = DoubleMLMEDData(dml_med_data.data, y_col="y", d_cols=["d"], m_cols=["X3", "X2", "X3"])
     with pytest.raises(ValueError, match=msg):
         dml_med_data.m_cols = ["X3", "X2", "X3"]
 
     msg = "Invalid pd.DataFrame: Contains duplicate column names."
     with pytest.raises(ValueError, match=msg):
-        _ = DoubleMLMediationData(
+        _ = DoubleMLMEDData(
             pd.DataFrame(np.zeros((100, 5)), columns=["y", "d", "X3", "X2", "y"]), y_col="y", d_cols=["d"], m_cols=["X2"]
         )

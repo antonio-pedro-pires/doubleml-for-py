@@ -4,9 +4,9 @@ import numpy as np
 import pytest
 from sklearn.linear_model import LinearRegression, LogisticRegression
 
-from doubleml import DoubleMLMediationData
+from doubleml import DoubleMLMEDData
 from doubleml.med.datasets import make_med_data
-from doubleml.med.med import DoubleMLMediation
+from doubleml.med.med import DoubleMLMED
 from doubleml.utils import DMLDummyClassifier, DMLDummyRegressor
 
 @pytest.fixture(scope="module", params=[1, 3])
@@ -45,12 +45,12 @@ def dml_med_fixture(n_rep, target, set_ml_yx_ext, set_ml_ymx_ext, set_ml_px_ext,
     ext_predictions = {"d":{}}
 
     np.random.seed(3141)
-    med_data = DoubleMLMediationData.from_arrays(x, y, d, m)
+    med_data = DoubleMLMEDData.from_arrays(x, y, d, m)
 
     kwargs = {"n_rep": n_rep, "target": target, "med_data": med_data}
 
     #TODO: Cache the estimators so that tests are faster?
-    dml_med = DoubleMLMediation(ml_yx= LinearRegression(), ml_px=LogisticRegression(), ml_ymx=LinearRegression(), ml_pmx=LogisticRegression(max_iter=1000), ml_nested=LinearRegression(),**kwargs)
+    dml_med = DoubleMLMED(ml_yx= LinearRegression(), ml_px=LogisticRegression(), ml_ymx=LinearRegression(), ml_pmx=LogisticRegression(max_iter=1000), ml_nested=LinearRegression(), **kwargs)
     np.random.seed(3141)
     dml_med.fit(store_predictions=True)
 
@@ -67,7 +67,7 @@ def dml_med_fixture(n_rep, target, set_ml_yx_ext, set_ml_ymx_ext, set_ml_px_ext,
         else:
             ml_px = LogisticRegression(max_iter=1000)
 
-        dml_med_ext = DoubleMLMediation(ml_yx=ml_yx, ml_px=ml_px, **kwargs)
+        dml_med_ext = DoubleMLMED(ml_yx=ml_yx, ml_px=ml_px, **kwargs)
 
         np.random.seed(3141)
         dml_med_ext.fit(external_predictions=ext_predictions)
@@ -108,7 +108,7 @@ def dml_med_fixture(n_rep, target, set_ml_yx_ext, set_ml_ymx_ext, set_ml_px_ext,
         else:
             ml_nested = LinearRegression()
 
-        dml_med_ext = DoubleMLMediation(ml_yx=ml_yx, ml_px=ml_px, ml_ymx=ml_ymx, ml_pmx=ml_pmx, ml_nested=ml_nested, **kwargs)
+        dml_med_ext = DoubleMLMED(ml_yx=ml_yx, ml_px=ml_px, ml_ymx=ml_ymx, ml_pmx=ml_pmx, ml_nested=ml_nested, **kwargs)
 
         np.random.seed(3141)
         dml_med_ext.fit(external_predictions=ext_predictions)
@@ -139,11 +139,11 @@ def test_dml_med_exceptions(n_rep, target, set_ml_yx_ext, set_ml_ymx_ext, set_ml
         x, y, d, m = make_med_data(return_type="array")
 
         np.random.seed(3141)
-        med_data = DoubleMLMediationData.from_arrays(x=x, y=y, d=d, m=m)
+        med_data = DoubleMLMEDData.from_arrays(x=x, y=y, d=d, m=m)
 
         kwargs = {"med_data": med_data, "n_rep": n_rep, "target": target}
 
-        dml_med = DoubleMLMediation(ml_yx= LinearRegression(), ml_px=LogisticRegression(max_iter=1000), ml_ymx=LinearRegression(), ml_pmx=LogisticRegression(max_iter=1000), ml_nested=LinearRegression(),**kwargs)
+        dml_med = DoubleMLMED(ml_yx= LinearRegression(), ml_px=LogisticRegression(max_iter=1000), ml_ymx=LinearRegression(), ml_pmx=LogisticRegression(max_iter=1000), ml_nested=LinearRegression(), **kwargs)
         np.random.seed(3141)
         dml_med.fit(store_predictions=True)
 
@@ -156,7 +156,7 @@ def test_dml_med_exceptions(n_rep, target, set_ml_yx_ext, set_ml_ymx_ext, set_ml
         ml_nested = LinearRegression()
 
 
-        dml_med_ext = DoubleMLMediation(ml_yx=ml_yx, ml_px=ml_px, ml_ymx=ml_ymx, ml_pmx=ml_pmx, ml_nested=ml_nested, **kwargs)
+        dml_med_ext = DoubleMLMED(ml_yx=ml_yx, ml_px=ml_px, ml_ymx=ml_ymx, ml_pmx=ml_pmx, ml_nested=ml_nested, **kwargs)
 
         ext_predictions["d"]["ml_ymx"] = dml_med.predictions["ml_ymx"][:, :, 0]
 

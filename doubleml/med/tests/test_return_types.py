@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 from sklearn.linear_model import LinearRegression, LogisticRegression
 
-from doubleml import DoubleMLMediation
+from doubleml import DoubleMLMED
 from doubleml.med.datasets import make_med_data
 from doubleml.utils._check_return_types import (
     check_basic_predictions_and_targets,
@@ -38,11 +38,11 @@ def target(request):
 def dml_med_fixture(target):
     dml_args["target"] = target
 
-    dml_med_obj = DoubleMLMediation(datasets["med"], ml_yx=LinearRegression(), ml_px=LogisticRegression(max_iter=1000),
-                                    ml_ymx=LinearRegression(), ml_pmx=LogisticRegression(max_iter=1000),
-                                    ml_nested=LinearRegression(), **dml_args)
+    dml_med_obj = DoubleMLMED(datasets["med"], ml_yx=LinearRegression(), ml_px=LogisticRegression(max_iter=1000),
+                              ml_ymx=LinearRegression(), ml_pmx=LogisticRegression(max_iter=1000),
+                              ml_nested=LinearRegression(), **dml_args)
 
-    dml_objs = (dml_med_obj, DoubleMLMediation)
+    dml_objs = (dml_med_obj, DoubleMLMED)
     return dml_objs
 
 @pytest.mark.ci

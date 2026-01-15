@@ -1,7 +1,7 @@
 import pytest
 from sklearn.linear_model import LinearRegression, LogisticRegression
 
-from doubleml import DoubleMLMediation
+from doubleml import DoubleMLMED
 from doubleml.med.datasets import make_med_data
 from doubleml.utils._check_defaults import _check_basic_defaults_after_fit, _check_basic_defaults_before_fit, _fit_bootstrap
 
@@ -19,11 +19,11 @@ def med_data():
 @pytest.fixture(scope="module")
 def dml_med_fixture(target, med_data):
     if target == "potential":
-        med_obj = DoubleMLMediation(med_data, ml_yx=LinearRegression(), ml_px=LogisticRegression(),)
+        med_obj = DoubleMLMED(med_data, ml_yx=LinearRegression(), ml_px=LogisticRegression(), )
     if target == "counterfactual":
-        med_obj = DoubleMLMediation(med_data, ml_yx=LinearRegression(), ml_px=LogisticRegression(),
-                                ml_ymx=LinearRegression(), ml_pmx=LogisticRegression(),
-                                ml_nested=LinearRegression(), )
+        med_obj = DoubleMLMED(med_data, ml_yx=LinearRegression(), ml_px=LogisticRegression(),
+                              ml_ymx=LinearRegression(), ml_pmx=LogisticRegression(),
+                              ml_nested=LinearRegression(), )
     return med_obj
 
 

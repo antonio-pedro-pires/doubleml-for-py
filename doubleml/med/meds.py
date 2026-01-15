@@ -5,10 +5,10 @@ import pandas as pd
 from joblib import Parallel, delayed
 from sklearn.utils.multiclass import type_of_target
 
-from doubleml import DoubleMLMediationData
+from doubleml import DoubleMLMEDData
 from doubleml.double_ml import DoubleML
 from doubleml.double_ml_framework import concat
-from doubleml.med.med import DoubleMLMediation
+from doubleml.med.med import DoubleMLMED
 from doubleml.utils._checks import _check_external_predictions, _check_sample_splitting
 from doubleml.utils._descriptive import generate_summary
 
@@ -402,7 +402,7 @@ class DoubleMLMEDS:
         return
 
     def _check_data(self, obj_dml_data, threshold):
-        if not isinstance(obj_dml_data, DoubleMLMediationData):
+        if not isinstance(obj_dml_data, DoubleMLMEDData):
             raise TypeError(
                 f"The data must be of DoubleMLMediationData type. {str(obj_dml_data)} of type {str(type(obj_dml_data))} was passed."
             )
@@ -440,7 +440,7 @@ class DoubleMLMEDS:
                     "draw_sample_splitting": False,
                 }
 
-                model = DoubleMLMediation(**kwargs)
+                model = DoubleMLMED(**kwargs)
 
             else:
                 target = "mediation"
@@ -462,7 +462,7 @@ class DoubleMLMEDS:
                     "draw_sample_splitting": False,
                 }
 
-                model = DoubleMLMediation(**kwargs)
+                model = DoubleMLMED(**kwargs)
 
             # synchronize the sample splitting
             #TODO: Probably will need to set samples for the inner samples.
