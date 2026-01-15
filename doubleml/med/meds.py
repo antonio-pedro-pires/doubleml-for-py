@@ -1,13 +1,14 @@
+import itertools
+
 import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
-from sklearn.base import clone
 from sklearn.utils.multiclass import type_of_target
 
-from doubleml import DoubleMLData
+from doubleml import DoubleMLMediationData
 from doubleml.double_ml import DoubleML
 from doubleml.double_ml_framework import concat
-from doubleml.med.med import DoubleMLMEDP, DoubleMLMEDC
+from doubleml.med.med import DoubleMLMediation
 from doubleml.utils._checks import _check_external_predictions, _check_sample_splitting
 from doubleml.utils._descriptive import generate_summary
 
@@ -20,12 +21,14 @@ class DoubleMLMEDS:
     def __init__(
         self,
         obj_dml_data,
-        ml_g,
-        ml_m,
-        ml_med,
-        ml_nested=None,
+        ml_yx,
+        ml_px,
+        ml_ymx,
+        ml_pxed,
+        ml_nested,
         n_folds=5,
         n_rep=1,
+        n_folds_inner=5,
         score=None,
         normalize_ipw=False,
         trimming_threshold=1e-2,
@@ -41,6 +44,7 @@ class DoubleMLMEDS:
         # _check_resampling_specifications(n_folds, n_rep)
         self._n_folds = n_folds
         self._n_rep = n_rep
+        self._n_folds_inner = n_folds_inner
 
         self._multmed = multmed
 
@@ -61,13 +65,6 @@ class DoubleMLMEDS:
         else:
             pass
 
-        self._score_names = ["Y(0, M(0))", "Y(0, M(1))", "Y(1, M(0))", "Y(1, M(1))"]
-        self._score_len = np.unique(self._score_names)
-        self._score = score
-        self._normalize_ipw = normalize_ipw
-        self._order = order
-        self._draw_sample_splitting = draw_sample_splitting
-
         # Set labels for returns
         self._results_labels = ["ATE", "dir.treat", "dir.control", "indir.treat", "indir.control", "Y(0, M(0))"]
 
@@ -78,46 +75,6 @@ class DoubleMLMEDS:
         self._ci = None
         self.n_trimmed = None
 
-        # Check the learners are correctly specified.
-        ml_g_is_classifier = DoubleML._check_learner(ml_g, "ml_g", regressor=True, classifier=True)
-        _ = DoubleML._check_learner(ml_m, "ml_m", regressor=False, classifier=True)
-        ml_med_is_classifier = DoubleML._check_learner(ml_med, "ml_med", regressor=True, classifier=True)
-
-        self._learner = {"ml_g": clone(ml_g), "ml_m": clone(ml_m), "ml_med": clone(ml_med)}
-
-        if obj_dml_data.binary_outcome:
-            if ml_g_is_classifier:
-                self._predict_method = {"ml_g": "predict_proba", "ml_m": "predict_proba"}
-            else:
-                raise ValueError(
-                    "The outcome variable has been identified as a binary variable with values 0 and 1."
-                    f"but The ml_g learner {str(ml_g)} is not a classifier."
-                )
-        else:
-            self._predict_method = {"ml_g": "predict", "ml_m": "predict_proba"}
-
-        if ml_med_is_classifier:
-            self._predict_method["ml_med"] = "predict_proba"
-        else:
-            self._predict_method["ml_med"] = "predict"
-
-        if self._multmed:
-            ml_nested_is_classifier = DoubleML._check_learner(ml_nested, "ml_nested", regressor=True, classifier=True)
-            self._learner["ml_nested"] = clone(ml_nested)
-            if ml_nested_is_classifier:
-                self._predict_method["ml_nested"] = "predict_proba"
-            else:
-                self._predict_method["ml_nested"] = "predict"
-
-        # TODO: erase following comment.
-        # Taken from DoubleMLAPOS.
-        # Perform sample splitting
-        self._smpls = None
-        if draw_sample_splitting:
-            self.draw_sample_splitting()
-
-            # initialize all models if splits are known
-            self._modeldict = self._initialize_models()
         pass
 
     def __str__(self):
@@ -136,6 +93,13 @@ class DoubleMLMEDS:
         Number of repetitions for the sample splitting.
         """
         return self.n_rep
+
+    @property
+    def n_folds_inner(self):
+        """
+        Number of folds to be used for cross-validation of the inner models.
+        """
+        return self._n_folds_inner
 
     @property
     def normalize_ipw(self):
@@ -374,12 +338,19 @@ class DoubleMLMEDS:
         return self
 
     def _fit_model(self, score, n_jobs_cv=None, store_predictions=True, store_models=False, external_predictions_dict=None):
-        model = self._modeldict[score]
-        # TODO: Add external predictions
+        for (d, k) in self._modeldict.items():
+            for (_, value) in k.items():
+                model = value
 
-        model.fit(
-            n_jobs_cv=n_jobs_cv, store_predictions=store_predictions, store_models=store_models, external_predictions=None
-        )
+                if external_predictions_dict is not None:
+                    external_predictions = external_predictions_dict[model.treatment_level][model.mediation_level]
+                else:
+                    external_predictions = None
+
+                model.fit(n_jobs_cv=n_jobs_cv, store_predictions=store_predictions, store_models=store_models,
+                          external_predictions=external_predictions)
+
+        # TODO: Add external predictions
         return model
 
     def confint(self, joint=False, level=0.95):
@@ -427,93 +398,75 @@ class DoubleMLMEDS:
 
         return self
 
-    def _check_and_set_learner(self, ml_g, ml_m, ml_med, ml_nested):
-        _ = DoubleML._check_learner(ml_g, "ml_g", regressor=True, classifier=False)
-        _ = DoubleML._check_learner(ml_m, "ml_m", regressor=True, classifier=False)
-        _ = DoubleML._check_learner(ml_med, "ml_med", regressor=True, classifier=False)
-        self._learner = {
-            "ml_g_d0": clone(self._ml_g),
-            "ml_g_d1": clone(self._ml_g),
-            "ml_g_d0_med0": clone(self._ml_g),
-            "ml_g_d0_med1": clone(self._ml_g),
-            "ml_g_d1_med0": clone(self._ml_g),
-            "ml_g_d1_med1": clone(self._ml_g),
-            "ml_m": clone(self._ml_m),
-            "ml_med_d1": clone(self._ml_med),
-            "ml_med_d0": clone(self._ml_med),
-        }
-        self._predict_method = {
-            "ml_g_d0": "predict",
-            "ml_g_d1": "predict",
-            "ml_g_d0_med0": "predict",
-            "ml_g_d0_med1": "predict",
-            "ml_g_d1_med0": "predict",
-            "ml_g_d1_med1": "predict",
-            "ml_m": "predict",
-            "ml_med_d1": "predict",
-            "ml_med_d0": "predict",
-        }
-        if self._multmed:
-            if ml_nested is not None:
-                _ = DoubleML._check_learner(ml_nested, "ml_nested", regressor=True, classifier=False)
-                self._learner["ml_nested_d01"], self._learner["ml_nested_d10"] = clone(self._ml_nested), clone(self._ml_nested)
-                self._predict_method["ml_nested_d01"], self._predict_method["ml_nested_d10"] = "predict", "predict"
-            else:
-                raise ValueError("mediation analysis with continuous or multiple mediators requires a nested lerner.")
-
-        pass
+    def _check_and_set_learner(self, ml_yx, ml_px, ml_pxed, ml_nested):
+        return
 
     def _check_data(self, obj_dml_data, threshold):
-        if not isinstance(obj_dml_data, DoubleMLData):
+        if not isinstance(obj_dml_data, DoubleMLMediationData):
             raise TypeError(
-                f"The data must be of DoubleMLData type. {str(obj_dml_data)} of type {str(type(obj_dml_data))} was passed."
+                f"The data must be of DoubleMLMediationData type. {str(obj_dml_data)} of type {str(type(obj_dml_data))} was passed."
             )
-        if obj_dml_data.z_cols is None:
-            raise ValueError("Incompatible data." + "Mediator variable has not been set. ")
-        is_continuous = type_of_target(obj_dml_data.s) == "continuous"
-        if not self._multmed:
-            if is_continuous:
-                raise ValueError("Incompatible data. The boolean multmed must be set to True when using a continuous mediator")
-            # TODO: Raise error for multidimensional mediators and not multmed.
-
-        if obj_dml_data.z_cols is None:
-            raise ValueError("Incompatible data. Mediator analysis requires mediator variables.")
-
-        if not isinstance(threshold, float):
-            raise TypeError(f"Cutoff value has to be a float. Object of type {str(type(threshold))} passed.")
-
-        # TODO: Test if one_treat works. Not sure of the __len__() method to see if there is only one treatment variable.
-        one_treat = obj_dml_data.d_cols.__len__() > 1
-        binary_treat = type_of_target(obj_dml_data.d) != "binary"
-        zero_one_treat = np.all((np.power(obj_dml_data.d, 2) - obj_dml_data.d) == 0)
-        if not (one_treat and binary_treat and zero_one_treat):
-            raise ValueError(
-                "Incompatible data. To fit a MedDML model with DML binary treatments"
-                "exactly one binary variable with values 0 and 1"
-                "needs to be specified as treatment variable."
-            )
+        if obj_dml_data.z_cols is not None:
+            raise NotImplementedError("instrumental variables for mediation analysis is not yet implemented.")
+        if not obj_dml_data.binary_treats:
+            raise NotImplementedError("Treatment variables for mediation analysis must be binary" +
+                                      "and with values either 0 or 1. Not binary treatment is not yet implemented yet.")
 
     def _initialize_models(self):
-        # TODO: Instead of using an array with numbers for the scores, I could use a dictionnary. Makes it more readable.
-        modeldict = dict.fromkeys(self._score_names)
-        kwargs = {
-            "obj_dml_data": self._dml_data,
-            "ml_g": self._learner["ml_g"],
-            "ml_m": self._learner["ml_m"],
-            "ml_med": self._learner["ml_med"],
-            "ml_nested": self._learner["ml_nested"],
-            "n_folds": self.n_folds,
-            "n_rep": self.n_rep,
-            "trimming_threshold": self.trimming_threshold,
-            "normalize_ipw": self.normalize_ipw,
-            "draw_sample_splitting": False,
-        }
-        for score in self._score_names:
-            # initialize models for all levels
-            model = DoubleMLMED(score=self._score_names[score], **kwargs)
+
+        treatment_levels = np.unique(self._dml_data.d)
+        mediation_levels = np.unique(self._dml_data.m)
+
+        #TODO: Maybe will have to work this out. How to create dict to contain objects.
+        modeldict={d: {m: object for m in mediation_levels} for d in treatment_levels}
+        d_m_levels = itertools.product(treatment_levels, mediation_levels)
+
+        for (treatment, mediation) in d_m_levels:
+            if treatment == mediation:
+                target = "potential"
+
+                kwargs = {
+                    "obj_dml_data": self._dml_data,
+                    "ml_px": self._learner["ml_px"],
+                    "ml_yx": self._learner["ml_yx"],
+                    "target": target,
+                    "treatment_level": treatment,
+                    "mediation_level": mediation,
+                    "n_folds": self.n_folds,
+                    "n_rep": self.n_rep,
+                    "n_folds_inner": self.n_folds_inner,
+                    "trimming_threshold": self.trimming_threshold,
+                    "normalize_ipw": self.normalize_ipw,
+                    "draw_sample_splitting": False,
+                }
+
+                model = DoubleMLMediation(**kwargs)
+
+            else:
+                target = "mediation"
+
+                kwargs = {
+                    "obj_dml_data": self._dml_data,
+                    "ml_px": self._learner["ml_px"],
+                    "ml_ymx": self._learner["ml_ymx"],
+                    "ml_pmx": self._learner["ml_pmx"],
+                    "ml_nested": self._learner["ml_nested"],
+                    "target": target,
+                    "treatment_level": treatment,
+                    "mediation_level": mediation,
+                    "n_folds": self.n_folds,
+                    "n_rep": self.n_rep,
+                    "n_folds_inner": self.n_folds_inner,
+                    "trimming_threshold": self.trimming_threshold,
+                    "normalize_ipw": self.normalize_ipw,
+                    "draw_sample_splitting": False,
+                }
+
+                model = DoubleMLMediation(**kwargs)
 
             # synchronize the sample splitting
+            #TODO: Probably will need to set samples for the inner samples.
             model.set_sample_splitting(all_smpls=self.smpls)
-            modeldict[score] = model
+            modeldict[treatment][mediation] = model
 
         return modeldict
