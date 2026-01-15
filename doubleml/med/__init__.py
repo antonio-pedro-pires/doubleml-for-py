@@ -1,9 +1,9 @@
-from .med import DoubleMLMEDC, DoubleMLMediation, DoubleMLMEDP
+from .med import DoubleMLMEDC, DoubleMLMED, DoubleMLMEDP
 from .meds import DoubleMLMEDS
 
 __all__ = [
     "DoubleMLMEDP",
     "DoubleMLMEDC",
-    "DoubleMLMediation",
+    "DoubleMLMED",
     "DoubleMLMEDS",
 ]

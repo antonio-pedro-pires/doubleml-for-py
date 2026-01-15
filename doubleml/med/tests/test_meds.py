@@ -1,9 +1,9 @@
 import numpy as np
 import pytest
 
-from doubleml.data.mediation_data import DoubleMLMediationData
+from doubleml.data.med_data import DoubleMLMEDData
 from doubleml.med.datasets import make_med_data
-from doubleml.med import DoubleMLMediation, DoubleMLMEDS
+from doubleml.med import DoubleMLMED, DoubleMLMEDS
 
 @pytest.fixture(scope='module', params=[])#Fill parameters with ml_params. yx will be none when counterfactual is something.
 def ml_yx_px(request):

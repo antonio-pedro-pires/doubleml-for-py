@@ -4,7 +4,7 @@ import numpy as np
 from sklearn.model_selection import cross_val_predict
 from sklearn.utils import check_X_y
 
-from doubleml import DoubleMLMediationData
+from doubleml import DoubleMLMEDData
 from doubleml.double_ml import DoubleML
 from doubleml.double_ml_score_mixins import LinearScoreMixin
 from doubleml.utils._checks import _check_finite_predictions, _check_score
@@ -18,7 +18,7 @@ from doubleml.utils._tune_optuna import _dml_tune_optuna
 
 
 # TODO: remove yx_learner in counterfactual nuisance estimation dependent on how trimming is applied
-class DoubleMLMediation(LinearScoreMixin, DoubleML):
+class DoubleMLMED(LinearScoreMixin, DoubleML):
     """Double machine learning for causal mediation analysis.
 
     Parameters
@@ -114,7 +114,7 @@ class DoubleMLMediation(LinearScoreMixin, DoubleML):
         draw_sample_splitting=True,
     ):
         self._med_data = med_data
-        if not isinstance(med_data, DoubleMLMediationData):
+        if not isinstance(med_data, DoubleMLMEDData):
             raise TypeError(
                 "Mediation analysis requires data of type DoubleMLMediationData."
                 + f"data of type {str(type(med_data))} was provided instead."
@@ -601,7 +601,7 @@ class DoubleMLMediation(LinearScoreMixin, DoubleML):
 
 # TODO: Transplant methods into utils documents.
 # TODO: Apply threshold
-class DoubleMLMEDP(DoubleMLMediation):
+class DoubleMLMEDP(DoubleMLMED):
     """
     Double machine learning for the estimation of the potential outcome in causal mediation analysis.
 
@@ -652,7 +652,7 @@ class DoubleMLMEDP(DoubleMLMediation):
         )
 
 
-class DoubleMLMEDC(DoubleMLMediation):
+class DoubleMLMEDC(DoubleMLMED):
     """
     Double machine learning for the estimation of the counterfactual outcome in causal mediation analysis.
 

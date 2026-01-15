@@ -9,7 +9,7 @@ from doubleml.data.base_data import DoubleMLBaseData, DoubleMLData
 from doubleml.utils._estimation import _assure_2d_array
 
 
-class DoubleMLMediationData(DoubleMLData):
+class DoubleMLMEDData(DoubleMLData):
 
     # TODO: Check if we can use other treatments as covariates during mediation analysis
     #  and if the same is true for mediators.
@@ -226,7 +226,7 @@ class DoubleMLMediationData(DoubleMLData):
         #  already calls its super which calls for checks it itself?
 
         # apply the standard checks from the DoubleMLData class
-        super(DoubleMLMediationData, self)._check_disjoint_sets()
+        super(DoubleMLMEDData, self)._check_disjoint_sets()
 
         # Disjointedness check for mediator variables.
         m_cols_set = set(self.m_cols)

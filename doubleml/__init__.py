@@ -2,7 +2,7 @@ from .data import (
     DoubleMLClusterData,
     DoubleMLData,
     DoubleMLDIDData,
-    DoubleMLMediationData,
+    DoubleMLMEDData,
     DoubleMLPanelData,
     DoubleMLRDDData,
     DoubleMLSSMData,
@@ -19,7 +19,7 @@ from .irm.lpq import DoubleMLLPQ
 from .irm.pq import DoubleMLPQ
 from .irm.qte import DoubleMLQTE
 from .irm.ssm import DoubleMLSSM
-from .med.med import DoubleMLMediation
+from .med.med import DoubleMLMED
 from .plm.lplr import DoubleMLLPLR
 from .plm.pliv import DoubleMLPLIV
 from .plm.plr import DoubleMLPLR
@@ -42,7 +42,7 @@ __all__ = [
     "DoubleMLPanelData",
     "DoubleMLRDDData",
     "DoubleMLSSMData",
-    "DoubleMLMediationData",
+    "DoubleMLMEDData",
     "DoubleMLDID",
     "DoubleMLDIDCS",
     "DoubleMLPQ",
@@ -53,7 +53,7 @@ __all__ = [
     "DoubleMLPolicyTree",
     "DoubleMLSSM",
     "DoubleMLLPLR",
-    "DoubleMLMediation",
+    "DoubleMLMED",
 ]
 
 try:

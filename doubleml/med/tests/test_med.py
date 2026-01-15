@@ -8,7 +8,7 @@ from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.linear_model import LinearRegression, LogisticRegression
 
 import doubleml as dml
-from doubleml.med import DoubleMLMediation
+from doubleml.med import DoubleMLMED
 from doubleml.med.datasets import make_med_data
 from doubleml.tests._utils import draw_smpls
 
@@ -60,7 +60,7 @@ def data(n_obs, data_med, y, d, m, x):
     df_med = pd.DataFrame(
         np.column_stack((y, d, m, x)), columns=["y", "d", "m"] + ["x" + str(i) for i in range(data_med.x.shape[1])]
     )
-    return dml.DoubleMLMediationData(df_med, "y", "d", "m")
+    return dml.DoubleMLMEDData(df_med, "y", "d", "m")
 
 
 @pytest.fixture(scope="module")
@@ -139,7 +139,7 @@ def dml_med_counterfactual_fixture(
     ml_nested = clone(learners_counterfactual[3])
 
     np.random.seed(3141)
-    dml_obj = DoubleMLMediation(
+    dml_obj = DoubleMLMED(
         med_data=data,
         target="counterfactual",
         treatment_level=treatment_level,
@@ -161,7 +161,7 @@ def dml_med_counterfactual_fixture(
     smpls = dml_obj.smpls
     smpls_inner = dml_obj._smpls_inner
 
-    dml_obj_ext = DoubleMLMediation(
+    dml_obj_ext = DoubleMLMED(
         med_data=data,
         target="counterfactual",
         treatment_level=treatment_level,
@@ -318,7 +318,7 @@ def dml_med_potential_fixture(
     ml_px = clone(learners_potential[1])
 
     np.random.seed(3141)
-    dml_obj = DoubleMLMediation(
+    dml_obj = DoubleMLMED(
         med_data=data,
         target="potential",
         treatment_level=treatment_level,
@@ -338,7 +338,7 @@ def dml_med_potential_fixture(
     smpls_inner = getattr(dml_obj, "_smpls_inner", None)
 
     np.random.seed(3141)
-    dml_obj_ext = DoubleMLMediation(
+    dml_obj_ext = DoubleMLMED(
         med_data=data,
         target="potential",
         treatment_level=treatment_level,

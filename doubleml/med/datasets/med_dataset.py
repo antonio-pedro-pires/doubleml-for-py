@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 from scipy.linalg import toeplitz
 
-from doubleml.data import DoubleMLMediationData
+from doubleml.data import DoubleMLMEDData
 from doubleml.utils._aliases import _get_array_alias, _get_data_frame_alias, _get_dml_mediation_data_alias
 
 _array_alias = _get_array_alias()
@@ -92,6 +92,6 @@ def make_med_data(n_obs=1000, dim_x=20, return_type="DoubleMLMediationData", **k
         if return_type in _data_frame_alias:
             return data
         else:
-            return DoubleMLMediationData(data, "y", "d", "m", x_cols)
+            return DoubleMLMEDData(data, "y", "d", "m", x_cols)
     else:
         raise ValueError("Invalid return_type.")

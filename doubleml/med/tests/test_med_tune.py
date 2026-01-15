@@ -4,7 +4,7 @@ import re
 import pytest
 from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 
-from doubleml import DoubleMLMediation
+from doubleml import DoubleMLMED
 from doubleml.med.datasets import make_med_data
 from doubleml.tests._utils_tune_optuna import (
     _SAMPLER_CASES,
@@ -62,9 +62,9 @@ def dml_med_obj(
     ml_nested,
 ):
     if target == "potential":
-        yield DoubleMLMediation(med_data=med_data, ml_yx=ml_yx, ml_px=ml_px, target=target)
+        yield DoubleMLMED(med_data=med_data, ml_yx=ml_yx, ml_px=ml_px, target=target)
     else:
-        yield DoubleMLMediation(
+        yield DoubleMLMED(
             med_data=med_data, ml_yx=ml_yx, ml_px=ml_px, ml_ymx=ml_ymx, ml_pmx=ml_pmx, ml_nested=ml_nested, target=target
         )
 
