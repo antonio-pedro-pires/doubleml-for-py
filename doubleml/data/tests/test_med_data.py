@@ -73,7 +73,7 @@ def test_from_arrays():
 @pytest.mark.ci
 def test_check_disjoint_sets():
     np.random.seed(3141)
-    df = pd.DataFrame(np.tile(np.arange(8), (4, 1)), columns=["yy", "dd1", "xx1", "xx2", "mm1", "zz1", "tt1", "ss1"])
+    df = pd.DataFrame(np.tile(np.arange(6), (4, 1)), columns=["yy", "dd1", "xx1", "xx2", "mm1", "zz1",])
 
     msg = (
         r"At least one variable/column is set as outcome variable \(``y_col``\) "
@@ -87,8 +87,6 @@ def test_check_disjoint_sets():
             x_cols=["xx1", "xx2"],
             m_cols=["yy"],
             z_cols="zz1",
-            t_col="tt1",
-            s_col="ss1",
         )
 
     msg = (
@@ -103,8 +101,6 @@ def test_check_disjoint_sets():
             x_cols=["xx1", "xx2"],
             m_cols=["dd1"],
             z_cols="zz1",
-            t_col="tt1",
-            s_col="ss1",
         )
 
     msg = r"At least one variable/column is set as covariate \(``x_cols``\) " r"and mediation variable\(s\) \(``m_cols``\)."
@@ -116,8 +112,7 @@ def test_check_disjoint_sets():
             x_cols=["xx1", "xx2"],
             m_cols=["xx1"],
             z_cols="zz1",
-            t_col="tt1",
-            s_col="ss1",
+
         )
 
     msg = (
@@ -132,37 +127,7 @@ def test_check_disjoint_sets():
             x_cols=["xx1", "xx2"],
             m_cols=["zz1"],
             z_cols="zz1",
-            t_col="tt1",
-            s_col="ss1",
-        )
 
-    msg = r"At least one variable/column is set as time variable \(``t_col``\) " r"and mediation variable\(s\) \(``m_cols``\)."
-    with pytest.raises(ValueError, match=msg):
-        _ = DoubleMLMEDData(
-            df,
-            y_col="yy",
-            d_cols="dd1",
-            x_cols=["xx1", "xx2"],
-            m_cols=["tt1"],
-            z_cols="zz1",
-            t_col="tt1",
-            s_col="ss1",
-        )
-
-    msg = (
-        r"At least one variable/column is set as score or selection variable \(``s_col``\) "
-        r"and mediation variable\(s\) \(``m_cols``\)."
-    )
-    with pytest.raises(ValueError, match=msg):
-        _ = DoubleMLMEDData(
-            df,
-            y_col="yy",
-            d_cols="dd1",
-            x_cols=["xx1", "xx2"],
-            m_cols=["ss1"],
-            z_cols="zz1",
-            t_col="tt1",
-            s_col="ss1",
         )
 
 
@@ -178,8 +143,6 @@ def test_m_cols_setter():
         x_cols=["x1", "x2"],
         m_cols=["m1", "m2", "m3"],
         z_cols="z1",
-        t_col="t1",
-        s_col="s1",
     )
 
     # check that after changing m_cols, the m array gets updated
@@ -229,25 +192,6 @@ def test_data_summary_str():
     assert "Covariates: " in med_str
     assert "No. Observations:" in med_str
 
-    # Test with additional optional attributes
-    df = med_data.data.copy()
-    df["time_var"] = 1
-    df["score_var"] = 0.5
-
-    med_data_with_optional = DoubleMLMEDData(
-        data=df,
-        y_col="y",
-        d_cols="d",
-        m_cols=["m"],
-        t_col="time_var",
-        s_col="score_var",
-    )
-
-    med_str_optional = str(med_data_with_optional)
-    assert "Time variable: time_var" in med_str_optional
-    assert "Score/Selection variable: score_var" in med_str_optional
-
-
 @pytest.mark.ci
 def test_get_optional_col_sets():
     np.random.seed(3141)
@@ -259,8 +203,6 @@ def test_get_optional_col_sets():
         m_cols=["m1", "m2"],
         x_cols=["x1", "x2"],
         z_cols="z",
-        t_col="t",
-        s_col="s",
     )
     opt_col = med_data._get_optional_col_sets()
 
@@ -275,8 +217,6 @@ def test_get_optional_col_sets():
         d_cols="d",
         m_cols=["m1", "m2"],
         z_cols="z",
-        t_col="t",
-        s_col="s",
     )
     assert "m3" in med_data.x_cols
 
@@ -297,8 +237,6 @@ def test_check_binary_mediators():
         x_cols=["x1", "x2"],
         m_cols=["m1", "m2", "m3"],
         z_cols="z1",
-        t_col="t1",
-        s_col="s1",
     )
 
     # The mediation variables are forced to be finite and only contain 0s or 1s. Therefore, binary_meds should return True.
