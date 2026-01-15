@@ -5,17 +5,40 @@ from doubleml.data.med_data import DoubleMLMEDData
 from doubleml.med.datasets import make_med_data
 from doubleml.med import DoubleMLMED, DoubleMLMEDS
 
-@pytest.fixture(scope='module', params=[])#Fill parameters with ml_params. yx will be none when counterfactual is something.
-def ml_yx_px(request):
-    return request.param
+from sklearn.linear_model import LinearRegression, LogisticRegression
 
-@pytest.fixture(scope='module', params=[])#Same but on the other side. When target is potential, counterfactual models are None.
-def ml_ymx_pmx_nested(request):
+#TODO: Will need to test with data with multiple m columns
+@pytest.fixture(scope='module', params=[[
+                    LogisticRegression(penalty="l1", solver="liblinear", max_iter=250, random_state=42),
+                    LinearRegression(),
+                    LinearRegression(),
+                    LogisticRegression(penalty="l1", solver="liblinear", max_iter=250, random_state=42),
+                    LinearRegression(),
+                    ],
+                ])
+def learners(request):
     return request.param
 
 @pytest.fixture(scope='module')
-def med_data():
+def meds_data():
     return make_med_data()
 
 @pytest.fixture(scope='module')
-def med_obj(med_data, ml_yx_px, ml_ymx_pmx_nested):
+def meds_obj(meds_data, learners):
+    ml_px, ml_yx, ml_ymx, ml_pmx, ml_nested = learners
+    meds_obj = DoubleMLMEDS(meds_data = meds_data,
+                            ml_px = ml_px,
+                            ml_yx = ml_yx,
+                            ml_ymx = ml_ymx,
+                            ml_pmx = ml_pmx,
+                            ml_nested = ml_nested,
+                            )
+    return meds_obj
+
+@pytest.mark.ci
+def test_meds_obj(meds_obj):
+    modeldict = meds_obj._modeldict
+
+    assert len(modeldict) == 2
+    for key in modeldict.keys():
+        assert len(modeldict[key])==2

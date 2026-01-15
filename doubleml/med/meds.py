@@ -11,20 +11,23 @@ from doubleml.double_ml_framework import concat
 from doubleml.med.med import DoubleMLMED
 from doubleml.utils._checks import _check_external_predictions, _check_sample_splitting
 from doubleml.utils._descriptive import generate_summary
+from sklearn import clone
+
+from doubleml.double_ml_sampling_mixins import SampleSplittingMixin
 
 
 # TODO: Add new data class for mediation analysis
 # TODO: Learn how sampling works.
-class DoubleMLMEDS:
+class DoubleMLMEDS(SampleSplittingMixin):
     """Mediation analysis with double machine learning."""
 
     def __init__(
         self,
-        obj_dml_data,
-        ml_yx,
+        meds_data,
         ml_px,
+        ml_yx,
         ml_ymx,
-        ml_pxed,
+        ml_pmx,
         ml_nested,
         n_folds=5,
         n_rep=1,
@@ -38,8 +41,15 @@ class DoubleMLMEDS:
         draw_sample_splitting=True,
     ):
 
-        self._check_data(obj_dml_data, trimming_threshold)
-        self._dml_data = obj_dml_data
+        self._check_data(meds_data, trimming_threshold)
+        self._dml_data = meds_data
+        self._is_cluster_data = self._dml_data.is_cluster_data
+
+        self._trimming_threshold = trimming_threshold
+        self._order = order
+        self._multmed = multmed
+        self._fewsplits = fewsplits
+        self._normalize_ipw = normalize_ipw
 
         # _check_resampling_specifications(n_folds, n_rep)
         self._n_folds = n_folds
@@ -49,7 +59,7 @@ class DoubleMLMEDS:
         self._multmed = multmed
 
         # initialize learners and parameters which are set model specific
-        self._learner = None
+        self._learner = {"ml_px": clone(ml_px), "ml_yx": clone(ml_yx), "ml_ymx": clone(ml_ymx), "ml_pmx": clone(ml_pmx), "ml_nested": clone(ml_nested)}
         self._params = None
 
         # Initialize framework constructed after the fit method is called.
@@ -68,12 +78,28 @@ class DoubleMLMEDS:
         # Set labels for returns
         self._results_labels = ["ATE", "dir.treat", "dir.control", "indir.treat", "indir.control", "Y(0, M(0))"]
 
+        self._learner = {"ml_px": clone(ml_px),
+                         "ml_yx": clone(ml_yx),
+                         "ml_ymx": clone(ml_ymx),
+                         "ml_pmx": clone(ml_pmx),
+                         "ml_nested": clone(ml_nested)}
+
         # Initialize all properties to None
         self._se = None
         self._pvalues = None
         self._coef = None
         self._ci = None
         self.n_trimmed = None
+
+        # perform sample splitting
+        self._smpls = None
+        self._n_obs_sample_splitting = self._dml_data.n_obs
+        self._strata = None
+
+        if draw_sample_splitting:
+            self.draw_sample_splitting()
+
+            self._initialize_med_models()
 
         pass
 
@@ -85,14 +111,14 @@ class DoubleMLMEDS:
         """
         Specifies the number of folds to be used for cross-validation
         """
-        return self.n_folds
+        return self._n_folds
 
     @property
     def n_rep(self):
         """
         Number of repetitions for the sample splitting.
         """
-        return self.n_rep
+        return self._n_rep
 
     @property
     def n_folds_inner(self):
@@ -106,21 +132,21 @@ class DoubleMLMEDS:
         """
         Indicates whether the inverse probability weights are normalised.
         """
-        return self.normalize_ipw
+        return self._normalize_ipw
 
     @property
     def trimming_rule(self):
         """
         Specifies the trimming rule used.
         """
-        return self.trimming_rule
+        return self._trimming_rule
 
     @property
     def trimming_threshold(self):
         """
         Specifies the trimming threshold.
         """
-        return self.trimming_threshold
+        return self._trimming_threshold
 
     # TODO: Check if the definition is true
     @property
@@ -128,7 +154,7 @@ class DoubleMLMEDS:
         """
         Specifies the order of the terms (interactions)
         """
-        return self.order
+        return self._order
 
     @property
     def multmed(self):
@@ -136,20 +162,16 @@ class DoubleMLMEDS:
         Indicates if the mediator variable is continuous and/or multiple.
         Determines the score function for the counterfactual E[Y(D=d, M(1-d))].
         """
-        return self.multmed
+        return self._multmed
 
     @property
     def fewsplits(self):
         """
         Indicates whether the same training data split is used for estimating the nested models of the nuisance parameter .
         """
-        return self.fewsplits
+        return self._fewsplits
 
     # TODO: Add definition
-    @property
-    def draw_sample_splitting(self):
-        return self.draw_sample_splitting
-
     @property
     def coef(self):
         """
@@ -376,41 +398,20 @@ class DoubleMLMEDS:
 
         return ate, dir_control, dir_treatment, indir_control, indir_treatment
 
-    # TODO: Check how to perform sensitivity analysis for causal mediation analysis.
-    def sensitivity_analysis(self):
-        pass
-
-    def sensitivity_plot(self):
-        pass
-
-    def sensitivity_benchmark(self):
-        pass
-
-    def draw_sample_benchmark(self):
-        pass
-
-    def set_sample_splitting(self, all_smpls, all_smpls_cluster=None):
-        self._smpls, self._smpls_cluster, self._n_rep, self._n_folds = _check_sample_splitting(
-            all_smpls, all_smpls_cluster, self._dml_data, self._is_cluster_data
-        )
-
-        self._modeldict = self._initialize_models()
-
-        return self
-
-    def _check_and_set_learner(self, ml_yx, ml_px, ml_pxed, ml_nested):
-        return
-
-    def _check_data(self, obj_dml_data, threshold):
-        if not isinstance(obj_dml_data, DoubleMLMEDData):
+    def _check_data(self, meds_data, threshold):
+        if not isinstance(meds_data, DoubleMLMEDData):
             raise TypeError(
-                f"The data must be of DoubleMLMediationData type. {str(obj_dml_data)} of type {str(type(obj_dml_data))} was passed."
+                f"The data must be of DoubleMLMediationData type. {str(meds_data)} of type {str(type(meds_data))} was passed."
             )
-        if obj_dml_data.z_cols is not None:
+        if meds_data.z_cols is not None:
             raise NotImplementedError("instrumental variables for mediation analysis is not yet implemented.")
-        if not obj_dml_data.binary_treats:
+        if not np.all(meds_data.binary_treats):
             raise NotImplementedError("Treatment variables for mediation analysis must be binary" +
                                       "and with values either 0 or 1. Not binary treatment is not yet implemented yet.")
+
+    def _initialize_med_models(self):
+        self._modeldict = self._initialize_models()
+        return self
 
     def _initialize_models(self):
 
@@ -426,7 +427,7 @@ class DoubleMLMEDS:
                 target = "potential"
 
                 kwargs = {
-                    "obj_dml_data": self._dml_data,
+                    "med_data": self._dml_data,
                     "ml_px": self._learner["ml_px"],
                     "ml_yx": self._learner["ml_yx"],
                     "target": target,
@@ -446,7 +447,7 @@ class DoubleMLMEDS:
                 target = "mediation"
 
                 kwargs = {
-                    "obj_dml_data": self._dml_data,
+                    "meds_data": self._dml_data,
                     "ml_px": self._learner["ml_px"],
                     "ml_ymx": self._learner["ml_ymx"],
                     "ml_pmx": self._learner["ml_pmx"],
