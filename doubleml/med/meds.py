@@ -93,6 +93,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
         self._smpls_inner = None
         self._n_obs_sample_splitting = self._dml_data.n_obs
         self._strata = None
+        self._double_sample_splitting=True
 
         if draw_sample_splitting:
             self.draw_sample_splitting()
@@ -419,8 +420,8 @@ class DoubleMLMEDS(SampleSplittingMixin):
 
     def _initialize_models(self):
 
-        treatment_levels = np.unique(self._dml_data.d)
-        mediation_levels = np.unique(self._dml_data.m)
+        treatment_levels = [int(number) for number in np.unique(self._dml_data.d)]
+        mediation_levels = [int(number) for number in np.unique(self._dml_data.m)]
 
         # TODO: Maybe will have to work this out. How to create dict to contain objects.
         modeldict = {d: {m: object for m in mediation_levels} for d in treatment_levels}
@@ -472,7 +473,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
             # synchronize the sample splitting
             # TODO: Probably will need to set samples for the inner samples.
             model.set_sample_splitting(all_smpls=self.smpls)
-            model._set_smpls_inner_splitting(all_inner_smpls=self._smpls_inner, smpls=self.smpls)
+            model._set_smpls_inner_splitting(all_inner_smpls=self._smpls_inner,)
             modeldict[treatment][mediation] = model
 
         return modeldict
