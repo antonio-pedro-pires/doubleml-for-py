@@ -3,17 +3,14 @@ import itertools
 import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
-from sklearn.utils.multiclass import type_of_target
-
-from doubleml import DoubleMLMEDData
-from doubleml.double_ml import DoubleML
-from doubleml.double_ml_framework import concat
-from doubleml.med.med import DoubleMLMED
-from doubleml.utils._checks import _check_external_predictions, _check_sample_splitting
-from doubleml.utils._descriptive import generate_summary
 from sklearn import clone
 
+from doubleml import DoubleMLMEDData
+from doubleml.double_ml_framework import concat
 from doubleml.double_ml_sampling_mixins import SampleSplittingMixin
+from doubleml.med.med import DoubleMLMED
+from doubleml.utils._checks import _check_external_predictions
+from doubleml.utils._descriptive import generate_summary
 
 
 # TODO: Add new data class for mediation analysis
@@ -59,7 +56,13 @@ class DoubleMLMEDS(SampleSplittingMixin):
         self._multmed = multmed
 
         # initialize learners and parameters which are set model specific
-        self._learner = {"ml_px": clone(ml_px), "ml_yx": clone(ml_yx), "ml_ymx": clone(ml_ymx), "ml_pmx": clone(ml_pmx), "ml_nested": clone(ml_nested)}
+        self._learner = {
+            "ml_px": clone(ml_px),
+            "ml_yx": clone(ml_yx),
+            "ml_ymx": clone(ml_ymx),
+            "ml_pmx": clone(ml_pmx),
+            "ml_nested": clone(ml_nested),
+        }
         self._params = None
 
         # Initialize framework constructed after the fit method is called.
@@ -78,11 +81,13 @@ class DoubleMLMEDS(SampleSplittingMixin):
         # Set labels for returns
         self._results_labels = ["ATE", "dir.treat", "dir.control", "indir.treat", "indir.control", "Y(0, M(0))"]
 
-        self._learner = {"ml_px": clone(ml_px),
-                         "ml_yx": clone(ml_yx),
-                         "ml_ymx": clone(ml_ymx),
-                         "ml_pmx": clone(ml_pmx),
-                         "ml_nested": clone(ml_nested)}
+        self._learner = {
+            "ml_px": clone(ml_px),
+            "ml_yx": clone(ml_yx),
+            "ml_ymx": clone(ml_ymx),
+            "ml_pmx": clone(ml_pmx),
+            "ml_nested": clone(ml_nested),
+        }
 
         # Initialize all properties to None
         self._se = None
@@ -93,6 +98,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
 
         # perform sample splitting
         self._smpls = None
+        self._smpls_inner = None
         self._n_obs_sample_splitting = self._dml_data.n_obs
         self._strata = None
 
@@ -360,8 +366,8 @@ class DoubleMLMEDS(SampleSplittingMixin):
         return self
 
     def _fit_model(self, score, n_jobs_cv=None, store_predictions=True, store_models=False, external_predictions_dict=None):
-        for (d, k) in self._modeldict.items():
-            for (_, value) in k.items():
+        for d, k in self._modeldict.items():
+            for _, value in k.items():
                 model = value
 
                 if external_predictions_dict is not None:
@@ -369,8 +375,12 @@ class DoubleMLMEDS(SampleSplittingMixin):
                 else:
                     external_predictions = None
 
-                model.fit(n_jobs_cv=n_jobs_cv, store_predictions=store_predictions, store_models=store_models,
-                          external_predictions=external_predictions)
+                model.fit(
+                    n_jobs_cv=n_jobs_cv,
+                    store_predictions=store_predictions,
+                    store_models=store_models,
+                    external_predictions=external_predictions,
+                )
 
         # TODO: Add external predictions
         return model
@@ -406,8 +416,10 @@ class DoubleMLMEDS(SampleSplittingMixin):
         if meds_data.z_cols is not None:
             raise NotImplementedError("instrumental variables for mediation analysis is not yet implemented.")
         if not np.all(meds_data.binary_treats):
-            raise NotImplementedError("Treatment variables for mediation analysis must be binary" +
-                                      "and with values either 0 or 1. Not binary treatment is not yet implemented yet.")
+            raise NotImplementedError(
+                "Treatment variables for mediation analysis must be binary"
+                + "and with values either 0 or 1. Not binary treatment is not yet implemented yet."
+            )
 
     def _initialize_med_models(self):
         self._modeldict = self._initialize_models()
@@ -418,11 +430,11 @@ class DoubleMLMEDS(SampleSplittingMixin):
         treatment_levels = np.unique(self._dml_data.d)
         mediation_levels = np.unique(self._dml_data.m)
 
-        #TODO: Maybe will have to work this out. How to create dict to contain objects.
-        modeldict={d: {m: object for m in mediation_levels} for d in treatment_levels}
+        # TODO: Maybe will have to work this out. How to create dict to contain objects.
+        modeldict = {d: {m: object for m in mediation_levels} for d in treatment_levels}
         d_m_levels = itertools.product(treatment_levels, mediation_levels)
 
-        for (treatment, mediation) in d_m_levels:
+        for treatment, mediation in d_m_levels:
             if treatment == mediation:
                 target = "potential"
 
@@ -466,8 +478,9 @@ class DoubleMLMEDS(SampleSplittingMixin):
                 model = DoubleMLMED(**kwargs)
 
             # synchronize the sample splitting
-            #TODO: Probably will need to set samples for the inner samples.
+            # TODO: Probably will need to set samples for the inner samples.
             model.set_sample_splitting(all_smpls=self.smpls)
+            model._set_smpls_inner_splitting(all_inner_smpls=self._smpls_inner, smpls=self.smpls)
             modeldict[treatment][mediation] = model
 
         return modeldict

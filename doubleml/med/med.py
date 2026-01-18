@@ -7,6 +7,7 @@ from sklearn.utils import check_X_y
 from doubleml import DoubleMLMEDData
 from doubleml.double_ml import DoubleML
 from doubleml.double_ml_score_mixins import LinearScoreMixin
+from doubleml.med.utils._med_utils import _check_inner_sample_splitting
 from doubleml.utils._checks import _check_finite_predictions, _check_score
 from doubleml.utils._estimation import (
     _cond_targets,
@@ -597,6 +598,9 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
 
     def _sensitivity_element_est(self, preds):
         pass
+
+    def _set_smpls_inner_splitting(self, all_inner_smpls):
+        self._smpls_inner, self.n_folds_inner = _check_inner_sample_splitting(all_inner_smpls, self.smpls)
 
 
 # TODO: Transplant methods into utils documents.
