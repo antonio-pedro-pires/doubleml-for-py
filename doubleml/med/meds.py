@@ -81,14 +81,6 @@ class DoubleMLMEDS(SampleSplittingMixin):
         # Set labels for returns
         self._results_labels = ["ATE", "dir.treat", "dir.control", "indir.treat", "indir.control", "Y(0, M(0))"]
 
-        self._learner = {
-            "ml_px": clone(ml_px),
-            "ml_yx": clone(ml_yx),
-            "ml_ymx": clone(ml_ymx),
-            "ml_pmx": clone(ml_pmx),
-            "ml_nested": clone(ml_nested),
-        }
-
         # Initialize all properties to None
         self._se = None
         self._pvalues = None
