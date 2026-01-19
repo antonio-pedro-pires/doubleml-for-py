@@ -41,6 +41,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
         self._check_data(meds_data, trimming_threshold)
         self._dml_data = meds_data
         self._is_cluster_data = self._dml_data.is_cluster_data
+        self._treatment_mediation_levels = self._initialize_treatment_mediation_levels()
 
         self._trimming_threshold = trimming_threshold
         self._order = order
@@ -54,6 +55,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
         self._n_folds_inner = n_folds_inner
 
         self._multmed = multmed
+        self._scores = self._initialize_scores()
 
         # initialize learners and parameters which are set model specific
         self._learner = {
@@ -106,6 +108,14 @@ class DoubleMLMEDS(SampleSplittingMixin):
         pass
 
     @property
+    def smpls(self):
+        return self._smpls
+
+    @property
+    def smpls_inner(self):
+        return self._smpls_inner
+
+    @property
     def n_folds(self):
         """
         Specifies the number of folds to be used for cross-validation
@@ -146,6 +156,17 @@ class DoubleMLMEDS(SampleSplittingMixin):
         Specifies the trimming threshold.
         """
         return self._trimming_threshold
+
+    @property
+    def treatment_mediation_levels(self):
+        """
+        Specifies the possible combinations of treatment and mediation levels.
+        """
+        return self._treatment_mediation_levels
+
+    @property
+    def scores(self):
+        return self._scores
 
     # TODO: Check if the definition is true
     @property
@@ -313,7 +334,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
             df_summary = pd.DataFrame(columns=col_names)
         else:
             ci = self.confint()
-            df_summary = generate_summary(self.coef, self.se, self.t_stat, self.pval, ci, self._treatment_levels)
+            df_summary = generate_summary(self.coef, self.se, self.t_stat, self.pval, ci, self.scores)
         return df_summary
 
     @property
@@ -343,15 +364,18 @@ class DoubleMLMEDS(SampleSplittingMixin):
         parallel = Parallel(n_jobs=n_jobs_models, verbose=0, pre_dispatch="2*n_jobs")
         fitted_models = parallel(
             delayed(self._fit_model)(score, n_jobs_cv, store_predictions, store_models, ext_pred_dict)
-            for score in range(self._score_len)
+            for score in self.scores
         )
 
         # combine the estimates and scores
-        framework_list = [None] * self._score_len
+        framework_list = [None] * len(self.scores)
 
-        for score in range(self._score_len):
-            self._modeldict[score] = fitted_models[score]
-            framework_list[score] = self._modeldict[score].framework
+        for idx, (target,treatment) in enumerate(self.scores):
+            assert fitted_models[idx].target == target
+            assert fitted_models[idx].treatment_level == treatment
+
+            self._modeldict[f"{target}_{treatment}"] = fitted_models[idx]
+            framework_list[idx] = self._modeldict[f"{target}_{treatment}"].framework #TODO: make framework dict instead of list
 
         # aggregate all frameworks
         self._framework = concat(framework_list)
@@ -359,24 +383,23 @@ class DoubleMLMEDS(SampleSplittingMixin):
         return self
 
     def _fit_model(self, score, n_jobs_cv=None, store_predictions=True, store_models=False, external_predictions_dict=None):
-        for d, k in self._modeldict.items():
-            for _, value in k.items():
-                model = value
+        target, treatment = score
+        model = self.modeldict[f"{target}_{treatment}"]
+        if external_predictions_dict is not None:
+            external_predictions = external_predictions_dict[f"{model.treatment_level}_{model.mediation_level}"]
+        else:
+            external_predictions = None
 
-                if external_predictions_dict is not None:
-                    external_predictions = external_predictions_dict[model.treatment_level][model.mediation_level]
-                else:
-                    external_predictions = None
-
-                model.fit(
-                    n_jobs_cv=n_jobs_cv,
-                    store_predictions=store_predictions,
-                    store_models=store_models,
-                    external_predictions=external_predictions,
-                )
-
+        model.fit(
+            n_jobs_cv=n_jobs_cv,
+            store_predictions=store_predictions,
+            store_models=store_models,
+            external_predictions=external_predictions,
+        )
         # TODO: Add external predictions
+
         return model
+
 
     def confint(self, joint=False, level=0.95):
         if self.framework is None:
@@ -387,17 +410,17 @@ class DoubleMLMEDS(SampleSplittingMixin):
         return df_ci
 
     def bootstrap(self, method="normal", n_rep_boot=500):
-        if self._framework is None:
+        if self.framework is None:
             raise ValueError("Apply fit() before calling bootstrap()")
-        self._framework.bootstrap(method=method, n_rep_boot=n_rep_boot)
+        self.framework.bootstrap(method=method, n_rep_boot=n_rep_boot)
         return self
 
     def evaluate_effects(self):
-        ate = self._modeldict["Y(1, M(1)"].framework - self._modeldict["Y(0, M(0)"].framework
-        dir_control = self._modeldict["Y(0, M(1)"].framework - self._modeldict["Y(0, M(0)"].framework
-        dir_treatment = self._modeldict["Y(1, M(1)"].framework - self._modeldict["Y(1, M(0)"].framework
-        indir_control = self._modeldict["Y(1, M(1)"].framework - self._modeldict["Y(1, M(0)"].framework
-        indir_treatment = self._modeldict["Y(0, M(1)"].framework - self._modeldict["Y(0, M(0)"].framework
+        ate = self._modeldict["potential_1"].framework - self._modeldict["potential_0"].framework
+        dir_control = self._modeldict["potential_1"].framework - self._modeldict["counterfactual_0"].framework
+        dir_treatment = self._modeldict["counterfactual_1"].framework - self._modeldict["potential_0"].framework
+        indir_control = self._modeldict["potential_1"].framework - self._modeldict["counterfactual_0"].framework
+        indir_treatment = self._modeldict["counterfactual_0"].framework - self._modeldict["potential_0"].framework
 
         return ate, dir_control, dir_treatment, indir_control, indir_treatment
 
@@ -406,13 +429,10 @@ class DoubleMLMEDS(SampleSplittingMixin):
             raise TypeError(
                 f"The data must be of DoubleMLMediationData type. {str(meds_data)} of type {str(type(meds_data))} was passed."
             )
+        if not all(meds_data.binary_treats):
+            raise ValueError("Treatment variables for mediation analysis must be binary and take values 1 or 0.")
         if meds_data.z_cols is not None:
             raise NotImplementedError("instrumental variables for mediation analysis is not yet implemented.")
-        if not np.all(meds_data.binary_treats):
-            raise NotImplementedError(
-                "Treatment variables for mediation analysis must be binary"
-                + "and with values either 0 or 1. Not binary treatment is not yet implemented yet."
-            )
 
     def _initialize_med_models(self):
         self._modeldict = self._initialize_models()
@@ -420,24 +440,17 @@ class DoubleMLMEDS(SampleSplittingMixin):
 
     def _initialize_models(self):
 
-        treatment_levels = [int(number) for number in np.unique(self._dml_data.d)]
-        mediation_levels = [int(number) for number in np.unique(self._dml_data.m)]
-
         # TODO: Maybe will have to work this out. How to create dict to contain objects.
-        modeldict = {d: {m: object for m in mediation_levels} for d in treatment_levels}
-        d_m_levels = itertools.product(treatment_levels, mediation_levels)
+        modeldict = {f"{target}_{treatment}": None for (target, treatment) in self.scores}
 
-        for treatment, mediation in d_m_levels:
-            if treatment == mediation:
-                target = "potential"
-
+        for (target, treatment) in self.scores:
+            if target == "potential":
                 kwargs = {
                     "med_data": self._dml_data,
                     "ml_px": self._learner["ml_px"],
                     "ml_yx": self._learner["ml_yx"],
                     "target": target,
                     "treatment_level": treatment,
-                    "mediation_level": mediation,
                     "n_folds": self.n_folds,
                     "n_rep": self.n_rep,
                     "n_folds_inner": self.n_folds_inner,
@@ -447,19 +460,17 @@ class DoubleMLMEDS(SampleSplittingMixin):
                 }
 
                 model = DoubleMLMED(**kwargs)
+                model.set_sample_splitting(all_smpls=self.smpls)
 
-            else:
-                target = "mediation"
-
+            elif target == "counterfactual":
                 kwargs = {
-                    "meds_data": self._dml_data,
+                    "med_data": self._dml_data,
                     "ml_px": self._learner["ml_px"],
                     "ml_ymx": self._learner["ml_ymx"],
                     "ml_pmx": self._learner["ml_pmx"],
                     "ml_nested": self._learner["ml_nested"],
                     "target": target,
                     "treatment_level": treatment,
-                    "mediation_level": mediation,
                     "n_folds": self.n_folds,
                     "n_rep": self.n_rep,
                     "n_folds_inner": self.n_folds_inner,
@@ -470,10 +481,22 @@ class DoubleMLMEDS(SampleSplittingMixin):
 
                 model = DoubleMLMED(**kwargs)
 
-            # synchronize the sample splitting
+                model.set_sample_splitting(all_smpls=self.smpls)
+                model._set_smpls_inner_splitting(all_inner_smpls=self._smpls_inner, )
+
             # TODO: Probably will need to set samples for the inner samples.
-            model.set_sample_splitting(all_smpls=self.smpls)
-            model._set_smpls_inner_splitting(all_inner_smpls=self._smpls_inner,)
-            modeldict[treatment][mediation] = model
+            modeldict[f"{target}_{treatment}"] = model
 
         return modeldict
+
+    def _initialize_treatment_mediation_levels(self):
+        treatment_levels = [int(number) for number in np.unique(self._dml_data.d)]
+        mediation_levels = [int(number) for number in np.unique(self._dml_data.m)]
+
+        return list(itertools.product(treatment_levels, mediation_levels))
+
+    def _initialize_scores(self):
+        if all(self._dml_data.binary_treats):
+            treatment_levels = [0, 1]
+            valid_targets = ["potential", "counterfactual"]
+            return list(itertools.product(valid_targets, treatment_levels))
