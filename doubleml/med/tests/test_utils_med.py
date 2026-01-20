@@ -1,33 +1,20 @@
-
 import pytest
-from sklearn.linear_model import LinearRegression, LogisticRegression
 
-from doubleml.med.datasets import make_med_data
-from doubleml.med.med import DoubleMLMED
 from doubleml.med.utils._med_utils import _check_inner_sample_splitting
 
 
 @pytest.fixture(
     scope="module",
 )
-def data():
-    return make_med_data()
-
-
-@pytest.fixture(
-    scope="module",
-    params=[[LogisticRegression(), LinearRegression(), LinearRegression(), LogisticRegression(), LinearRegression()]],
-)
-def learners(request):
-    return request.param
+def learners(learner_linear):
+    return learner_linear
 
 
 @pytest.fixture(
     scope="module",
 )
-def med_obj(data, learners):
-    ml_px, ml_yx, ml_ymx, ml_pmx, ml_nested = learners
-    return DoubleMLMED(data, ml_px, ml_yx, ml_ymx, ml_pmx, ml_nested)
+def med_obj(med_factory, learners, treatment_level):
+    return med_factory("potential", treatment_level, learners)
 
 
 @pytest.fixture(

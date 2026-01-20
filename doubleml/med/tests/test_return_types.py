@@ -1,18 +1,14 @@
-import numpy as np
 import pytest
-from sklearn.linear_model import LinearRegression, LogisticRegression
 
 from doubleml import DoubleMLMED
-from doubleml.med.datasets import make_med_data
 from doubleml.utils._check_return_types import (
     check_basic_predictions_and_targets,
     check_basic_property_types_and_shapes,
     check_basic_return_types,
-    check_sensitivity_return_types,
 )
 
 # Test constants
-N_OBS = 500
+N_OBS = 1000
 N_TREAT = 1
 N_REP = 1
 N_FOLDS = 3
@@ -24,26 +20,20 @@ dml_args = {
 }
 
 
-# create datasets
-np.random.seed(3141)
-datasets = {}
-
-datasets["med"] = make_med_data(n_obs=N_OBS)
-
 @pytest.fixture(scope="module", params=["potential", "counterfactual"])
 def target(request):
     return request.param
 
-@pytest.fixture(scope="module")
-def dml_med_fixture(target):
-    dml_args["target"] = target
 
-    dml_med_obj = DoubleMLMED(datasets["med"], ml_yx=LinearRegression(), ml_px=LogisticRegression(max_iter=1000),
-                              ml_ymx=LinearRegression(), ml_pmx=LogisticRegression(max_iter=1000),
-                              ml_nested=LinearRegression(), **dml_args)
+@pytest.fixture(scope="module")
+def dml_med_fixture(target, treatment_level, meds_data, med_factory, learner_linear):
+    # dml_args["target"] = target # Removed to avoid duplication
+
+    dml_med_obj = med_factory(target, treatment_level, learner_linear, **dml_args)
 
     dml_objs = (dml_med_obj, DoubleMLMED)
     return dml_objs
+
 
 @pytest.mark.ci
 def test_return_types(dml_med_fixture):

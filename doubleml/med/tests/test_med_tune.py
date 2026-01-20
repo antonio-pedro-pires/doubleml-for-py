@@ -2,101 +2,65 @@ import random
 import re
 
 import pytest
-from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 
-from doubleml import DoubleMLMED
-from doubleml.med.datasets import make_med_data
 from doubleml.tests._utils_tune_optuna import (
-    _SAMPLER_CASES,
     _assert_tree_params,
-    _basic_optuna_settings,
-    _small_tree_params,
 )
 
-@pytest.fixture(scope="module", params=[{
-    "ml_yx": DecisionTreeRegressor(random_state=123),
-    "ml_px": DecisionTreeClassifier(random_state=123),
-    "ml_ymx": DecisionTreeRegressor(random_state=123),
-    "ml_pmx": DecisionTreeClassifier(random_state=123),
-    "ml_nested": DecisionTreeRegressor(random_state=123),
-}])
-def learners(request):
-    yield request.param
 
-@pytest.fixture(
-    scope="module",
-    params=[make_med_data()]
-)
-def med_data(request):
-    yield request.param
+@pytest.fixture(scope="module")
+def learners(learner_tree):
+    return learner_tree
+
 
 @pytest.fixture(scope="module", params=["potential", "counterfactual"])
 def target(request):
     yield request.param
 
-@pytest.fixture(scope="module", params=[0, 1])
-def treatment_level(request):
-    yield request.param
 
 @pytest.fixture(scope="module")
-def dml_med_obj(
-    med_data,
-    target,
-    learners):
-    if target == "potential":
-        yield DoubleMLMED(med_data=med_data,
-                          ml_yx=learners["ml_yx"],
-                          ml_px=learners["ml_px"],
-                          target=target,)
-    else:
-        yield DoubleMLMED(
-            med_data=med_data,
-            target=target,
-            **learners,
-        )
+def dml_med_obj(med_factory, target, treatment_level, learners):
+    yield med_factory(target, treatment_level, learners)
 
 
-@pytest.fixture(scope="module")
-def optuna_params(target):
+@pytest.fixture(
+    scope="module",
+)
+def untuned_tuned_scores(dml_med_obj, optuna_params, optuna_settings, target):
     if target == "potential":
-        return {
-            "ml_yx": _small_tree_params,
-            "ml_px": _small_tree_params,
+        ml_param_space = {
+            "ml_yx": optuna_params["ml_yx"],
+            "ml_px": optuna_params["ml_px"],
         }
     else:
-        return {
-            "ml_px": _small_tree_params,
-            "ml_ymx": _small_tree_params,
-            "ml_pmx": _small_tree_params,
-            "ml_nested": _small_tree_params,
+        ml_param_space = {
+            "ml_px": optuna_params["ml_px"],
+            "ml_ymx": optuna_params["ml_ymx"],
+            "ml_pmx": optuna_params["ml_pmx"],
+            "ml_nested": optuna_params["ml_nested"],
         }
 
-
-@pytest.fixture(scope="module", params=_SAMPLER_CASES, ids=[case[0] for case in _SAMPLER_CASES])
-def untuned_tuned_scores(request, dml_med_obj, optuna_params):
-    sampler_name, optuna_sampler = request.param
-
-    res = {"untuned_score": None, "tuned_score": None, "tune_res": None}
     dml_med_obj.fit()
     untuned_score = dml_med_obj.evaluate_learners()
 
     random.seed(0)
     tune_res = dml_med_obj.tune_ml_models(
-        ml_param_space=optuna_params,
-        optuna_settings=_basic_optuna_settings({"sampler": optuna_sampler, "n_trials": 20}),
+        ml_param_space=ml_param_space,
+        optuna_settings=optuna_settings,
         return_tune_res=True,
     )
 
     dml_med_obj.fit()
     tuned_score = dml_med_obj.evaluate_learners()
-    return {"untuned_score": untuned_score, "tuned_score": tuned_score, "tune_res": tune_res}
+    return {"untuned_score": untuned_score, "tuned_score": tuned_score, "tune_res": tune_res, "ml_param_space": ml_param_space}
 
 
 @pytest.mark.ci
-def test_tune_ml_models(untuned_tuned_scores, dml_med_obj, optuna_params):
+def test_tune_ml_models(untuned_tuned_scores, dml_med_obj):
     untuned_score = untuned_tuned_scores["untuned_score"]
     tuned_score = untuned_tuned_scores["tuned_score"]
     tune_res = untuned_tuned_scores["tune_res"]
+    optuna_params = untuned_tuned_scores["ml_param_space"]
 
     params_names = dml_med_obj.params_names
 
