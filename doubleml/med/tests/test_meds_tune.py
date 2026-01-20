@@ -58,15 +58,21 @@ def med_objs(med_data, learners):
     scores = list(itertools.product(["potential", "counterfactual"], [0, 1]))
 
     individual_med_objs = {}
+    counterfactual_learners = deepcopy(learners)
+    potential_learners = deepcopy(learners)
+
+    del counterfactual_learners["ml_yx"]
+    del potential_learners["ml_ymx"]; del potential_learners["ml_pmx"]; del potential_learners["ml_nested"]
     for target, treatment in scores:
         if target=="potential":
             model = DoubleMLMED(med_data=med_data,
-                                ml_yx=learners["ml_yx"],
-                                ml_px=learners["ml_px"],)
+                                target=target,
+                                **potential_learners)
             model._set_sample_splitting(smpls)
         elif target=="counterfactual":
             model = DoubleMLMED(med_data=med_data,
-                                **learners)
+                                target=target,
+                                **counterfactual_learners)
             model._set_sample_splitting(smpls)
             model._set_sample_inner_splitting(smpls_inner)
 
@@ -103,8 +109,13 @@ def tune_res(med_objs,  optuna_params, optuna_settings):
 @pytest.mark.ci
 def test_tune_meds(med_objs, tune_res):
     meds_obj, _ = med_objs
-    tune_meds_res, tune_ind_med_res = tune_res
-    for score in meds_obj.scores:
-        np.testing.assert_array_equal(tune_res[score], tune_meds_res[score])
+    meds_scores, ind_med_scores = tune_res
+    for score, ind_score in zip(meds_scores, ind_med_scores):
+        assert score == ind_score
+        meds_res = meds_scores[score][0]
+        ind_res = ind_med_scores[ind_score][0]
+        for learner_meds, learner_ind in zip(meds_res, ind_res):
+            assert learner_meds == learner_ind
+            assert meds_res[learner_meds].best_params == ind_res[learner_ind].best_params
 
 
