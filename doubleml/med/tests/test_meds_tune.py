@@ -67,11 +67,13 @@ def med_objs(med_data, learners):
         if target=="potential":
             model = DoubleMLMED(med_data=med_data,
                                 target=target,
+                                treatment_level=treatment,
                                 **potential_learners)
             model._set_sample_splitting(smpls)
         elif target=="counterfactual":
             model = DoubleMLMED(med_data=med_data,
                                 target=target,
+                                treatment_level=treatment,
                                 **counterfactual_learners)
             model._set_sample_splitting(smpls)
             model._set_sample_inner_splitting(smpls_inner)
@@ -85,16 +87,22 @@ def med_objs(med_data, learners):
 def tune_res(med_objs,  optuna_params, optuna_settings):
     meds_obj, individual_med_objs = med_objs
     seed(123)
+    
+    # Deepcopy settings to ensure independent sampler states
+    optuna_settings_meds = deepcopy(optuna_settings)
     tune_meds_res = meds_obj.tune_ml_models(ml_param_space=optuna_params,
-                                            optuna_settings=optuna_settings,
+                                            optuna_settings=optuna_settings_meds,
                                             return_tune_res=True)
     seed(123)
     tune_ind_med_res={}
+    
+    # same idea as above
+    optuna_settings_ind = deepcopy(optuna_settings)
     for key, model in individual_med_objs.items():
         if model.target=="potential":
             tune_ind_med_res[key] = model.tune_ml_models(ml_param_space={"ml_yx": optuna_params["ml_yx"],
                                                                          "ml_px": optuna_params["ml_px"]},
-                                                         optuna_settings=optuna_settings,
+                                                         optuna_settings=optuna_settings_ind,
                                                          return_tune_res=True,
                                                          )
         elif model.target=="counterfactual":
@@ -102,12 +110,13 @@ def tune_res(med_objs,  optuna_params, optuna_settings):
                                                                          "ml_ymx": optuna_params["ml_ymx"],
                                                                          "ml_pmx": optuna_params["ml_pmx"],
                                                                          "ml_nested": optuna_params["ml_nested"],},
-                                                         optuna_settings=optuna_settings,
+                                                         optuna_settings=optuna_settings_ind,
                                                          return_tune_res=True)
     return tune_meds_res, tune_ind_med_res
 
 @pytest.mark.ci
 def test_tune_meds(med_objs, tune_res):
+    # Test that the tuned models in the DoubleMLMEDS object are identical to their individually tuned counterpart.
     meds_obj, _ = med_objs
     meds_scores, ind_med_scores = tune_res
     for score, ind_score in zip(meds_scores, ind_med_scores):
@@ -117,5 +126,8 @@ def test_tune_meds(med_objs, tune_res):
         for learner_meds, learner_ind in zip(meds_res, ind_res):
             assert learner_meds == learner_ind
             assert meds_res[learner_meds].best_params == ind_res[learner_ind].best_params
+            assert meds_res[learner_meds].best_score == ind_res[learner_ind].best_score
+            assert meds_res[learner_meds].tuned == ind_res[learner_ind].tuned
+            assert meds_res[learner_meds].params_name == ind_res[learner_ind].params_name
 
 
