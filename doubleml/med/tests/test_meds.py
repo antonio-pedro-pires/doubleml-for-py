@@ -1,102 +1,93 @@
-from copy import deepcopy
-
-import numpy as np
-import pytest
-from joblib import Parallel
-
-from doubleml.data.med_data import DoubleMLMEDData
-from doubleml.med.datasets import make_med_data
-from doubleml.med import DoubleMLMED, DoubleMLMEDS
 
 from random import seed
 
-from sklearn.linear_model import LinearRegression, LogisticRegression
+import numpy as np
+import pytest
+
 from doubleml.double_ml_framework import concat
+from doubleml.med import DoubleMLMEDS
 
 
-#TODO: Will need to test with data with multiple m columns
-@pytest.fixture(scope='module', params=[{
-                    "ml_px":LogisticRegression(penalty="l1", solver="liblinear", max_iter=250, random_state=42),
-                    "ml_yx":LinearRegression(),
-                    "ml_ymx":LinearRegression(),
-                    "ml_pmx":LogisticRegression(penalty="l1", solver="liblinear", max_iter=250, random_state=42),
-                    "ml_nested":LinearRegression(),
-                },
-                ])
-def learners(request):
-    return request.param
+# TODO: Will need to test with data with multiple m columns
+@pytest.fixture(scope="module")
+def learners(learner_linear):
+    return learner_linear
 
-@pytest.fixture(scope='module')
-def meds_data():
-    return make_med_data()
 
-@pytest.fixture(scope='module')
+@pytest.fixture(scope="module")
 def meds_kwargs(meds_data, learners):
-    return {"meds_data": meds_data,
-    "n_folds":5,
-    "n_rep":1,
-    "n_folds_inner":5,
-    "score":"MED",
-    "normalize_ipw":False,
-    "trimming_threshold":1e-2,
-    "order":1,
-    "multmed":True,
-    "fewsplits":False,
-    "draw_sample_splitting":True,
-    **learners,
-            }
+    return {
+        "meds_data": meds_data,
+        "n_folds": 5,
+        "n_rep": 1,
+        "n_folds_inner": 5,
+        "score": "MED",
+        "normalize_ipw": False,
+        "trimming_threshold": 1e-2,
+        "order": 1,
+        "multmed": True,
+        "fewsplits": False,
+        "draw_sample_splitting": True,
+        **learners,
+    }
 
-@pytest.fixture(scope='module')
+
+@pytest.fixture(scope="module")
 def meds_obj(meds_kwargs):
     meds_obj = DoubleMLMEDS(**meds_kwargs)
     return meds_obj
 
-@pytest.fixture(scope='module')
+
+@pytest.fixture(scope="module")
 def smpls_inner_outer(meds_obj):
     return meds_obj.smpls, meds_obj.smpls_inner
 
-@pytest.fixture(scope='module')
+
+@pytest.fixture(scope="module")
 def treatment_mediation(meds_obj):
     return meds_obj.treatment_mediation_levels
 
-@pytest.fixture(scope='module')
-def individual_med_objs(meds_obj, learners):
-    kwargs={
-        "med_data":meds_obj._dml_data,
-        "score":"MED",
-        "n_folds":meds_obj.n_folds,
+
+@pytest.fixture(scope="module")
+def individual_med_objs(meds_obj, learners, med_factory):
+    kwargs = {
+        # "med_data":meds_obj._dml_data, # Handled by med_factory closure
+        "score": "MED",
+        "n_folds": meds_obj.n_folds,
         "n_rep": meds_obj.n_rep,
         "n_folds_inner": meds_obj.n_folds_inner,
         "normalize_ipw": meds_obj.normalize_ipw,
         "trimming_threshold": meds_obj.trimming_threshold,
-        "draw_sample_splitting":False,
+        "draw_sample_splitting": False,
     }
     individual_modeldict = {}
     for target, treatment in meds_obj.scores:
         if target == "potential":
-            kwargs.update({"ml_px": learners["ml_px"],
-                           "ml_yx": learners["ml_yx"],
-                           "target": target,
-                           "treatment_level": treatment,
-                           })
-            model = DoubleMLMED(**kwargs)
+            kwargs.update(
+                {
+                    "learners": learners,
+                    "target": target,
+                    "treatment_level": treatment,
+                }
+            )
+            model = med_factory(**kwargs)
             model._smpls = meds_obj._smpls
-            individual_modeldict[f"{target}_{treatment}"] =model
+            individual_modeldict[f"{target}_{treatment}"] = model
         elif target == "counterfactual":
-            kwargs.update({"ml_px": learners["ml_px"],
-                           "ml_yx": learners["ml_yx"],
-                           "ml_ymx": learners["ml_ymx"],
-                           "ml_pmx": learners["ml_pmx"],
-                           "ml_nested": learners["ml_nested"],
-                           "target": target,
-                           "treatment_level": treatment,
-                           })
-            model = DoubleMLMED(**kwargs)
-            model._smpls=meds_obj._smpls
-            model._smpls_inner=meds_obj._smpls_inner
+            kwargs.update(
+                {
+                    "learners": learners,
+                    "target": target,
+                    "treatment_level": treatment,
+                }
+            )
+            model = med_factory(**kwargs)
+            model._smpls = meds_obj._smpls
+            model._smpls_inner = meds_obj._smpls_inner
             individual_modeldict[f"{target}_{treatment}"] = model
 
     return individual_modeldict
+
 
 @pytest.mark.ci
 def test_meds_modeldict(meds_obj):
@@ -104,14 +95,26 @@ def test_meds_modeldict(meds_obj):
     n_models = len(meds_obj.scores)
     assert len(meds_obj.modeldict) == n_models
 
+
 @pytest.mark.ci
 def test_set_smpls(meds_obj, individual_med_objs):
-    #Test that smpls and smpls_inner are correctly set for every model.
-    #TODO: Add failing tests
-    [np.testing.assert_equal(meds_obj.smpls, individual_med_objs[f"{target}_{treatment}"].smpls) for (target, treatment) in meds_obj.scores]
-    [np.testing.assert_equal(meds_obj.smpls_inner, individual_med_objs[f"{target}_{treatment}"].smpls_inner) if target == "counterfactual" else None for (target, treatment) in meds_obj.scores]
+    # Test that smpls and smpls_inner are correctly set for every model.
+    # TODO: Add failing tests
+    [
+        np.testing.assert_equal(meds_obj.smpls, individual_med_objs[f"{target}_{treatment}"].smpls)
+        for (target, treatment) in meds_obj.scores
+    ]
+    [
+        (
+            np.testing.assert_equal(meds_obj.smpls_inner, individual_med_objs[f"{target}_{treatment}"].smpls_inner)
+            if target == "counterfactual"
+            else None
+        )
+        for (target, treatment) in meds_obj.scores
+    ]
 
-@pytest.fixture(scope='module')
+
+@pytest.fixture(scope="module")
 def fit_objs(meds_obj, individual_med_objs):
     seed(123)
     meds_obj.fit()
@@ -119,19 +122,30 @@ def fit_objs(meds_obj, individual_med_objs):
     seed(123)
     framework_list = [None] * len(individual_med_objs)
     for idx, model in enumerate(individual_med_objs.values()):
-        framework_list[idx] = model.fit().framework # TODO: make framework dict instead of list
+        framework_list[idx] = model.fit().framework  # TODO: make framework dict instead of list
     individual_med_objs_framework = concat(framework_list)
     return meds_obj, individual_med_objs_framework
+
 
 @pytest.mark.ci
 def test_fit(fit_objs):
     # Test that the meds object models are fitted identically those same models when fitted individually using the DoubleMLMED class.
     meds_obj, individual_med_objs_framework = fit_objs
-    [np.testing.assert_array_equal(meds_obj.framework.__getattribute__(elem), individual_med_objs_framework.__getattribute__(elem)) for elem in ["all_pvals", "all_ses", "all_t_stats", "all_thetas", ]]
+    [
+        np.testing.assert_array_equal(
+            meds_obj.framework.__getattribute__(elem), individual_med_objs_framework.__getattribute__(elem)
+        )
+        for elem in [
+            "all_pvals",
+            "all_ses",
+            "all_t_stats",
+            "all_thetas",
+        ]
+    ]
+
 
 @pytest.mark.ci
 def test_effects(fit_objs):
     meds_obj, _ = fit_objs
     meds_obj.evaluate_effects()
     print(meds_obj.summary)
-
