@@ -599,10 +599,10 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
     def _sensitivity_element_est(self, preds):
         pass
 
-    def _set_smpls_inner_splitting(self, all_inner_smpls,):
+    def _set_sample_inner_splitting(self, all_inner_smpls, ):
         self._smpls_inner, self.n_folds_inner = _check_inner_sample_splitting(all_inner_smpls, self.smpls)
 
-    def set_sample_splitting(self, all_smpls, all_smpls_cluster=None, is_cluster_data=False):
+    def _set_sample_splitting(self, all_smpls, all_smpls_cluster=None, is_cluster_data=False):
         if all_smpls_cluster is not None or is_cluster_data:
             raise NotImplementedError
         self._smpls, self._smpls_cluster, self._n_rep, self._n_folds = _check_sample_splitting(all_smpls=all_smpls, all_smpls_cluster=all_smpls_cluster, dml_data=self._dml_data, is_cluster_data=is_cluster_data, n_obs=None)

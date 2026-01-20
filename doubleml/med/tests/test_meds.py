@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 import numpy as np
 import pytest
 from joblib import Parallel
@@ -132,3 +134,4 @@ def test_effects(fit_objs):
     meds_obj, _ = fit_objs
     meds_obj.evaluate_effects()
     print(meds_obj.summary)
+
