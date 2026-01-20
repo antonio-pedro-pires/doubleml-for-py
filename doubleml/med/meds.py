@@ -105,8 +105,11 @@ class DoubleMLMEDS(SampleSplittingMixin):
         pass
 
     def __str__(self):
-        pass
-
+        class_name = self.__class__.__name__
+        header = f"================== {class_name} Object ==================\n"
+        fit_summary = str(self.summary)
+        res = header + "\n------------------ Fit summary       ------------------\n" + fit_summary
+        return res
     @property
     def smpls(self):
         return self._smpls
@@ -460,7 +463,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
                 }
 
                 model = DoubleMLMED(**kwargs)
-                model.set_sample_splitting(all_smpls=self.smpls)
+                model._set_sample_splitting(all_smpls=self.smpls)
 
             elif target == "counterfactual":
                 kwargs = {
@@ -481,8 +484,8 @@ class DoubleMLMEDS(SampleSplittingMixin):
 
                 model = DoubleMLMED(**kwargs)
 
-                model.set_sample_splitting(all_smpls=self.smpls)
-                model._set_smpls_inner_splitting(all_inner_smpls=self._smpls_inner, )
+                model._set_sample_splitting(all_smpls=self.smpls)
+                model._set_sample_inner_splitting(all_inner_smpls=self._smpls_inner, )
 
             # TODO: Probably will need to set samples for the inner samples.
             modeldict[f"{target}_{treatment}"] = model
@@ -500,3 +503,36 @@ class DoubleMLMEDS(SampleSplittingMixin):
             treatment_levels = [0, 1]
             valid_targets = ["potential", "counterfactual"]
             return list(itertools.product(valid_targets, treatment_levels))
+
+    def tune_ml_models(self,
+        ml_param_space,
+        scoring_methods=None,
+        cv=5,
+        set_as_params=True,
+        return_tune_res=False,
+        optuna_settings=None,):
+
+        tuning_kwargs = {
+            "scoring_methods": scoring_methods,
+            "cv": cv,
+            "set_as_params": set_as_params,
+            "return_tune_res": return_tune_res,
+            "optuna_settings": optuna_settings,
+        }
+        tune_res = {} if return_tune_res else None
+
+        for (key, model) in self.modeldict.items():
+            if model.target == "potential":
+                res = model.tune_ml_models(ml_param_space={"ml_yx": ml_param_space["ml_yx"],
+                                                           "ml_px": ml_param_space["ml_px"],},
+                                                            **tuning_kwargs)
+            elif model.target == "counterfactual":
+                res = model.tune_ml_models(ml_param_space={"ml_px": ml_param_space["ml_px"],
+                                                           "ml_ymx": ml_param_space["ml_ymx"],
+                                                           "ml_pmx": ml_param_space["ml_pmx"],
+                                                           "ml_nested": ml_param_space["ml_nested"],},
+                                                            **tuning_kwargs)
+
+            if return_tune_res:
+                tune_res[key] = res
+        return tune_res if return_tune_res else None

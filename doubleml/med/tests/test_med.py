@@ -230,7 +230,7 @@ def dml_med_fixture(
     counter_smpls_inner = counter_med_obj._smpls_inner
 
     counter_med_obj_ext._smpls = counter_med_obj.smpls
-    counter_med_obj_ext._set_smpls_inner_splitting(counter_smpls_inner)
+    counter_med_obj_ext._set_sample_inner_splitting(counter_smpls_inner)
 
     pot_med_obj_ext._smpls = pot_med_obj.smpls
 
@@ -335,5 +335,5 @@ def test_set_smpls_inner_splitting(med_objs):
     smpls = med_obj.smpls
 
     med_obj_ext._smpls = smpls
-    med_obj_ext._set_smpls_inner_splitting(smpls_inner)
+    med_obj_ext._set_sample_inner_splitting(smpls_inner)
     assert med_obj_ext._smpls_inner == med_obj._smpls_inner

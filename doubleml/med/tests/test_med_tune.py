@@ -13,59 +13,46 @@ from doubleml.tests._utils_tune_optuna import (
     _small_tree_params,
 )
 
+@pytest.fixture(scope="module", params=[{
+    "ml_yx": DecisionTreeRegressor(random_state=123),
+    "ml_px": DecisionTreeClassifier(random_state=123),
+    "ml_ymx": DecisionTreeRegressor(random_state=123),
+    "ml_pmx": DecisionTreeClassifier(random_state=123),
+    "ml_nested": DecisionTreeRegressor(random_state=123),
+}])
+def learners(request):
+    yield request.param
+
+@pytest.fixture(
+    scope="module",
+    params=[make_med_data()]
+)
+def med_data(request):
+    yield request.param
 
 @pytest.fixture(scope="module", params=["potential", "counterfactual"])
 def target(request):
     yield request.param
 
-
-@pytest.fixture(scope="module", params=[DecisionTreeRegressor(random_state=234)])
-def ml_yx(request):
+@pytest.fixture(scope="module", params=[0, 1])
+def treatment_level(request):
     yield request.param
-
-
-@pytest.fixture(scope="module", params=[DecisionTreeRegressor(random_state=234)])
-def ml_ymx(request):
-    yield request.param
-
-
-@pytest.fixture(scope="module", params=[DecisionTreeClassifier(random_state=123)])
-def ml_px(request):
-    yield request.param
-
-
-@pytest.fixture(scope="module", params=[DecisionTreeClassifier(random_state=123)])
-def ml_pmx(request):
-    yield request.param
-
-
-@pytest.fixture(scope="module", params=[DecisionTreeRegressor(random_state=234)])
-def ml_nested(request):
-    yield request.param
-
-
-@pytest.fixture(
-    scope="module",
-)
-def med_data():
-    yield make_med_data()
-
 
 @pytest.fixture(scope="module")
 def dml_med_obj(
     med_data,
     target,
-    ml_yx,
-    ml_px,
-    ml_ymx,
-    ml_pmx,
-    ml_nested,
-):
+    learners):
     if target == "potential":
-        yield DoubleMLMED(med_data=med_data, ml_yx=ml_yx, ml_px=ml_px, target=target)
+        yield DoubleMLMED(med_data=med_data,
+                          ml_yx=learners["ml_yx"],
+                          ml_px=learners["ml_px"],
+                          target=target,)
     else:
         yield DoubleMLMED(
-            med_data=med_data, ml_yx=ml_yx, ml_px=ml_px, ml_ymx=ml_ymx, ml_pmx=ml_pmx, ml_nested=ml_nested, target=target
+            med_data=med_data,
+            target=target,
+            **learners,
         )
 
 
