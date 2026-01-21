@@ -27,9 +27,9 @@ def treatment_level(request):
 def learner_linear():
     return {
         "ml_yx": LinearRegression(),
-        "ml_px": LogisticRegression(penalty="l1", solver="liblinear", max_iter=250, random_state=42),
+        "ml_px": LogisticRegression(solver="saga", l1_ratio=1, max_iter=250, random_state=42),
         "ml_ymx": LinearRegression(),
-        "ml_pmx": LogisticRegression(penalty="l1", solver="liblinear", max_iter=250, random_state=42),
+        "ml_pmx": LogisticRegression(solver="saga", l1_ratio=1, max_iter=250, random_state=42),
         "ml_nested": LinearRegression(),
     }
 

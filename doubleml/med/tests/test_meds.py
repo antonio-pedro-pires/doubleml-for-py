@@ -51,7 +51,6 @@ def treatment_mediation(meds_obj):
 @pytest.fixture(scope="module")
 def individual_med_objs(meds_obj, learners, med_factory):
     kwargs = {
-        # "med_data":meds_obj._dml_data, # Handled by med_factory closure
         "score": "MED",
         "n_folds": meds_obj.n_folds,
         "n_rep": meds_obj.n_rep,
