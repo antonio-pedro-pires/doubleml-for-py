@@ -8,7 +8,7 @@ from doubleml import DoubleMLMEDData
 from doubleml.double_ml import DoubleML
 from doubleml.double_ml_score_mixins import LinearScoreMixin
 from doubleml.med.utils._med_utils import _check_inner_sample_splitting
-from doubleml.utils._checks import _check_finite_predictions, _check_score, _check_sample_splitting
+from doubleml.utils._checks import _check_finite_predictions, _check_sample_splitting, _check_score
 from doubleml.utils._estimation import (
     _cond_targets,
     _dml_cv_predict,
@@ -144,6 +144,11 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
 
         self._treated = self._med_data.d == treatment_level
         self._mediated = self._med_data.m == mediation_level
+
+        if self._med_data.n_treat > 1:
+            raise NotImplementedError(
+                "Only implemented for single treatment. " + f"Number of treatments is {str(self._med_data.n_treat)}."
+            )
 
         if self._target == "potential":
             self._learner = {"ml_yx": ml_yx, "ml_px": ml_px}
@@ -289,6 +294,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
                     method=self._predict_method["ml_px"],
                     return_models=return_models,
                 )
+            px_hat["preds"] = np.clip(px_hat["preds"], 1e-12, 1 - 1e-12)
 
             if yx_external:
                 yx_hat = {
@@ -330,7 +336,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
             psi_elements = {"psi_a": psi_a, "psi_b": psi_b}
 
         else:  # target == "counterfactual"
-            x, m = check_X_y(x, self._med_data.m, ensure_all_finite=True)
+            x, m = check_X_y(x, self._med_data.m, ensure_all_finite=True, multi_output=True)
             xm = np.column_stack((x, m))
 
             # Check whether there are external predictions for each parameter.
@@ -356,6 +362,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
                     method=self._predict_method["ml_px"],
                     return_models=return_models,
                 )
+            px_hat["preds"] = np.clip(px_hat["preds"], 1e-12, 1 - 1e-12)
 
             # Estimate the probability of treatment conditional on the mediator and covariates.
             if pmx_external:
@@ -371,6 +378,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
                     method=self._predict_method["ml_pmx"],
                     return_models=return_models,
                 )
+            pmx_hat["preds"] = np.clip(pmx_hat["preds"], 1e-12, 1 - 1e-12)
 
             if ymx_external:
                 # expect per-inner-fold keys ml_ymx_inner_i
@@ -501,7 +509,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
 
     def _nuisance_tuning_optuna(self, optuna_params, scoring_methods, cv, optuna_settings):
         x, y = check_X_y(self._med_data.x, self._med_data.y, ensure_all_finite=True)
-        x, d = check_X_y(x, self._med_data.d, ensure_all_finite=True)
+        x, d = check_X_y(x, self._med_data.d.ravel(), ensure_all_finite=True)
 
         if scoring_methods is None:
             scoring_methods = {"ml_yx": None, "ml_px": None, "ml_ymx": None, "ml_pmx": None, "ml_nested": None}
@@ -540,7 +548,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
             }
 
         else:
-            x, m = check_X_y(x, self._med_data.m, ensure_all_finite=False)
+            x, m = check_X_y(x, self._med_data.m, ensure_all_finite=False, multi_output=True)
             xm = np.column_stack((x, m))
 
             pmx_tune_res = _dml_tune_optuna(
@@ -599,13 +607,23 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
     def _sensitivity_element_est(self, preds):
         pass
 
-    def _set_sample_inner_splitting(self, all_inner_smpls, ):
+    def _set_sample_inner_splitting(
+        self,
+        all_inner_smpls,
+    ):
         self._smpls_inner, self.n_folds_inner = _check_inner_sample_splitting(all_inner_smpls, self.smpls)
 
     def _set_sample_splitting(self, all_smpls, all_smpls_cluster=None, is_cluster_data=False):
         if all_smpls_cluster is not None or is_cluster_data:
             raise NotImplementedError
-        self._smpls, self._smpls_cluster, self._n_rep, self._n_folds = _check_sample_splitting(all_smpls=all_smpls, all_smpls_cluster=all_smpls_cluster, dml_data=self._dml_data, is_cluster_data=is_cluster_data, n_obs=None)
+        self._smpls, self._smpls_cluster, self._n_rep, self._n_folds = _check_sample_splitting(
+            all_smpls=all_smpls,
+            all_smpls_cluster=all_smpls_cluster,
+            dml_data=self._dml_data,
+            is_cluster_data=is_cluster_data,
+            n_obs=None,
+        )
+
 
 # TODO: Transplant methods into utils documents.
 # TODO: Apply threshold
