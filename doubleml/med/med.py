@@ -509,7 +509,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
 
     def _nuisance_tuning_optuna(self, optuna_params, scoring_methods, cv, optuna_settings):
         x, y = check_X_y(self._med_data.x, self._med_data.y, ensure_all_finite=True)
-        x, d = check_X_y(x, self._med_data.d.ravel(), ensure_all_finite=True)
+        x, d = check_X_y(x, self._med_data.d, ensure_all_finite=True)
 
         if scoring_methods is None:
             scoring_methods = {"ml_yx": None, "ml_px": None, "ml_ymx": None, "ml_pmx": None, "ml_nested": None}
