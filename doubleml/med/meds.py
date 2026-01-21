@@ -9,6 +9,7 @@ from doubleml import DoubleMLMEDData
 from doubleml.double_ml_framework import concat
 from doubleml.double_ml_sampling_mixins import SampleSplittingMixin
 from doubleml.med.med import DoubleMLMED
+from doubleml.med.utils._meds_utils import generate_effects_summary
 from doubleml.utils._checks import _check_external_predictions
 from doubleml.utils._descriptive import generate_summary
 
@@ -95,21 +96,24 @@ class DoubleMLMEDS(SampleSplittingMixin):
         self._smpls_inner = None
         self._n_obs_sample_splitting = self._dml_data.n_obs
         self._strata = None
-        self._double_sample_splitting=True
+        self._double_sample_splitting = True
 
         if draw_sample_splitting:
             self.draw_sample_splitting()
 
             self._initialize_med_models()
 
-        pass
+        self._effects = None
 
     def __str__(self):
         class_name = self.__class__.__name__
         header = f"================== {class_name} Object ==================\n"
         fit_summary = str(self.summary)
         res = header + "\n------------------ Fit summary       ------------------\n" + fit_summary
+        effects_summary = str(self.effects_summary)
+        res = res + "\n------------------ Effects summary       ------------------\n" + effects_summary
         return res
+
     @property
     def smpls(self):
         return self._smpls
@@ -193,6 +197,18 @@ class DoubleMLMEDS(SampleSplittingMixin):
         Indicates whether the same training data split is used for estimating the nested models of the nuisance parameter .
         """
         return self._fewsplits
+
+    @property
+    def effects(self):
+        """
+        Estimates for the ATE and the combination of the direct/indirect, treatment/control groups effects after calling
+        :meth:`evaluate-effects`
+        """
+        if self._effects is None:
+            effects = None
+        else:
+            effects = self._effects
+        return effects
 
     # TODO: Add definition
     @property
@@ -341,6 +357,18 @@ class DoubleMLMEDS(SampleSplittingMixin):
         return df_summary
 
     @property
+    def effects_summary(self):
+        """
+        A summary for the estimated effects after calling :meth:`evaluate_effects`.
+        """
+        if self._effects is None:
+            col_names = ["coef", "std err", "t", "P>|t|"]
+            df_effects_summary = pd.DataFrame(columns=col_names)
+        else:
+            df_effects_summary = generate_effects_summary(self._effects)
+        return df_effects_summary
+
+    @property
     def sensitivity_summary(self):
         """
         Returns a summary for the sensitivity analysis after calling :meth:`sensitivity_analysis`.
@@ -366,19 +394,20 @@ class DoubleMLMEDS(SampleSplittingMixin):
         # parallel estimation of the models
         parallel = Parallel(n_jobs=n_jobs_models, verbose=0, pre_dispatch="2*n_jobs")
         fitted_models = parallel(
-            delayed(self._fit_model)(score, n_jobs_cv, store_predictions, store_models, ext_pred_dict)
-            for score in self.scores
+            delayed(self._fit_model)(score, n_jobs_cv, store_predictions, store_models, ext_pred_dict) for score in self.scores
         )
 
         # combine the estimates and scores
         framework_list = [None] * len(self.scores)
 
-        for idx, (target,treatment) in enumerate(self.scores):
+        for idx, (target, treatment) in enumerate(self.scores):
             assert fitted_models[idx].target == target
             assert fitted_models[idx].treatment_level == treatment
 
             self._modeldict[f"{target}_{treatment}"] = fitted_models[idx]
-            framework_list[idx] = self._modeldict[f"{target}_{treatment}"].framework #TODO: make framework dict instead of list
+            framework_list[idx] = self._modeldict[
+                f"{target}_{treatment}"
+            ].framework  # TODO: make framework dict instead of list
 
         # aggregate all frameworks
         self._framework = concat(framework_list)
@@ -403,7 +432,6 @@ class DoubleMLMEDS(SampleSplittingMixin):
 
         return model
 
-
     def confint(self, joint=False, level=0.95):
         if self.framework is None:
             raise ValueError("Apply fit() before confint().")
@@ -420,12 +448,18 @@ class DoubleMLMEDS(SampleSplittingMixin):
 
     def evaluate_effects(self):
         ate = self._modeldict["potential_1"].framework - self._modeldict["potential_0"].framework
-        dir_control = self._modeldict["potential_1"].framework - self._modeldict["counterfactual_0"].framework
-        dir_treatment = self._modeldict["counterfactual_1"].framework - self._modeldict["potential_0"].framework
-        indir_control = self._modeldict["potential_1"].framework - self._modeldict["counterfactual_0"].framework
-        indir_treatment = self._modeldict["counterfactual_0"].framework - self._modeldict["potential_0"].framework
+        dir_treat = self._modeldict["potential_1"].framework - self._modeldict["counterfactual_0"].framework
+        dir_control = self._modeldict["counterfactual_1"].framework - self._modeldict["potential_0"].framework
+        indir_treat = self._modeldict["potential_1"].framework - self._modeldict["counterfactual_1"].framework
+        indir_control = self._modeldict["counterfactual_0"].framework - self._modeldict["potential_0"].framework
 
-        return ate, dir_control, dir_treatment, indir_control, indir_treatment
+        self._effects = {
+            "ATE": ate,
+            "DIR_TREAT": dir_treat,
+            "DIR_CONTROL": dir_control,
+            "INDIR_TREAT": indir_treat,
+            "INDIR_CONTROL": indir_control,
+        }
 
     def _check_data(self, meds_data, threshold):
         if not isinstance(meds_data, DoubleMLMEDData):
@@ -446,7 +480,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
         # TODO: Maybe will have to work this out. How to create dict to contain objects.
         modeldict = {f"{target}_{treatment}": None for (target, treatment) in self.scores}
 
-        for (target, treatment) in self.scores:
+        for target, treatment in self.scores:
             if target == "potential":
                 kwargs = {
                     "med_data": self._dml_data,
@@ -485,7 +519,9 @@ class DoubleMLMEDS(SampleSplittingMixin):
                 model = DoubleMLMED(**kwargs)
 
                 model._set_sample_splitting(all_smpls=self.smpls)
-                model._set_sample_inner_splitting(all_inner_smpls=self._smpls_inner, )
+                model._set_sample_inner_splitting(
+                    all_inner_smpls=self._smpls_inner,
+                )
 
             # TODO: Probably will need to set samples for the inner samples.
             modeldict[f"{target}_{treatment}"] = model
@@ -504,13 +540,15 @@ class DoubleMLMEDS(SampleSplittingMixin):
             valid_targets = ["potential", "counterfactual"]
             return list(itertools.product(valid_targets, treatment_levels))
 
-    def tune_ml_models(self,
+    def tune_ml_models(
+        self,
         ml_param_space,
         scoring_methods=None,
         cv=5,
         set_as_params=True,
         return_tune_res=False,
-        optuna_settings=None,):
+        optuna_settings=None,
+    ):
 
         tuning_kwargs = {
             "scoring_methods": scoring_methods,
@@ -521,17 +559,25 @@ class DoubleMLMEDS(SampleSplittingMixin):
         }
         tune_res = {} if return_tune_res else None
 
-        for (key, model) in self.modeldict.items():
+        for key, model in self.modeldict.items():
             if model.target == "potential":
-                res = model.tune_ml_models(ml_param_space={"ml_yx": ml_param_space["ml_yx"],
-                                                           "ml_px": ml_param_space["ml_px"],},
-                                                            **tuning_kwargs)
+                res = model.tune_ml_models(
+                    ml_param_space={
+                        "ml_yx": ml_param_space["ml_yx"],
+                        "ml_px": ml_param_space["ml_px"],
+                    },
+                    **tuning_kwargs,
+                )
             elif model.target == "counterfactual":
-                res = model.tune_ml_models(ml_param_space={"ml_px": ml_param_space["ml_px"],
-                                                           "ml_ymx": ml_param_space["ml_ymx"],
-                                                           "ml_pmx": ml_param_space["ml_pmx"],
-                                                           "ml_nested": ml_param_space["ml_nested"],},
-                                                            **tuning_kwargs)
+                res = model.tune_ml_models(
+                    ml_param_space={
+                        "ml_px": ml_param_space["ml_px"],
+                        "ml_ymx": ml_param_space["ml_ymx"],
+                        "ml_pmx": ml_param_space["ml_pmx"],
+                        "ml_nested": ml_param_space["ml_nested"],
+                    },
+                    **tuning_kwargs,
+                )
 
             if return_tune_res:
                 tune_res[key] = res

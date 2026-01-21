@@ -1,4 +1,3 @@
-
 from random import seed
 
 import numpy as np
@@ -144,7 +143,28 @@ def test_fit(fit_objs):
 
 
 @pytest.mark.ci
-def test_effects(fit_objs):
+def test_effects(fit_objs, individual_med_objs):
     meds_obj, _ = fit_objs
+    effects_names = [
+        "ATE",
+        "DIR_TREAT",
+        "DIR_CONTROL",
+        "INDIR_TREAT",
+        "INDIR_CONTROL",
+    ]
     meds_obj.evaluate_effects()
-    print(meds_obj.summary)
+
+    assert all([names == valid_names for names, valid_names in zip(meds_obj._effects, effects_names)])
+
+    individual_effects = {
+        "ATE": individual_med_objs["potential_1"].framework - individual_med_objs["potential_0"].framework,
+        "DIR_TREAT": individual_med_objs["potential_1"].framework - individual_med_objs["counterfactual_0"].framework,
+        "DIR_CONTROL": individual_med_objs["counterfactual_1"].framework - individual_med_objs["potential_0"].framework,
+        "INDIR_TREAT": individual_med_objs["potential_1"].framework - individual_med_objs["counterfactual_1"].framework,
+        "INDIR_CONTROL": individual_med_objs["counterfactual_0"].framework - individual_med_objs["potential_0"].framework,
+    }
+
+    for effects in effects_names:
+        assert meds_obj._effects[effects].all_thetas == individual_effects[effects].all_thetas
+        assert meds_obj._effects[effects].all_ses == individual_effects[effects].all_ses
+        assert meds_obj._effects[effects].all_pvals == individual_effects[effects].all_pvals
