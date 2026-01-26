@@ -1,7 +1,9 @@
-
 import pandas as pd
 
 
+# TODO: Create cleaner version:
+# Shouldn't have hard coded rows
+# Maybe there is a better way of adding the parameters of interest to the dataframe.
 def generate_effects_summary(effects):
     rows = {
         "ATE": None,
