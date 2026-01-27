@@ -14,7 +14,7 @@ def learners(learner_linear):
 
 
 @pytest.fixture(scope="module")
-def meds_kwargs(meds_data, learners):
+def meds_kwargs(meds_data, learners, double_sample_splitting):
     return {
         "meds_data": meds_data,
         "n_folds": 5,
@@ -25,8 +25,8 @@ def meds_kwargs(meds_data, learners):
         "trimming_threshold": 1e-2,
         "order": 1,
         "multmed": True,
-        "fewsplits": False,
         "draw_sample_splitting": True,
+        "double_sample_splitting": double_sample_splitting,
         **learners,
     }
 
@@ -46,9 +46,12 @@ def smpls_inner_outer(meds_obj):
 def treatment_mediation(meds_obj):
     return meds_obj.treatment_mediation_levels
 
+@pytest.fixture(scope="module", params=[True, False])
+def double_sample_splitting(request):
+    return request.param
 
 @pytest.fixture(scope="module")
-def individual_med_objs(meds_obj, learners, med_factory):
+def individual_med_objs(meds_obj, learners, med_factory, double_sample_splitting):
     kwargs = {
         "score": "MED",
         "n_folds": meds_obj.n_folds,
@@ -57,6 +60,7 @@ def individual_med_objs(meds_obj, learners, med_factory):
         "normalize_ipw": meds_obj.normalize_ipw,
         "trimming_threshold": meds_obj.trimming_threshold,
         "draw_sample_splitting": False,
+        "double_sample_splitting": double_sample_splitting,
     }
     individual_modeldict = {}
     for target, treatment in meds_obj.scores:
@@ -102,14 +106,15 @@ def test_set_smpls(meds_obj, individual_med_objs):
         np.testing.assert_equal(meds_obj.smpls, individual_med_objs[f"{target}_{treatment}"].smpls)
         for (target, treatment) in meds_obj.scores
     ]
-    [
-        (
-            np.testing.assert_equal(meds_obj.smpls_inner, individual_med_objs[f"{target}_{treatment}"].smpls_inner)
-            if target == "counterfactual"
-            else None
-        )
-        for (target, treatment) in meds_obj.scores
-    ]
+    if meds_obj._double_sample_splitting:
+        [
+            (
+                np.testing.assert_equal(meds_obj.smpls_inner, individual_med_objs[f"{target}_{treatment}"].smpls_inner)
+                if target == "counterfactual"
+                else None
+            )
+            for (target, treatment) in meds_obj.scores
+        ]
 
 
 @pytest.fixture(scope="module")

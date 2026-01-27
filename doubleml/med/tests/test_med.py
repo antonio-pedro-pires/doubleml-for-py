@@ -42,6 +42,12 @@ def trimming_threshold(request):
 def treatment_mediation_level_counterfactual(request):
     return request.param
 
+@pytest.fixture(
+    scope="module",
+    params=[True, False]
+)
+def double_sample_splitting(request):
+    return request.param
 
 @pytest.fixture(scope="module")
 def med_objs(
@@ -52,6 +58,7 @@ def med_objs(
     treatment_level,
     n_folds,
     med_factory,
+    double_sample_splitting,
 ):
 
     treatment_level, mediation_level = treatment_mediation_level_counterfactual
@@ -66,6 +73,8 @@ def med_objs(
         "n_folds": n_folds,
         "normalize_ipw": normalize_ipw,
         "trimming_threshold": trimming_threshold,
+        "double_sample_splitting": double_sample_splitting,
+
     }
 
     np.random.seed(3141)
@@ -94,10 +103,11 @@ def med_objs(
     np.random.seed(3141)
     pot_med_obj_ext = med_factory(**pot_kwargs)
 
-    counter_smpls_inner = counter_med_obj._smpls_inner
-    counter_med_obj_ext._smpls = counter_med_obj.smpls
-    counter_med_obj_ext._set_sample_inner_splitting(counter_smpls_inner)
+    if counter_med_obj.double_sample_splitting:
+        counter_smpls_inner = counter_med_obj._smpls_inner
+        counter_med_obj_ext._set_sample_inner_splitting(counter_smpls_inner)
 
+    counter_med_obj_ext._smpls = counter_med_obj.smpls
     pot_med_obj_ext._smpls = pot_med_obj.smpls
     return counter_med_obj, counter_med_obj_ext, pot_med_obj, pot_med_obj_ext
 
@@ -118,8 +128,9 @@ def dml_med_fixture(
     counter_prediction_dict = {"d": _get_preds(counter_med_obj, ["ml_ymx", "ml_px", "ml_pmx", "ml_nested"])}
     pot_prediction_dict = {"d": _get_preds(pot_med_obj, ["ml_yx", "ml_px"])}
 
-    for i in range(counter_med_obj_ext.n_folds_inner):
-        counter_prediction_dict["d"][f"ml_ymx_inner_{i}"] = counter_med_obj_ext.predictions[f"ml_ymx_inner_{i}"][:, :, 0]
+    if counter_med_obj.double_sample_splitting:
+        for i in range(counter_med_obj_ext.n_folds_inner):
+            counter_prediction_dict["d"][f"ml_ymx_inner_{i}"] = counter_med_obj_ext.predictions[f"ml_ymx_inner_{i}"][:, :, 0]
 
     pot_med_obj_ext.fit(external_predictions=pot_prediction_dict)
 
@@ -163,17 +174,17 @@ def test_dml_med_counterfactual_boot(dml_med_fixture):
             atol=1e-4,
         )
 
-
+#TODO: Add way to run this test only when double_sample_splitting fixture is true.
 @pytest.mark.ci
 def test_set_smpls_inner_splitting(med_objs):
     med_obj, med_obj_ext, *_ = med_objs
+    if med_obj.double_sample_splitting:
+        smpls_inner = med_obj.smpls_inner
+        smpls = med_obj.smpls
 
-    smpls_inner = med_obj.smpls_inner
-    smpls = med_obj.smpls
-
-    med_obj_ext._smpls = smpls
-    med_obj_ext._set_sample_inner_splitting(smpls_inner)
-    assert med_obj_ext._smpls_inner == med_obj._smpls_inner
+        med_obj_ext._smpls = smpls
+        med_obj_ext._set_sample_inner_splitting(smpls_inner)
+        assert med_obj_ext._smpls_inner == med_obj._smpls_inner
 
 
 def _get_preds(obj, keys):

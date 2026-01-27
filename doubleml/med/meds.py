@@ -13,9 +13,13 @@ from doubleml.med.utils._meds_utils import generate_effects_summary
 from doubleml.utils._checks import _check_external_predictions
 from doubleml.utils._descriptive import generate_summary
 
-
-# TODO: Add new data class for mediation analysis
-# TODO: Learn how sampling works.
+# TODO Checklist:
+# Add possibility to not perform nested sampling
+# Add ipw_normalization (with ps module?)
+# Add/update data/learner checks
+# Add confint
+# Check bootstrap logic
+# Add sensitivity analysis
 class DoubleMLMEDS(SampleSplittingMixin):
     """Mediation analysis with double machine learning."""
 
@@ -35,8 +39,8 @@ class DoubleMLMEDS(SampleSplittingMixin):
         trimming_threshold=1e-2,
         order=1,
         multmed=True,
-        fewsplits=False,
         draw_sample_splitting=True,
+        double_sample_splitting=True,
     ):
 
         self._check_data(meds_data, trimming_threshold)
@@ -47,9 +51,8 @@ class DoubleMLMEDS(SampleSplittingMixin):
         self._trimming_threshold = trimming_threshold
         self._order = order
         self._multmed = multmed
-        self._fewsplits = fewsplits
         self._normalize_ipw = normalize_ipw
-
+        self._double_sample_splitting = double_sample_splitting
         # _check_resampling_specifications(n_folds, n_rep)
         self._n_folds = n_folds
         self._n_rep = n_rep
@@ -71,16 +74,6 @@ class DoubleMLMEDS(SampleSplittingMixin):
         # Initialize framework constructed after the fit method is called.
         self._framework = None
 
-        # TODO: Add functionality to check if learners are good.
-        if multmed:
-            if fewsplits:
-                pass
-            else:
-                pass
-            pass
-        else:
-            pass
-
         # Set labels for returns
         self._results_labels = ["ATE", "dir.treat", "dir.control", "indir.treat", "indir.control", "Y(0, M(0))"]
 
@@ -96,7 +89,6 @@ class DoubleMLMEDS(SampleSplittingMixin):
         self._smpls_inner = None
         self._n_obs_sample_splitting = self._dml_data.n_obs
         self._strata = None
-        self._double_sample_splitting = True
 
         if draw_sample_splitting:
             self.draw_sample_splitting()
@@ -192,11 +184,11 @@ class DoubleMLMEDS(SampleSplittingMixin):
         return self._multmed
 
     @property
-    def fewsplits(self):
+    def double_sample_splitting(self):
         """
-        Indicates whether the same training data split is used for estimating the nested models of the nuisance parameter .
+        Indicates whether the training data is split for estimating the nested models of the nuisance parameter .
         """
-        return self._fewsplits
+        return self._double_sample_splitting
 
     @property
     def effects(self):
@@ -493,6 +485,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
                     "n_folds_inner": self.n_folds_inner,
                     "trimming_threshold": self.trimming_threshold,
                     "normalize_ipw": self.normalize_ipw,
+                    "double_sample_splitting": self.double_sample_splitting,
                     "draw_sample_splitting": False,
                 }
 
@@ -513,15 +506,17 @@ class DoubleMLMEDS(SampleSplittingMixin):
                     "n_folds_inner": self.n_folds_inner,
                     "trimming_threshold": self.trimming_threshold,
                     "normalize_ipw": self.normalize_ipw,
+                    "double_sample_splitting": self.double_sample_splitting,
                     "draw_sample_splitting": False,
                 }
 
                 model = DoubleMLMED(**kwargs)
 
                 model._set_sample_splitting(all_smpls=self.smpls)
-                model._set_sample_inner_splitting(
-                    all_inner_smpls=self._smpls_inner,
-                )
+                if self.double_sample_splitting:
+                    model._set_sample_inner_splitting(
+                        all_inner_smpls=self._smpls_inner,
+                    )
 
             # TODO: Probably will need to set samples for the inner samples.
             modeldict[f"{target}_{treatment}"] = model
