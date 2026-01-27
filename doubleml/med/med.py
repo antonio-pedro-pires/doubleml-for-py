@@ -113,6 +113,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         trimming_rule="truncate",
         trimming_threshold=1e-2,
         draw_sample_splitting=True,
+        double_sample_splitting=True,
     ):
         self._med_data = med_data
         if not isinstance(med_data, DoubleMLMEDData):
@@ -124,7 +125,9 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         if target == "potential" and ml_yx is None:
             raise ValueError("ml_yx is required when target is 'potential'")
         self.n_folds_inner = n_folds_inner
-        super().__init__(med_data, n_folds, n_rep, score, draw_sample_splitting, double_sample_splitting=True)
+        self._double_sample_splitting = double_sample_splitting
+
+        super().__init__(med_data, n_folds, n_rep, score, draw_sample_splitting, double_sample_splitting=self.double_sample_splitting)
 
         valid_targets = ["potential", "counterfactual"]
         if target not in valid_targets:
@@ -155,6 +158,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         else:
             self._learner = {"ml_px": ml_px, "ml_ymx": ml_ymx, "ml_pmx": ml_pmx, "ml_nested": ml_nested}
         self._check_learners()
+
 
         self._initialize_ml_nuisance_params()
 
@@ -220,6 +224,13 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         return self._mediated
 
     @property
+    def double_sample_splitting(self):
+        """
+        Indicates whether the training data is split for estimating the nested models of the nuisance parameter .
+        """
+        return self._double_sample_splitting
+
+    @property
     def _score_element_names(self):
         return ["psi_a", "psi_b"]
 
@@ -255,13 +266,13 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
     def _initialize_ml_nuisance_params(self):
         if self._target == "potential":
             learners = ["ml_yx", "ml_px"]
-            params_names = learners
         else:
             learners = ["ml_px", "ml_ymx", "ml_pmx", "ml_nested"]
-            inner_ymx_names = [f"ml_ymx_inner_{i}" for i in range(self.n_folds)]
-            params_names = learners + inner_ymx_names
+            if self.double_sample_splitting:
+                inner_ymx_learners = [f"ml_ymx_inner_{i}" for i in range(self.n_folds)]
+                learners += inner_ymx_learners
 
-        self._params = {learner: {key: [None] * self.n_rep for key in self._dml_data.d_cols} for learner in params_names}
+        self._params = {learner: {key: [None] * self.n_rep for key in self._dml_data.d_cols} for learner in learners}
 
     def _nuisance_est(
         self,
@@ -380,76 +391,64 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
                 )
             pmx_hat["preds"] = np.clip(pmx_hat["preds"], 1e-12, 1 - 1e-12)
 
-            if ymx_external:
-                # expect per-inner-fold keys ml_ymx_inner_i
-                missing = [
-                    i
-                    for i in range(self.n_folds_inner)
-                    if (f"ml_ymx_inner_{i}") not in external_predictions.keys()
-                    or external_predictions[f"ml_ymx_inner_{i}"] is None
-                ]
-                if len(missing) > 0:
-                    raise ValueError(
-                        "When providing external predictions for ml_ymx, also inner predictions for all inner folds "
-                        f"have to be provided (missing: {', '.join([str(i) for i in missing])})."
+            inner_predictions={}
+            inner_targets={}
+            if self.double_sample_splitting:
+                if ymx_external:
+                    # expect per-inner-fold keys ml_ymx_inner_i
+                    missing = [
+                        i
+                        for i in range(self.n_folds_inner)
+                        if (f"ml_ymx_inner_{i}") not in external_predictions.keys()
+                        or external_predictions[f"ml_ymx_inner_{i}"] is None
+                    ]
+                    if len(missing) > 0:
+                        raise ValueError(
+                            "When providing external predictions for ml_ymx, also inner predictions for all inner folds "
+                            f"have to be provided (missing: {', '.join([str(i) for i in missing])})."
+                        )
+                    ymx_hat_inner = [external_predictions[f"ml_ymx_inner_{i}"] for i in range(self.n_folds_inner)]
+                    ymx_hat = {
+                        "preds": external_predictions["ml_ymx"],
+                        "preds_inner": ymx_hat_inner,
+                        "targets": self._dml_data.y,
+                        "models": None,
+                    }
+                else:
+                    # TODO: Have to filter and only have observations where d=1
+                    ymx_hat = _double_dml_cv_predict(
+                        estimator=self._learner["ml_ymx"],
+                        estimator_name=self._learner["ml_ymx"],
+                        x=xm,
+                        y=y,
+                        smpls=smpls_d1,
+                        smpls_inner=self._DoubleML__smpls__inner,
+                        n_jobs=n_jobs_cv,
+                        est_params=self._get_params("ml_ymx"),
+                        method=self._predict_method["ml_ymx"],
                     )
-                ymx_hat_inner = [external_predictions[f"ml_ymx_inner_{i}"] for i in range(self.n_folds_inner)]
-                ymx_hat = {
-                    "preds": external_predictions["ml_ymx"],
-                    "preds_inner": ymx_hat_inner,
-                    "targets": self._dml_data.y,
-                    "models": None,
-                }
-            else:
-                # TODO: Have to filter and only have observations where d=1
-                ymx_hat = _double_dml_cv_predict(
-                    estimator=self._learner["ml_ymx"],
-                    estimator_name=self._learner["ml_ymx"],
-                    x=xm,
-                    y=y,
-                    smpls=smpls_d1,
-                    smpls_inner=self._DoubleML__smpls__inner,
-                    n_jobs=n_jobs_cv,
-                    est_params=self._get_params("ml_ymx"),
-                    method=self._predict_method["ml_ymx"],
-                )
 
-            if nested_external:
-                nested_hat = {"preds": external_predictions["ml_nested"], "targets": None, "models": None}
-            else:
-                ymx_inner_preds = np.zeros_like(y)
-                for pred, (train, test) in zip(ymx_hat["preds_inner"], smpls):
-                    ymx_inner_preds[train] += pred[train]
-                ymx_inner_preds /= len(ymx_hat["preds_inner"])
+                if nested_external:
+                    nested_hat = {"preds": external_predictions["ml_nested"], "targets": None, "models": None}
+                else:
+                    ymx_inner_preds = np.zeros_like(y)
+                    for pred, (train, test) in zip(ymx_hat["preds_inner"], smpls):
+                        ymx_inner_preds[train] += pred[train]
+                    ymx_inner_preds /= len(ymx_hat["preds_inner"])
 
-                nested_hat = _dml_cv_predict(
-                    self._learner["ml_nested"],
-                    xm,
-                    ymx_inner_preds,
-                    smpls=smpls_d0,
-                    n_jobs=n_jobs_cv,
-                    est_params=self._get_params("ml_nested"),
-                    method=self._predict_method["ml_nested"],
-                    return_models=return_models,
-                )
-
-            preds = {
-                "predictions": {
-                    "ml_px": px_hat["preds"],
-                    "ml_pmx": pmx_hat["preds"],
-                    "ml_ymx": ymx_hat["preds"],
-                    "ml_nested": nested_hat["preds"],
-                    # store inner predictions as separate keys per inner fold
-                    # ml_M inner
-                    **{f"ml_ymx_inner_{i}": ymx_hat["preds_inner"][i] for i in range(len(ymx_hat["preds_inner"]))},
-                },
-                "targets": {
-                    "ml_px": px_hat["targets"],
-                    "ml_pmx": pmx_hat["targets"],
-                    "ml_ymx": ymx_hat["targets"],
-                    "ml_nested": nested_hat["targets"],
-                    **(
-                        {
+                    nested_hat = _dml_cv_predict(
+                        self._learner["ml_nested"],
+                        xm,
+                        ymx_inner_preds,
+                        smpls=smpls_d0,
+                        n_jobs=n_jobs_cv,
+                        est_params=self._get_params("ml_nested"),
+                        method=self._predict_method["ml_nested"],
+                        return_models=return_models,
+                    )
+                # store inner predictions as separate keys per inner fold
+                inner_predictions = {f"ml_ymx_inner_{i}": ymx_hat["preds_inner"][i] for i in range(len(ymx_hat["preds_inner"]))}
+                inner_targets= {
                             f"ml_ymx_inner_{i}": (
                                 ymx_hat.get("targets_inner")[i]
                                 if ymx_hat.get("targets_inner") is not None and i < len(ymx_hat["targets_inner"])
@@ -457,7 +456,51 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
                             )
                             for i in range(len(ymx_hat.get("preds_inner", [])))
                         }
-                    ),
+
+            else:
+                if ymx_external:
+                    ymx_hat = {
+                        "preds": external_predictions["ml_ymx"],
+                        "targets": None,
+                        "models": None,
+                    }
+                else:
+                    ymx_hat = _dml_cv_predict(
+                        self.learner["ml_ymx"],
+                        x=xm,
+                        y=y,
+                        smpls=smpls_d1,
+                        n_jobs=n_jobs_cv,
+                        est_params=self._get_params("ml_ymx"),
+                        method=self._predict_method["ml_ymx"],
+                    )
+                if nested_external:
+                    nested_hat = {"preds": external_predictions["ml_nested"], "targets": None, "models": None}
+                else:
+                    nested_hat = _dml_cv_predict(
+                        self.learner["ml_nested"],
+                        x=xm,
+                        y=ymx_hat["preds"],
+                        smpls=smpls_d0,
+                        n_jobs=n_jobs_cv,
+                        est_params=self._get_params("ml_nested"),
+                        method=self._predict_method["ml_nested"],
+                        return_models=return_models,
+                    )
+            preds = {
+                "predictions": {
+                    "ml_px": px_hat["preds"],
+                    "ml_pmx": pmx_hat["preds"],
+                    "ml_ymx": ymx_hat["preds"],
+                    "ml_nested": nested_hat["preds"],
+                    **inner_predictions,
+                },
+                "targets": {
+                    "ml_px": px_hat["targets"],
+                    "ml_pmx": pmx_hat["targets"],
+                    "ml_ymx": ymx_hat["targets"],
+                    "ml_nested": nested_hat["targets"],
+                    **inner_targets,
                 },
                 "models": {
                     "ml_px": px_hat["models"],
@@ -650,7 +693,7 @@ class DoubleMLMEDP(DoubleMLMED):
         trimming_rule="truncate",
         trimming_threshold=1e-2,
         order=1,
-        fewsplits=False,
+        double_sample_splitting=False,
         draw_sample_splitting=True,
     ):
         warnings.warn(
