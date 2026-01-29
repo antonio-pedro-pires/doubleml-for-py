@@ -10,7 +10,6 @@ from doubleml.double_ml_framework import concat
 from doubleml.double_ml_sampling_mixins import SampleSplittingMixin
 from doubleml.med.med import DoubleMLMED
 from doubleml.med.utils._meds_utils import generate_effects_summary
-from doubleml.utils._checks import _check_external_predictions
 from doubleml.utils._descriptive import generate_summary
 
 # TODO Checklist:
@@ -25,7 +24,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
 
     def __init__(
         self,
-        meds_data,
+        dml_data,
         ml_px,
         ml_yx,
         ml_ymx,
@@ -43,8 +42,8 @@ class DoubleMLMEDS(SampleSplittingMixin):
         double_sample_splitting=True,
     ):
 
-        self._check_data(meds_data, trimming_threshold)
-        self._dml_data = meds_data
+        self._check_data(dml_data, trimming_threshold)
+        self._dml_data = dml_data
         self._is_cluster_data = self._dml_data.is_cluster_data
         self._treatment_mediation_levels = self._initialize_treatment_mediation_levels()
 
@@ -59,8 +58,8 @@ class DoubleMLMEDS(SampleSplittingMixin):
         self._n_folds_inner = n_folds_inner
 
         self._multmed = multmed
+        self._scores_combinations =self._valid_scores_combinations()
         self._scores = self._initialize_scores()
-
         # initialize learners and parameters which are set model specific
         self._learner = {
             "ml_px": clone(ml_px),
@@ -190,6 +189,13 @@ class DoubleMLMEDS(SampleSplittingMixin):
         """
         return self._double_sample_splitting
 
+    @property
+    def treatments(self):
+        """
+        Describes the different treatment levels
+        """
+        return np.unique(self._dml_data.d)
+    
     @property
     def effects(self):
         """
@@ -378,8 +384,8 @@ class DoubleMLMEDS(SampleSplittingMixin):
 
     def fit(self, n_jobs_models=None, n_jobs_cv=None, store_predictions=True, store_models=False, external_predictions=None):
         if external_predictions is not None:
-            _check_external_predictions(external_predictions)
-            # ext_pred_dict = _rename_external_predictions(external_predictions)
+            self._check_external_predictions(external_predictions)
+            ext_pred_dict = external_predictions
         else:
             ext_pred_dict = None
 
@@ -392,14 +398,12 @@ class DoubleMLMEDS(SampleSplittingMixin):
         # combine the estimates and scores
         framework_list = [None] * len(self.scores)
 
-        for idx, (target, treatment) in enumerate(self.scores):
+        for idx, (score, (target, treatment)) in enumerate(zip(self.scores, self._scores_combinations)):
             assert fitted_models[idx].target == target
             assert fitted_models[idx].treatment_level == treatment
 
-            self._modeldict[f"{target}_{treatment}"] = fitted_models[idx]
-            framework_list[idx] = self._modeldict[
-                f"{target}_{treatment}"
-            ].framework  # TODO: make framework dict instead of list
+            self._modeldict[score] = fitted_models[idx]
+            framework_list[idx] = self._modeldict[score].framework  # TODO: make framework dict instead of list
 
         # aggregate all frameworks
         self._framework = concat(framework_list)
@@ -407,10 +411,9 @@ class DoubleMLMEDS(SampleSplittingMixin):
         return self
 
     def _fit_model(self, score, n_jobs_cv=None, store_predictions=True, store_models=False, external_predictions_dict=None):
-        target, treatment = score
-        model = self.modeldict[f"{target}_{treatment}"]
+        model = self.modeldict[score]
         if external_predictions_dict is not None:
-            external_predictions = external_predictions_dict[f"{model.treatment_level}_{model.mediation_level}"]
+            external_predictions = external_predictions_dict[score]
         else:
             external_predictions = None
 
@@ -470,9 +473,10 @@ class DoubleMLMEDS(SampleSplittingMixin):
     def _initialize_models(self):
 
         # TODO: Maybe will have to work this out. How to create dict to contain objects.
-        modeldict = {f"{target}_{treatment}": None for (target, treatment) in self.scores}
+        modeldict = {score: object for score in self.scores}
 
-        for target, treatment in self.scores:
+        for score, (target, treatment) in zip(self.scores, self._scores_combinations):
+            assert f"{target}_{treatment}"==score
             if target == "potential":
                 kwargs = {
                     "med_data": self._dml_data,
@@ -530,11 +534,47 @@ class DoubleMLMEDS(SampleSplittingMixin):
         return list(itertools.product(treatment_levels, mediation_levels))
 
     def _initialize_scores(self):
+        return [f"{target}_{treatment}" for target, treatment in self._scores_combinations]
+    
+    def _valid_scores_combinations(self):
         if all(self._dml_data.binary_treats):
-            treatment_levels = [0, 1]
-            valid_targets = ["potential", "counterfactual"]
-            return list(itertools.product(valid_targets, treatment_levels))
+            treatment_levels = self.treatments
+            self.valid_targets = ["potential", "counterfactual"]
+            score_combinations = list(itertools.product(self.valid_targets, map(int, treatment_levels)))
+        return score_combinations
 
+    def _check_external_predictions(self, external_predictions_dict):
+        external_predictions_keys = external_predictions_dict.keys()
+        if not set(external_predictions_keys).issubset(set(self.scores)):
+                        raise ValueError(
+                "external_predictions must be a subset of all scores. "
+                + f"Expected keys: {set(self.scores)}. "
+                + f"Passed keys: {set(external_predictions_keys)}."
+            )
+
+        expected_learners_keys = ["ml_px",
+                             "ml_pmx",
+                             "ml_yx",
+                             "ml_ymx",
+                             "ml_nested",
+                             ]
+        if self.double_sample_splitting:
+            expected_inner_learners_keys = [f"ml_ymx_inner_{i}" for i in range(self.n_folds)]
+            expected_learners_keys += expected_inner_learners_keys
+
+        #TODO: Do not hardcode "d". This has been set because multiple treatment levels have not been implemented yet.
+        for key, value in external_predictions_dict.items():
+            if not isinstance(value, dict):
+                raise TypeError(
+                    f"external_predictions[{key}] must be a dictionary. " + f"Object of type {type(value)} passed."
+                )
+            if not set(value["d"].keys()).issubset(expected_learners_keys):
+                raise ValueError(
+                    f"external_predictions[{key}] must be a subset of {set(expected_learners_keys)}. "
+                    + f"Passed keys: {set(value["d"].keys())}."
+                )
+        return
+    
     def tune_ml_models(
         self,
         ml_param_space,

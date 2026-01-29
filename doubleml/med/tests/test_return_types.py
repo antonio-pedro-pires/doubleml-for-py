@@ -26,7 +26,7 @@ def target(request):
 
 
 @pytest.fixture(scope="module")
-def dml_med_fixture(target, treatment_level, meds_data, med_factory, learner_linear):
+def dml_med_fixture(target, treatment_level, dml_data, med_factory, learner_linear):
     # dml_args["target"] = target # Removed to avoid duplication
 
     dml_med_obj = med_factory(target, treatment_level, learner_linear, **dml_args)

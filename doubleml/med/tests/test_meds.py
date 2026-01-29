@@ -14,9 +14,9 @@ def learners(learner_linear):
 
 
 @pytest.fixture(scope="module")
-def meds_kwargs(meds_data, learners, double_sample_splitting):
+def meds_kwargs(dml_data, learners, double_sample_splitting):
     return {
-        "meds_data": meds_data,
+        "dml_data": dml_data,
         "n_folds": 5,
         "n_rep": 1,
         "n_folds_inner": 5,
@@ -63,30 +63,30 @@ def individual_med_objs(meds_obj, learners, med_factory, double_sample_splitting
         "double_sample_splitting": double_sample_splitting,
     }
     individual_modeldict = {}
-    for target, treatment in meds_obj.scores:
-        if target == "potential":
+    for score, model in meds_obj.modeldict.items():
+        if model.target == "potential":
             kwargs.update(
                 {
                     "learners": learners,
-                    "target": target,
-                    "treatment_level": treatment,
+                    "target": model.target,
+                    "treatment_level": model.treatment_level,
                 }
             )
-            model = med_factory(**kwargs)
-            model._smpls = meds_obj._smpls
-            individual_modeldict[f"{target}_{treatment}"] = model
-        elif target == "counterfactual":
+            ind_model = med_factory(**kwargs)
+            ind_model._smpls = meds_obj._smpls
+            individual_modeldict[score] = ind_model
+        elif model.target == "counterfactual":
             kwargs.update(
                 {
                     "learners": learners,
-                    "target": target,
-                    "treatment_level": treatment,
+                    "target": model.target,
+                    "treatment_level": model.treatment_level,
                 }
             )
-            model = med_factory(**kwargs)
-            model._smpls = meds_obj._smpls
-            model._smpls_inner = meds_obj._smpls_inner
-            individual_modeldict[f"{target}_{treatment}"] = model
+            ind_model = med_factory(**kwargs)
+            ind_model._smpls = meds_obj._smpls
+            ind_model._smpls_inner = meds_obj._smpls_inner
+            individual_modeldict[score] = ind_model
 
     return individual_modeldict
 
@@ -102,18 +102,19 @@ def test_meds_modeldict(meds_obj):
 def test_set_smpls(meds_obj, individual_med_objs):
     # Test that smpls and smpls_inner are correctly set for every model.
     # TODO: Add failing tests
-    [
-        np.testing.assert_equal(meds_obj.smpls, individual_med_objs[f"{target}_{treatment}"].smpls)
-        for (target, treatment) in meds_obj.scores
-    ]
+    reference_smpls = meds_obj.smpls
+    reference_smpls_inner = meds_obj.smpls_inner
+
+    [np.testing.assert_equal(reference_smpls, model.smpls)
+        for _, model in individual_med_objs.items()]
     if meds_obj._double_sample_splitting:
         [
             (
-                np.testing.assert_equal(meds_obj.smpls_inner, individual_med_objs[f"{target}_{treatment}"].smpls_inner)
-                if target == "counterfactual"
+                np.testing.assert_equal(reference_smpls_inner, model.smpls_inner)
+                if model.target == "counterfactual"
                 else None
             )
-            for (target, treatment) in meds_obj.scores
+            for _, model in individual_med_objs.items()
         ]
 
 
@@ -148,7 +149,7 @@ def test_fit(fit_objs):
 
 
 @pytest.mark.ci
-def test_effects(fit_objs, individual_med_objs):
+def test_effects_binary_treats(fit_objs, individual_med_objs):
     meds_obj, _ = fit_objs
     effects_names = [
         "ATE",

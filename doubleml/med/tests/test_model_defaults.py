@@ -9,7 +9,7 @@ def target(request):
 
 
 @pytest.fixture(scope="module")
-def dml_med_fixture(target, meds_data, med_factory, learner_linear):
+def dml_med_fixture(target, dml_data, med_factory, learner_linear):
     if target == "potential":
         med_obj = med_factory(target, 1, learner_linear)
     if target == "counterfactual":

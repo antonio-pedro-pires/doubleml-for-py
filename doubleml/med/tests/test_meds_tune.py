@@ -13,9 +13,9 @@ def learners(learner_tree):
 
 
 @pytest.fixture(scope="module")
-def med_objs(meds_data, learners, med_factory):
+def med_objs(dml_data, learners, med_factory):
 
-    meds_obj = DoubleMLMEDS(meds_data, **learners)
+    meds_obj = DoubleMLMEDS(dml_data, **learners)
 
     smpls = meds_obj.smpls
     smpls_inner = meds_obj.smpls_inner
