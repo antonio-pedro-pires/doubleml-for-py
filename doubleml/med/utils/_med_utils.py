@@ -149,12 +149,12 @@ def recombine_samples(
     return result
 
 
-def _check_inner_sample_splitting(all_inner_smpls, smpls):
+def _check_inner_sample_splitting(all_inner_smpls, smpls, n_rep):
     if not isinstance(all_inner_smpls, list):
         raise TypeError(
             f"all_inner_smpls must be a list type. {str(all_inner_smpls)} of type {str(type(all_inner_smpls))} was passed."
         )
-    if not len(all_inner_smpls) == 1:
+    if not len(all_inner_smpls) == n_rep:
         raise ValueError("all_inner_smpls must consist of exactly one element.")
     if not isinstance(all_inner_smpls[0], list):
         raise TypeError("all_inner_smpls must be a list of lists.")

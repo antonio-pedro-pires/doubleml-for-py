@@ -656,7 +656,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         self,
         all_inner_smpls,
     ):
-        self._smpls_inner, self.n_folds_inner = _check_inner_sample_splitting(all_inner_smpls, self.smpls)
+        self._smpls_inner, self.n_folds_inner = _check_inner_sample_splitting(all_inner_smpls, self.smpls, self.n_rep)
 
     def _set_sample_splitting(self, all_smpls, all_smpls_cluster=None, is_cluster_data=False):
         if all_smpls_cluster is not None or is_cluster_data:

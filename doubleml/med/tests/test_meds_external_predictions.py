@@ -19,7 +19,7 @@ def meds_kwargs(dml_data, learners, double_sample_splitting):
     return {
         "dml_data": dml_data,
         "n_folds": 5,
-        "n_rep": 1,
+        "n_rep": 3,
         "n_folds_inner": 5,
         "score": "MED",
         "normalize_ipw": False,
@@ -71,5 +71,4 @@ def test_external_predictions_binary_treat(meds_fixture_binary_treat):
     meds_obj, meds_obj_ext = meds_fixture_binary_treat
 
     for elem in values_of_interest:
-        for score in meds_obj.scores:
-            assert all(meds_obj.framework.__getattribute__(elem)==meds_obj_ext.framework.__getattribute__(elem)) 
+        assert np.array_equal(meds_obj.framework.__getattribute__(elem),meds_obj_ext.framework.__getattribute__(elem)) 
