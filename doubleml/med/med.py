@@ -166,6 +166,8 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         self._trimming_rule = trimming_rule
         self._trimming_threshold = trimming_threshold
         self._external_predictions_implemented = True
+        self._sensitivity_implemented = False
+
 
     @property
     def target(self):

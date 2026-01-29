@@ -14,7 +14,7 @@ from doubleml.tests._utils_tune_optuna import (
 
 
 @pytest.fixture(scope="session")
-def meds_data():
+def dml_data():
     return make_med_data()
 
 
@@ -74,13 +74,13 @@ def optuna_settings(request):
 
 
 @pytest.fixture(scope="session")
-def med_factory(meds_data):
+def med_factory(dml_data):
     def _factory(target, treatment_level, learners, **kwargs):
         if target == "potential":
             active_learners = {k: clone(v) for k, v in learners.items() if k in ["ml_yx", "ml_px"]}
         elif target == "counterfactual":
             active_learners = {k: clone(v) for k, v in learners.items() if k in ["ml_px", "ml_ymx", "ml_pmx", "ml_nested"]}
 
-        return DoubleMLMED(med_data=meds_data, target=target, treatment_level=treatment_level, **active_learners, **kwargs)
+        return DoubleMLMED(med_data=dml_data, target=target, treatment_level=treatment_level, **active_learners, **kwargs)
 
     return _factory

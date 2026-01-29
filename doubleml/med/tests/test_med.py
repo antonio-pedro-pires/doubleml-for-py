@@ -121,7 +121,7 @@ def dml_med_fixture(
 
     counter_med_obj, counter_med_obj_ext, pot_med_obj, pot_med_obj_ext = med_objs
 
-    for obj in med_objs:
+    for obj in [counter_med_obj, pot_med_obj]:
         np.random.seed(3141)
         obj.fit()
 
@@ -129,10 +129,11 @@ def dml_med_fixture(
     pot_prediction_dict = {"d": _get_preds(pot_med_obj, ["ml_yx", "ml_px"])}
 
     if counter_med_obj.double_sample_splitting:
-        for i in range(counter_med_obj_ext.n_folds_inner):
-            counter_prediction_dict["d"][f"ml_ymx_inner_{i}"] = counter_med_obj_ext.predictions[f"ml_ymx_inner_{i}"][:, :, 0]
+        for i in range(counter_med_obj.n_folds_inner):
+            counter_prediction_dict["d"][f"ml_ymx_inner_{i}"] = counter_med_obj.predictions[f"ml_ymx_inner_{i}"][:, :, 0]
 
     pot_med_obj_ext.fit(external_predictions=pot_prediction_dict)
+    counter_med_obj_ext.fit(external_predictions=counter_prediction_dict)
 
     counter_res_dict = _get_res(counter_med_obj, counter_med_obj_ext, boot_methods, n_rep_boot)
     pot_res_dict = _get_res(pot_med_obj, pot_med_obj_ext, boot_methods, n_rep_boot)
