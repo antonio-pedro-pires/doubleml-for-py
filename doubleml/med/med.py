@@ -134,14 +134,6 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
             raise ValueError(f"Invalid target {target}. " + "Valid targets " + " or ".join(valid_targets) + ".")
         self._target = target
 
-        valid_score = ["MED"]
-        self._score = score
-        _check_score(score, valid_score)
-
-        self._score_function = score_function
-        valid_scores_types = ["efficient", "efficient-alt"]
-        _check_score(score_function, valid_scores_types)
-
         self._treatment_level = treatment_level
         self._mediation_level = mediation_level
 

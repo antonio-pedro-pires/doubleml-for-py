@@ -26,10 +26,10 @@ def target(request):
 
 
 @pytest.fixture(scope="module")
-def dml_med_fixture(target, treatment_level, dml_data, med_factory, learner_linear):
-    # dml_args["target"] = target # Removed to avoid duplication
+def dml_med_fixture(binary_targets, binary_treats, dml_data, med_factory, learner_linear):
+    # dml_args["binary_targets"] = target # Removed to avoid duplication
 
-    dml_med_obj = med_factory(target, treatment_level, learner_linear, **dml_args)
+    dml_med_obj = med_factory(binary_targets, binary_treats, learner_linear, **dml_args)
 
     dml_objs = (dml_med_obj, DoubleMLMED)
     return dml_objs
