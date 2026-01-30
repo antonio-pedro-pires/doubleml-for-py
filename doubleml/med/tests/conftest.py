@@ -17,12 +17,6 @@ from doubleml.tests._utils_tune_optuna import (
 def dml_data():
     return make_med_data()
 
-
-@pytest.fixture(scope="session", params=[0, 1])
-def treatment_level(request):
-    return request.param
-
-
 @pytest.fixture(scope="session")
 def learner_linear():
     return {
@@ -55,6 +49,17 @@ def learner_forest():
         "ml_nested": RandomForestRegressor(max_depth=5, n_estimators=10, random_state=42),
     }
 
+@pytest.fixture(scope="session", params=[0, 1])
+def binary_treats(request):
+    return request.param
+
+@pytest.fixture(scope="session", params=["potential", "counterfactual"])
+def binary_targets(request):
+    return request.param
+
+@pytest.fixture(scope="session")
+def binary_scores(binary_targets, binary_treats):
+    return f"{binary_targets}_{binary_treats}"
 
 @pytest.fixture(scope="session")
 def optuna_params():
@@ -82,5 +87,5 @@ def med_factory(dml_data):
             active_learners = {k: clone(v) for k, v in learners.items() if k in ["ml_px", "ml_ymx", "ml_pmx", "ml_nested"]}
 
         return DoubleMLMED(med_data=dml_data, target=target, treatment_level=treatment_level, **active_learners, **kwargs)
-
+    
     return _factory

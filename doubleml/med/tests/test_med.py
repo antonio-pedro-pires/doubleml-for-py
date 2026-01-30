@@ -52,24 +52,21 @@ def double_sample_splitting(request):
 @pytest.fixture(scope="module")
 def med_objs(
     learners,
+    binary_targets,
+    binary_scores,
     normalize_ipw,
     trimming_threshold,
-    treatment_mediation_level_counterfactual,
-    treatment_level,
+    binary_treats,
     n_folds,
     med_factory,
     double_sample_splitting,
 ):
 
-    treatment_level, mediation_level = treatment_mediation_level_counterfactual
-
-    counter_kwargs = {
-        "target": "counterfactual",
-        "treatment_level": treatment_level,
+    kwargs = {
+        "target": binary_targets,
+        "treatment_level": binary_treats,
         "learners": learners,
-        "mediation_level": mediation_level,
-        "score": "MED",
-        "score_function": "efficient-alt",
+        "score": binary_scores,
         "n_folds": n_folds,
         "normalize_ipw": normalize_ipw,
         "trimming_threshold": trimming_threshold,
@@ -78,38 +75,18 @@ def med_objs(
     }
 
     np.random.seed(3141)
-    counter_med_obj = med_factory(**counter_kwargs)
+    med_obj = med_factory(**kwargs)
 
     np.random.seed(3141)
-    counter_med_obj_ext = med_factory(**counter_kwargs)
+    med_obj_ext = med_factory(**kwargs)
 
-    mediation_level = treatment_level
+    if med_obj.double_sample_splitting:
+        smpls_inner = med_obj._smpls_inner
+        med_obj_ext._set_sample_inner_splitting(smpls_inner)
 
-    pot_kwargs = {
-        "target": "potential",
-        "treatment_level": treatment_level,
-        "learners": learners,
-        "mediation_level": mediation_level,
-        "score": "MED",
-        "score_function": "efficient-alt",
-        "n_folds": n_folds,
-        "normalize_ipw": normalize_ipw,
-        "trimming_threshold": trimming_threshold,
-    }
+    med_obj_ext._smpls = med_obj.smpls
 
-    np.random.seed(3141)
-    pot_med_obj = med_factory(**pot_kwargs)
-
-    np.random.seed(3141)
-    pot_med_obj_ext = med_factory(**pot_kwargs)
-
-    if counter_med_obj.double_sample_splitting:
-        counter_smpls_inner = counter_med_obj._smpls_inner
-        counter_med_obj_ext._set_sample_inner_splitting(counter_smpls_inner)
-
-    counter_med_obj_ext._smpls = counter_med_obj.smpls
-    pot_med_obj_ext._smpls = pot_med_obj.smpls
-    return counter_med_obj, counter_med_obj_ext, pot_med_obj, pot_med_obj_ext
+    return med_obj, med_obj_ext
 
 
 @pytest.fixture(scope="module")
@@ -119,66 +96,54 @@ def dml_med_fixture(
 ):
     boot_methods = ["normal"]
 
-    counter_med_obj, counter_med_obj_ext, pot_med_obj, pot_med_obj_ext = med_objs
+    med_obj, med_obj_ext = med_objs
 
-    for obj in [counter_med_obj, pot_med_obj]:
+    for obj in med_objs:
         np.random.seed(3141)
         obj.fit()
+    
+    prediction_dict = {"d": _get_preds(med_obj, med_obj.learner.keys())}
 
-    counter_prediction_dict = {"d": _get_preds(counter_med_obj, ["ml_ymx", "ml_px", "ml_pmx", "ml_nested"])}
-    pot_prediction_dict = {"d": _get_preds(pot_med_obj, ["ml_yx", "ml_px"])}
+    if med_obj.double_sample_splitting and med_obj.target == "counterfactual":
+        for i in range(med_obj.n_folds_inner):
+            prediction_dict["d"][f"ml_ymx_inner_{i}"] = med_obj.predictions[f"ml_ymx_inner_{i}"][:, :, 0]
 
-    if counter_med_obj.double_sample_splitting:
-        for i in range(counter_med_obj.n_folds_inner):
-            counter_prediction_dict["d"][f"ml_ymx_inner_{i}"] = counter_med_obj.predictions[f"ml_ymx_inner_{i}"][:, :, 0]
+    med_obj_ext.fit(external_predictions=prediction_dict)
 
-    pot_med_obj_ext.fit(external_predictions=pot_prediction_dict)
-    counter_med_obj_ext.fit(external_predictions=counter_prediction_dict)
+    res_dict = _get_res(med_obj, med_obj_ext, boot_methods, n_rep_boot)
 
-    counter_res_dict = _get_res(counter_med_obj, counter_med_obj_ext, boot_methods, n_rep_boot)
-    pot_res_dict = _get_res(pot_med_obj, pot_med_obj_ext, boot_methods, n_rep_boot)
-
-    return counter_res_dict, pot_res_dict
+    return res_dict
 
 
 @pytest.mark.ci
 def test_dml_med_coef(dml_med_fixture):
-    counter_res_dict, pot_res_dict = dml_med_fixture
-    assert math.isclose(counter_res_dict["coef"], counter_res_dict["coef_ext"], rel_tol=1e-9, abs_tol=1e-4)
-    assert math.isclose(pot_res_dict["coef"], pot_res_dict["coef_ext"], rel_tol=1e-9, abs_tol=1e-4)
+    res_dict = dml_med_fixture
+    assert math.isclose(res_dict["coef"], res_dict["coef_ext"], rel_tol=1e-9, abs_tol=1e-4)
 
 
 @pytest.mark.ci
 def test_dml_med_se(dml_med_fixture):
-    counter_res_dict, pot_res_dict = dml_med_fixture
-    assert math.isclose(counter_res_dict["se"], counter_res_dict["se_ext"], rel_tol=1e-9, abs_tol=1e-4)
-    assert math.isclose(pot_res_dict["se"], pot_res_dict["se_ext"], rel_tol=1e-9, abs_tol=1e-4)
+    res_dict = dml_med_fixture
+    assert math.isclose(res_dict["se"], res_dict["se_ext"], rel_tol=1e-9, abs_tol=1e-4)
 
 
 @pytest.mark.ci
-def test_dml_med_counterfactual_boot(dml_med_fixture):
-    counter_res_dict, pot_res_dict = dml_med_fixture
+def test_dml_med_boot(dml_med_fixture):
+    res_dict = dml_med_fixture
 
-    for bootstrap in counter_res_dict["boot_methods"]:
+    for bootstrap in res_dict["boot_methods"]:
         assert np.allclose(
-            counter_res_dict["boot_t_stat" + bootstrap],
-            counter_res_dict["boot_t_stat" + bootstrap + "_ext"],
+            res_dict["boot_t_stat" + bootstrap],
+            res_dict["boot_t_stat" + bootstrap + "_ext"],
             rtol=1e-9,
             atol=1e-4,
         )
 
-    for bootstrap in pot_res_dict["boot_methods"]:
-        assert np.allclose(
-            pot_res_dict["boot_t_stat" + bootstrap],
-            pot_res_dict["boot_t_stat" + bootstrap + "_ext"],
-            rtol=1e-9,
-            atol=1e-4,
-        )
 
 #TODO: Add way to run this test only when double_sample_splitting fixture is true.
 @pytest.mark.ci
 def test_set_smpls_inner_splitting(med_objs):
-    med_obj, med_obj_ext, *_ = med_objs
+    med_obj, med_obj_ext = med_objs
     if med_obj.double_sample_splitting:
         smpls_inner = med_obj.smpls_inner
         smpls = med_obj.smpls

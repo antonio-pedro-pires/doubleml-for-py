@@ -17,7 +17,7 @@ def fit_med_manual(
     learner_ymx=None,
     learner_pmx=None,
     learner_nested=None,
-    target="potential",
+    binary_targets="potential",
     treatment_level=1,
     mediation_level=1,
     all_smpls=None,
@@ -25,8 +25,8 @@ def fit_med_manual(
     n_rep=1,
     trimming_threshold=1e-2,
 ):
-    if target not in ["potential", "counterfactual"]:
-        raise ValueError(f"Invalid target: {target}")
+    if binary_targets not in ["potential", "counterfactual"]:
+        raise ValueError(f"Invalid targets: {binary_targets}")
 
     n_obs = len(y)
     thetas = np.zeros(n_rep)
@@ -55,7 +55,7 @@ def fit_med_manual(
             learner_nested,
             smpls,
             smpls_inner,
-            target,
+            binary_targets,
             treatment_level,
             mediation_level,
             trimming_threshold,
@@ -71,7 +71,7 @@ def fit_med_manual(
             m,
             preds,
             smpls,
-            target,
+            binary_targets,
             treatment_level,
             mediation_level,
             trimming_threshold,
@@ -103,7 +103,7 @@ def fit_nuisance_med_manual(
     learner_nested,
     smpls,
     smpls_inner,
-    target,
+    binary_targets,
     treatment_level,
     mediation_level,
     trimming_threshold,
@@ -113,7 +113,7 @@ def fit_nuisance_med_manual(
     pmx_params=None,
     nested_params=None,
 ):
-    if target == "potential":
+    if binary_targets == "potential":
         return _fit_nuisance_potential_manual(
             y,
             x,

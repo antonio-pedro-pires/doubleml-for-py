@@ -13,20 +13,12 @@ def learners(learner_linear):
 @pytest.fixture(
     scope="module",
 )
-def med_obj(med_factory, learners, treatment_level):
-    return med_factory("potential", treatment_level, learners)
+def med_obj(med_factory, learners, binary_treats):
+    return med_factory("counterfactual", binary_treats, learners)
 
 
-@pytest.fixture(
-    scope="module",
-)
-def smpls(med_obj):
-    return med_obj.smpls, med_obj.smpls_inner
-
-
-def test_check_inner_sample_splitting(smpls):
-    smpls, smpls_inner = smpls
-    _check_inner_sample_splitting(smpls_inner, smpls)
+def test_check_inner_sample_splitting(med_obj):
+    _check_inner_sample_splitting(med_obj.smpls_inner, med_obj.smpls, med_obj.n_rep)
     return
 
 

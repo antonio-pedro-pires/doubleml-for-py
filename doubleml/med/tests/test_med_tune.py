@@ -7,7 +7,7 @@ from doubleml.tests._utils_tune_optuna import (
     _assert_tree_params,
 )
 
-
+#TODO: Something broke in these tests, have to fix it.
 @pytest.fixture(scope="module")
 def learners(learner_tree):
     return learner_tree
@@ -19,15 +19,15 @@ def target(request):
 
 
 @pytest.fixture(scope="module")
-def dml_med_obj(med_factory, target, treatment_level, learners):
-    yield med_factory(target, treatment_level, learners)
+def dml_med_obj(med_factory, binary_targets, binary_treats, learners):
+    yield med_factory(binary_targets, binary_treats, learners)
 
 
 @pytest.fixture(
     scope="module",
 )
-def untuned_tuned_scores(dml_med_obj, optuna_params, optuna_settings, target):
-    if target == "potential":
+def untuned_tuned_scores(dml_med_obj, optuna_params, optuna_settings, binary_targets):
+    if binary_targets == "potential":
         ml_param_space = {
             "ml_yx": optuna_params["ml_yx"],
             "ml_px": optuna_params["ml_px"],
@@ -40,6 +40,7 @@ def untuned_tuned_scores(dml_med_obj, optuna_params, optuna_settings, target):
             "ml_nested": optuna_params["ml_nested"],
         }
 
+    random.seed(0)
     dml_med_obj.fit()
     untuned_score = dml_med_obj.evaluate_learners()
 
@@ -50,7 +51,10 @@ def untuned_tuned_scores(dml_med_obj, optuna_params, optuna_settings, target):
         return_tune_res=True,
     )
 
+    random.seed(0)
     dml_med_obj.fit()
+
+    random.seed(0)
     tuned_score = dml_med_obj.evaluate_learners()
     return {"untuned_score": untuned_score, "tuned_score": tuned_score, "tune_res": tune_res, "ml_param_space": ml_param_space}
 
