@@ -86,6 +86,6 @@ def med_factory(dml_data):
         elif target == "counterfactual":
             active_learners = {k: clone(v) for k, v in learners.items() if k in ["ml_px", "ml_ymx", "ml_pmx", "ml_nested"]}
 
-        return DoubleMLMED(med_data=dml_data, target=target, treatment_level=treatment_level, **active_learners, **kwargs)
+        return DoubleMLMED(dml_data=dml_data, target=target, treatment_level=treatment_level, **active_learners, **kwargs)
     
     return _factory

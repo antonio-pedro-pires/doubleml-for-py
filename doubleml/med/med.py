@@ -1,4 +1,5 @@
 import warnings
+import numbers
 
 import numpy as np
 from sklearn.model_selection import cross_val_predict
@@ -24,7 +25,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
 
     Parameters
     ----------
-    med_data : :class:`DoubleMLMediationData` object
+    dml_data : :class:`DoubleMLMediationData` object
         The :class:`DoubleMLMediationData` object providing the data and specifying the variables for the causal model.
 
     ml_yx : estimator implementing ``fit()`` and ``predict()``
@@ -95,7 +96,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
 
     def __init__(
         self,
-        med_data,
+        dml_data,
         ml_px,
         ml_yx=None,
         ml_ymx=None,
@@ -115,44 +116,21 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         draw_sample_splitting=True,
         double_sample_splitting=True,
     ):
-        self._med_data = med_data
-        if not isinstance(med_data, DoubleMLMEDData):
-            raise TypeError(
-                "Mediation analysis requires data of type DoubleMLMediationData."
-                + f"data of type {str(type(med_data))} was provided instead."
-            )
+        self._dml_data = self._check_dml_data(dml_data)
 
-        if target == "potential" and ml_yx is None:
-            raise ValueError("ml_yx is required when target is 'potential'")
-        self.n_folds_inner = n_folds_inner
         self._double_sample_splitting = double_sample_splitting
+        self.n_folds_inner = n_folds_inner
 
-        super().__init__(med_data, n_folds, n_rep, score, draw_sample_splitting, double_sample_splitting=self.double_sample_splitting)
+        super().__init__(dml_data, n_folds, n_rep, score, draw_sample_splitting, double_sample_splitting=self.double_sample_splitting)
 
-        valid_targets = ["potential", "counterfactual"]
-        if target not in valid_targets:
-            raise ValueError(f"Invalid target {target}. " + "Valid targets " + " or ".join(valid_targets) + ".")
-        self._target = target
+        self._target = self._check_target(target)
+        self._treatment_level, self._mediation_level = self._check_levels(treatment_level, mediation_level)
 
-        self._treatment_level = treatment_level
-        self._mediation_level = mediation_level
-
-        self._treated = self._med_data.d == treatment_level
-        self._mediated = self._med_data.m == mediation_level
-
-        if self._med_data.n_treat > 1:
-            raise NotImplementedError(
-                "Only implemented for single treatment. " + f"Number of treatments is {str(self._med_data.n_treat)}."
-            )
-
-        if self._target == "potential":
-            self._learner = {"ml_yx": ml_yx, "ml_px": ml_px}
-        else:
-            self._learner = {"ml_px": ml_px, "ml_ymx": ml_ymx, "ml_pmx": ml_pmx, "ml_nested": ml_nested}
-        self._check_learners()
-
-
-        self._initialize_ml_nuisance_params()
+        self._treated = self._dml_data.d == treatment_level
+        self._mediated = self._dml_data.m == mediation_level
+        
+        self._predict_method={}
+        self._check_learners(ml_yx=ml_yx, ml_px=ml_px, ml_ymx=ml_ymx, ml_pmx=ml_pmx, ml_nested=ml_nested)
 
         self._normalize_ipw = normalize_ipw
         self._trimming_rule = trimming_rule
@@ -228,35 +206,6 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
     def _score_element_names(self):
         return ["psi_a", "psi_b"]
 
-    def _check_learners(self):
-        if self._target == "potential":
-            required_learners = ["ml_yx", "ml_px"]
-        else:
-            required_learners = ["ml_px", "ml_ymx", "ml_pmx", "ml_nested"]
-
-        for learner in required_learners:
-            if self._learner[learner] is None:
-                raise ValueError(f"Learner {learner} is required for target {self._target}.")
-
-        self._predict_method = {}
-        for key, learner in self._learner.items():
-            if learner is not None:
-                if key in ["ml_px", "ml_pmx"]:
-                    _ = self._check_learner(learner, key, regressor=False, classifier=True)
-                    self._predict_method[key] = "predict_proba"
-                else:
-                    is_classifier_ = self._check_learner(learner, key, regressor=True, classifier=True)
-                    if self._med_data.binary_outcome:
-                        if is_classifier_:
-                            self._predict_method[key] = "predict_proba"
-                        else:
-                            raise ValueError(f"Learner {learner} must be classifier.")
-                    else:
-                        if is_classifier_:
-                            raise ValueError(f"Learner {learner} must be regressor.")
-                        else:
-                            self._predict_method[key] = "predict"
-
     def _initialize_ml_nuisance_params(self):
         if self._target == "potential":
             learners = ["ml_yx", "ml_px"]
@@ -275,8 +224,8 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         external_predictions,
         return_models=False,
     ):
-        x, y = check_X_y(self._med_data.x, self._med_data.y, ensure_all_finite=True)
-        x, d = check_X_y(x, self._med_data.d, ensure_all_finite=True)
+        x, y = check_X_y(self._dml_data.x, self._dml_data.y, ensure_all_finite=True)
+        x, d = check_X_y(x, self._dml_data.d, ensure_all_finite=True)
 
         if self._target == "potential":
             # Check whether there are external predictions for each parameter.
@@ -341,7 +290,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
             psi_elements = {"psi_a": psi_a, "psi_b": psi_b}
 
         else:  # target == "counterfactual"
-            x, m = check_X_y(x, self._med_data.m, ensure_all_finite=True, multi_output=True)
+            x, m = check_X_y(x, self._dml_data.m, ensure_all_finite=True, multi_output=True)
             xm = np.column_stack((x, m))
 
             # Check whether there are external predictions for each parameter.
@@ -545,8 +494,8 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         )
 
     def _nuisance_tuning_optuna(self, optuna_params, scoring_methods, cv, optuna_settings):
-        x, y = check_X_y(self._med_data.x, self._med_data.y, ensure_all_finite=True)
-        x, d = check_X_y(x, self._med_data.d, ensure_all_finite=True)
+        x, y = check_X_y(self._dml_data.x, self._dml_data.y, ensure_all_finite=True)
+        x, d = check_X_y(x, self._dml_data.d, ensure_all_finite=True)
 
         if scoring_methods is None:
             scoring_methods = {"ml_yx": None, "ml_px": None, "ml_ymx": None, "ml_pmx": None, "ml_nested": None}
@@ -585,7 +534,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
             }
 
         else:
-            x, m = check_X_y(x, self._med_data.m, ensure_all_finite=False, multi_output=True)
+            x, m = check_X_y(x, self._dml_data.m, ensure_all_finite=False, multi_output=True)
             xm = np.column_stack((x, m))
 
             pmx_tune_res = _dml_tune_optuna(
@@ -661,6 +610,76 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
             n_obs=None,
         )
 
+    def _check_learners(self, ml_yx, ml_px, ml_ymx, ml_pmx, ml_nested):
+        if self._target == "potential":
+            self._learner = {"ml_yx": ml_yx, "ml_px": ml_px}
+        else:
+            self._learner = {"ml_px": ml_px, "ml_ymx": ml_ymx, "ml_pmx": ml_pmx, "ml_nested": ml_nested}
+
+        for learner_name, learner in self._learner.items():
+            if self._learner[learner_name] is None:
+                raise ValueError(f"Learner {learner_name} is required when the target is {self._target}.")
+            
+            if learner_name in ["ml_px", "ml_pmx"]:
+                is_classifier_ = self._check_learner(learner, learner_name, regressor=True, classifier=True)
+                if is_classifier_:
+                    self._predict_method[learner_name] = "predict_proba"
+                else:
+                    self._predict_method
+            else:
+                is_classifier_ = self._check_learner(learner, learner_name, regressor=True, classifier=True)
+                if self._dml_data.binary_outcome and not is_classifier_:
+                    raise ValueError( f"The learner {learner_name} must be a classifier"
+                                     +"since the outcome variable is binary with values 0 and 1."
+                                     )
+                elif not self._dml_data.binary_outcome and is_classifier_:
+                    raise ValueError(f"The learner {learner_name} was identified as a classifier "
+                    +"but the outcome variable is not binary with values 0 and 1.")
+                else:
+                    if is_classifier_:
+                        self._predict_method[learner_name] = "predict_proba"
+                    else:
+                        self._predict_method[learner_name] = "predict"
+        self._initialize_ml_nuisance_params()
+        
+    def _check_dml_data(self, dml_data):
+        if not isinstance(dml_data, DoubleMLMEDData):
+            raise TypeError(
+                "Mediation analysis requires data of type DoubleMLMediationData."
+                + f" Data of type {str(type(dml_data))} was provided instead."
+            )
+        if not all(dml_data.binary_treats):
+            raise ValueError(
+                f"Treatment data {dml_data.d} must be a binary variable with values either 0 or 1."
+                + f" Treatment data contains levels {np.unique(dml_data.d)}."
+            )
+        if dml_data.z_cols is not None:
+            warnings.warn("The current framework for causal mediation analysis does not perform analysis with instrumental variables."
+                          +" The results will not take into account the instrumental variables.")
+        return dml_data
+    
+    def _check_target(self, target):
+        if not isinstance(target, str):
+            raise TypeError("Target must be a string." 
+                + f"{str(target)} of type {str(type(target))} provided instead.")
+
+        valid_targets = ["potential", "counterfactual"]
+        if target not in valid_targets:
+            raise ValueError(f"Invalid target {target}. " + "Valid targets " + " or ".join(valid_targets) + ".")
+
+        return target
+        
+    def _check_levels(self, treatment_level, mediation_level):
+        if not isinstance(treatment_level, int):
+            raise TypeError("Treatment level must be an integer."
+            +f" Treatment level {str(treatment_level)} of type {str(type(treatment_level))} provided.")
+        if not isinstance(mediation_level, numbers.Number):
+            raise TypeError("Mediation level must be a number."
+            +f" Mediation level {str(mediation_level)} of type {str(type(mediation_level))} provided.")
+        if not 0 <= treatment_level <= 1:
+            raise ValueError("Treatment level must be either 0 or 1"
+            +f" Treatment level provided was {str(treatment_level)}.")
+        return treatment_level, mediation_level
 
 # TODO: Transplant methods into utils documents.
 # TODO: Apply threshold
@@ -675,7 +694,7 @@ class DoubleMLMEDP(DoubleMLMED):
 
     def __init__(
         self,
-        med_data,
+        dml_data,
         treatment_level,
         ml_g,
         ml_m,
@@ -698,7 +717,7 @@ class DoubleMLMEDP(DoubleMLMED):
         )
 
         super().__init__(
-            med_data=med_data,
+            dml_data=dml_data,
             target="potential",
             treatment_level=treatment_level,
             mediation_level=treatment_level,  # Implied for potential outcome
@@ -726,7 +745,7 @@ class DoubleMLMEDC(DoubleMLMED):
 
     def __init__(
         self,
-        med_data,
+        dml_data,
         treatment_level,
         mediation_level,
         ml_yx,
@@ -753,7 +772,7 @@ class DoubleMLMEDC(DoubleMLMED):
         )
 
         super().__init__(
-            med_data=med_data,
+            dml_data=dml_data,
             target="counterfactual",
             treatment_level=treatment_level,
             mediation_level=mediation_level,

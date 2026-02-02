@@ -479,7 +479,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
             assert f"{target}_{treatment}"==score
             if target == "potential":
                 kwargs = {
-                    "med_data": self._dml_data,
+                    "dml_data": self._dml_data,
                     "ml_px": self._learner["ml_px"],
                     "ml_yx": self._learner["ml_yx"],
                     "target": target,
@@ -498,7 +498,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
 
             elif target == "counterfactual":
                 kwargs = {
-                    "med_data": self._dml_data,
+                    "dml_data": self._dml_data,
                     "ml_px": self._learner["ml_px"],
                     "ml_ymx": self._learner["ml_ymx"],
                     "ml_pmx": self._learner["ml_pmx"],
