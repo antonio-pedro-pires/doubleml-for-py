@@ -150,12 +150,23 @@ def recombine_samples(
 
 
 def _check_inner_sample_splitting(all_inner_smpls, smpls, n_rep):
+    if all_inner_smpls is None:
+        raise ValueError("inner samples must be provided")
+    if smpls is None:
+        raise ValueError("samples must be provided")
+    if n_rep is None:
+        raise ValueError("n_rep must be provided")
+    if not isinstance(n_rep, int):
+        raise TypeError(f"n_rep must be of type int. Parameter n_rep of type {str(type(n_rep))} provided.")
+    
     if not isinstance(all_inner_smpls, list):
         raise TypeError(
             f"all_inner_smpls must be a list type. {str(all_inner_smpls)} of type {str(type(all_inner_smpls))} was passed."
         )
     if not len(all_inner_smpls) == n_rep:
-        raise ValueError("all_inner_smpls must consist of exactly one element.")
+        raise ValueError("Data incompatibility. "
+        + "The parameter all_inner_smpls must contain as many folds as the parameter n_rep. "
+        + f"number of all_inner_smpls folds:{len(all_inner_smpls)}, n_rep: {str(n_rep)}")
     if not isinstance(all_inner_smpls[0], list):
         raise TypeError("all_inner_smpls must be a list of lists.")
     all_lists = all([isinstance(lst, list) for lst in all_inner_smpls[0]])
