@@ -475,52 +475,44 @@ class DoubleMLMEDS(SampleSplittingMixin):
         # TODO: Maybe will have to work this out. How to create dict to contain objects.
         modeldict = {score: object for score in self.scores}
 
+        pot_kwargs = {
+                "dml_data": self._dml_data,
+                "ml_px": self._learner["ml_px"],
+                "ml_yx": self._learner["ml_yx"],
+                "n_folds": self.n_folds,
+                "n_rep": self.n_rep,
+                "n_folds_inner": self.n_folds_inner,
+                "trimming_threshold": self.trimming_threshold,
+                "normalize_ipw": self.normalize_ipw,
+                "double_sample_splitting": self.double_sample_splitting,
+                "draw_sample_splitting": False,
+            }
+        counter_kwargs = {"dml_data": self._dml_data,
+                "ml_px": self._learner["ml_px"],
+                "ml_ymx": self._learner["ml_ymx"],
+                "ml_pmx": self._learner["ml_pmx"],
+                "ml_nested": self._learner["ml_nested"],
+                "n_folds": self.n_folds,
+                "n_rep": self.n_rep,
+                "n_folds_inner": self.n_folds_inner,
+                "trimming_threshold": self.trimming_threshold,
+                "normalize_ipw": self.normalize_ipw,
+                "double_sample_splitting": self.double_sample_splitting,
+                "draw_sample_splitting": False,
+            }
+
+
         for score, (target, treatment) in zip(self.scores, self._scores_combinations):
             assert f"{target}_{treatment}"==score
             if target == "potential":
-                kwargs = {
-                    "dml_data": self._dml_data,
-                    "ml_px": self._learner["ml_px"],
-                    "ml_yx": self._learner["ml_yx"],
-                    "target": target,
-                    "treatment_level": treatment,
-                    "n_folds": self.n_folds,
-                    "n_rep": self.n_rep,
-                    "n_folds_inner": self.n_folds_inner,
-                    "trimming_threshold": self.trimming_threshold,
-                    "normalize_ipw": self.normalize_ipw,
-                    "double_sample_splitting": self.double_sample_splitting,
-                    "draw_sample_splitting": False,
-                }
-
-                model = DoubleMLMED(**kwargs)
-                model._set_sample_splitting(all_smpls=self.smpls)
+                model = DoubleMLMED(target=target, treatment_level=treatment, **pot_kwargs)
+                model._set_smpls_sampling(smpls=self.smpls)
 
             elif target == "counterfactual":
-                kwargs = {
-                    "dml_data": self._dml_data,
-                    "ml_px": self._learner["ml_px"],
-                    "ml_ymx": self._learner["ml_ymx"],
-                    "ml_pmx": self._learner["ml_pmx"],
-                    "ml_nested": self._learner["ml_nested"],
-                    "target": target,
-                    "treatment_level": treatment,
-                    "n_folds": self.n_folds,
-                    "n_rep": self.n_rep,
-                    "n_folds_inner": self.n_folds_inner,
-                    "trimming_threshold": self.trimming_threshold,
-                    "normalize_ipw": self.normalize_ipw,
-                    "double_sample_splitting": self.double_sample_splitting,
-                    "draw_sample_splitting": False,
-                }
 
-                model = DoubleMLMED(**kwargs)
-
-                model._set_sample_splitting(all_smpls=self.smpls)
-                if self.double_sample_splitting:
-                    model._set_sample_inner_splitting(
-                        all_inner_smpls=self._smpls_inner,
-                    )
+                model = DoubleMLMED(target="counterfactual", treatment_level=treatment, **counter_kwargs)
+                smpls_inner= None if not self._double_sample_splitting else self._smpls_inner
+                model._set_smpls_sampling(smpls=self._smpls, smpls_inner = smpls_inner)
 
             # TODO: Probably will need to set samples for the inner samples.
             modeldict[f"{target}_{treatment}"] = model

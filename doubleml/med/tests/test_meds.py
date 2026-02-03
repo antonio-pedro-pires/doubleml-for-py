@@ -62,32 +62,18 @@ def individual_med_objs(meds_obj, learners, med_factory, double_sample_splitting
         "draw_sample_splitting": False,
         "double_sample_splitting": double_sample_splitting,
     }
+    smpls_inner = None if not meds_obj.double_sample_splitting else meds_obj.smpls_inner
+    smpls = meds_obj._smpls
+
     individual_modeldict = {}
     for score, model in meds_obj.modeldict.items():
         if model.target == "potential":
-            kwargs.update(
-                {
-                    "learners": learners,
-                    "target": model.target,
-                    "treatment_level": model.treatment_level,
-                }
-            )
-            ind_model = med_factory(**kwargs)
+            ind_model = med_factory(target=model.target, treatment_level=model.treatment_level, learners=learners,**kwargs)
             ind_model._smpls = meds_obj._smpls
-            individual_modeldict[score] = ind_model
         elif model.target == "counterfactual":
-            kwargs.update(
-                {
-                    "learners": learners,
-                    "target": model.target,
-                    "treatment_level": model.treatment_level,
-                }
-            )
-            ind_model = med_factory(**kwargs)
-            ind_model._smpls = meds_obj._smpls
-            ind_model._smpls_inner = meds_obj._smpls_inner
-            individual_modeldict[score] = ind_model
-
+            ind_model = med_factory(target=model.target, treatment_level=model.treatment_level, learners=learners,**kwargs)
+        individual_modeldict[score] = ind_model
+        ind_model._set_smpls_sampling(smpls=smpls, smpls_inner=smpls_inner)
     return individual_modeldict
 
 
@@ -146,7 +132,6 @@ def test_fit(fit_objs):
             "all_thetas",
         ]
     ]
-
 
 @pytest.mark.ci
 def test_effects_binary_treats(fit_objs, individual_med_objs):
