@@ -442,6 +442,8 @@ class DoubleMLMEDS(SampleSplittingMixin):
         return self
 
     def evaluate_effects(self):
+        if self.framework is None:
+            raise ValueError("Apply fit() before calling evaluate_effects()")
         ate = self._modeldict["potential_1"].framework - self._modeldict["potential_0"].framework
         dir_treat = self._modeldict["potential_1"].framework - self._modeldict["counterfactual_0"].framework
         dir_control = self._modeldict["counterfactual_1"].framework - self._modeldict["potential_0"].framework
