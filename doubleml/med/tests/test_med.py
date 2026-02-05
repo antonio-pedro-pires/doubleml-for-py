@@ -3,6 +3,8 @@ import math
 import numpy as np
 import pytest
 
+from doubleml.med.tests.conftest import binary_targets
+
 
 @pytest.fixture(scope="module")
 def n_folds():
@@ -79,13 +81,6 @@ def med_objs(
 
     np.random.seed(3141)
     med_obj_ext = med_factory(**kwargs)
-
-    if med_obj.double_sample_splitting:
-        smpls_inner = med_obj._smpls_inner
-        med_obj_ext._set_sample_inner_splitting(smpls_inner)
-
-    med_obj_ext._smpls = med_obj.smpls
-
     return med_obj, med_obj_ext
 
 
@@ -97,6 +92,9 @@ def dml_med_fixture(
     boot_methods = ["normal"]
 
     med_obj, med_obj_ext = med_objs
+    
+    smpls_inner= None if not med_obj.double_sample_splitting else med_obj.smpls_inner
+    med_obj_ext._set_smpls_sampling(smpls = med_obj.smpls, smpls_inner =smpls_inner)
 
     for obj in med_objs:
         np.random.seed(3141)
@@ -139,19 +137,30 @@ def test_dml_med_boot(dml_med_fixture):
             atol=1e-4,
         )
 
+@pytest.fixture(scope="module")
+def set_smpls_sampling_fixture(med_factory, learner_linear, binary_targets, binary_treats, double_sample_splitting):
+    #Treatment_level is hardcoded because set_smpls_sampling does not differentiate based on treatment_level
+    med_obj = med_factory(target=binary_targets, treatment_level=binary_treats, learners=learner_linear, double_sample_splitting=double_sample_splitting)
+    med_obj_ext = med_factory(target=binary_targets, treatment_level=binary_treats, learners=learner_linear, double_sample_splitting=double_sample_splitting, draw_sample_splitting=False)
+    return med_obj, med_obj_ext
 
-#TODO: Add way to run this test only when double_sample_splitting fixture is true.
 @pytest.mark.ci
-def test_set_smpls_inner_splitting(med_objs):
-    med_obj, med_obj_ext = med_objs
-    if med_obj.double_sample_splitting:
-        smpls_inner = med_obj.smpls_inner
-        smpls = med_obj.smpls
+def test_set_smpls_sampling(set_smpls_sampling_fixture):
+    med_obj, med_obj_ext = set_smpls_sampling_fixture    
+    smpls_inner = None if not med_obj.double_sample_splitting else med_obj.smpls_inner
+    med_obj_ext._set_smpls_sampling(smpls = med_obj.smpls, smpls_inner = smpls_inner)
+    if med_obj.double_sample_splitting == True:
+        np.testing.assert_equal(med_obj.smpls_inner, med_obj_ext.smpls_inner)
+    np.testing.assert_equal(med_obj.smpls,med_obj_ext.smpls)
 
-        med_obj_ext._smpls = smpls
-        med_obj_ext._set_sample_inner_splitting(smpls_inner)
-        assert med_obj_ext._smpls_inner == med_obj._smpls_inner
-
+@pytest.mark.ci
+def test_set_smpls_sampling_exceptions(set_smpls_sampling_fixture):
+    _, med_obj_ext = set_smpls_sampling_fixture
+    with pytest.raises(NotImplementedError, match="sample setting with cluster data and inner samples not supported."):
+        med_obj_ext._set_smpls_sampling(smpls=[], smpls_inner=[], all_smpls_cluster=[])
+    if med_obj_ext.double_sample_splitting==True:
+        with pytest.raises(ValueError, match="smpls_inner is required"):
+            med_obj_ext._set_smpls_sampling(smpls=[], smpls_inner=None)
 
 def _get_preds(obj, keys):
     return {k: obj.predictions[k].reshape(-1, 1) for k in keys}

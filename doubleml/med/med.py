@@ -118,7 +118,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
     ):
         self._dml_data = self._check_dml_data(dml_data)
 
-        self._double_sample_splitting = double_sample_splitting
+        self._double_sample_splitting = double_sample_splitting if double_sample_splitting and target=="counterfactual" else False
         self.n_folds_inner = n_folds_inner
 
         super().__init__(dml_data, n_folds, n_rep, score, draw_sample_splitting, double_sample_splitting=self.double_sample_splitting)
@@ -593,22 +593,30 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
     def _sensitivity_element_est(self, preds):
         pass
 
-    def _set_sample_inner_splitting(
-        self,
-        all_inner_smpls,
-    ):
-        self._smpls_inner, self.n_folds_inner = _check_inner_sample_splitting(all_inner_smpls, self.smpls, self.n_rep)
-
-    def _set_sample_splitting(self, all_smpls, all_smpls_cluster=None, is_cluster_data=False):
-        if all_smpls_cluster is not None or is_cluster_data:
-            raise NotImplementedError
-        self._smpls, self._smpls_cluster, self._n_rep, self._n_folds = _check_sample_splitting(
-            all_smpls=all_smpls,
-            all_smpls_cluster=all_smpls_cluster,
-            dml_data=self._dml_data,
-            is_cluster_data=is_cluster_data,
-            n_obs=None,
-        )
+    def _set_smpls_sampling(self, smpls, all_smpls_cluster=None, is_cluster_data=False, smpls_inner=None):
+        if self.double_sample_splitting:
+            if smpls_inner is None: 
+                raise ValueError("smpls_inner is required")
+            if all_smpls_cluster is not None or is_cluster_data:
+                raise NotImplementedError("sample setting with cluster data and inner samples not supported.")
+            self._smpls, self._smpls_cluster, self._n_rep, self._n_folds = _check_sample_splitting(
+                all_smpls=smpls,
+                all_smpls_cluster=all_smpls_cluster,
+                dml_data=self._dml_data,
+                is_cluster_data=is_cluster_data,
+                n_obs=None,
+            )
+            self._smpls_inner, self._n_folds_inner = _check_inner_sample_splitting(smpls_inner, self._smpls,)
+        else:
+            if all_smpls_cluster is not None or is_cluster_data:
+                raise NotImplementedError("sample setting with cluster data and inner samples not supported.")
+            self._smpls, self._smpls_cluster, self._n_rep, self._n_folds = _check_sample_splitting(
+                all_smpls=smpls,
+                all_smpls_cluster=all_smpls_cluster,
+                dml_data=self._dml_data,
+                is_cluster_data=is_cluster_data,
+                n_obs=None,
+            )
 
     def _check_learners(self, ml_yx, ml_px, ml_ymx, ml_pmx, ml_nested):
         if self._target == "potential":

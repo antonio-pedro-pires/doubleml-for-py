@@ -2,6 +2,7 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 
 
+
 # TODO: refactor so that it takes multiple columns and multiple conditions for trimming.
 def _trim_probabilities(preds, trimming_threshold=None, method=None, conditions=None):
     if preds.ndim == 1:
@@ -148,40 +149,7 @@ def recombine_samples(
         result.append((s1, s2))
     return result
 
-
-def _check_inner_sample_splitting(all_inner_smpls, smpls, n_rep):
-    if all_inner_smpls is None:
-        raise ValueError("inner samples must be provided")
-    if smpls is None:
-        raise ValueError("samples must be provided")
-    if n_rep is None:
-        raise ValueError("n_rep must be provided")
-    if not isinstance(n_rep, int):
-        raise TypeError(f"n_rep must be of type int. Parameter n_rep of type {str(type(n_rep))} provided.")
-    
-    if not isinstance(all_inner_smpls, list):
-        raise TypeError(
-            f"all_inner_smpls must be a list type. {str(all_inner_smpls)} of type {str(type(all_inner_smpls))} was passed."
-        )
-    if not len(all_inner_smpls) == n_rep:
-        raise ValueError("Data incompatibility. "
-        + "The parameter all_inner_smpls must contain as many folds as the parameter n_rep. "
-        + f"number of all_inner_smpls folds:{len(all_inner_smpls)}, n_rep: {str(n_rep)}")
-    if not isinstance(all_inner_smpls[0], list):
-        raise TypeError("all_inner_smpls must be a list of lists.")
-    all_lists = all([isinstance(lst, list) for lst in all_inner_smpls[0]])
-    if not all_lists:
-        raise TypeError("all_inner_smpls must be a list of lists of lists.")
-    for all_inner_reps, smpls_rep in zip(all_inner_smpls, smpls):
-        n_folds_inner = _check_inner_sample_reps(all_inner_reps, smpls_rep)
-    # n_reps_inner = all_inner_smpls[0]
-    return all_inner_smpls, n_folds_inner  # , n_reps_inner
-
-
-# TODO: Check if n_reps_inner needs to be same as n_reps
-
-
-def _check_inner_sample_reps(all_inner_reps, smpls_rep):
+def _check_inner_sample_splitting(smpls_inner, smpls):
     """
     Check that each repetition is a list of lists of tuples.
     :param inner_smpls:
@@ -189,28 +157,56 @@ def _check_inner_sample_reps(all_inner_reps, smpls_rep):
     :param n_obs:
     :return:
     """
-    if not isinstance(all_inner_reps, list):
+
+    if not isinstance(smpls_inner, list):
         raise TypeError("inner_smpls must be a list.")
+    if not isinstance(smpls, list):
+        raise TypeError("smpls must be a list.")
+    
+    if len(smpls_inner)!=len(smpls):
+        raise ValueError("Incompatible smpls_inner. smpls_inner must have the same number of repetitions as smpls."
+                         +f"smpls has {str(len(smpls))} repetitions while smpls_inner has {str(len(smpls_inner))} repetitions.")
 
-    all_is_partition_inner = all(
-        [_check_is_inner_partition(inner_reps, smpls_fold) for inner_reps, smpls_fold in zip(all_inner_reps, smpls_rep)]
-    )
-    if not all_is_partition_inner:
-        raise ValueError("Some of the inner smpls do not partition the training samples")
-    n_folds_inner = [len(inner_rep) for inner_rep in all_inner_reps]
-    if len(np.unique(n_folds_inner)) != 1:
-        raise ValueError("Some of the repetitions contain different number of folds.")
-    return n_folds_inner[0]
+    n_inner_folds_per_rep =[_check_reps_smpls_inner(index, rep_inner, rep) for index, (rep_inner, rep) in enumerate(zip(smpls_inner, smpls))]
+    if len(np.unique(n_inner_folds_per_rep))!=1:
+        raise ValueError("Some reps in smpls_inner contain different amounts of inner_folds.")
+    
+    n_folds_per_rep=[len(rep) for rep in smpls_inner]
+    if len(np.unique(n_folds_per_rep))!=1:
+        raise ValueError("Some reps in smpls_inner contain different amounts of folds.")
+    
+    n_folds_inner = n_inner_folds_per_rep[0]
+    return smpls_inner, n_folds_inner
 
+def _check_reps_smpls_inner(index, rep_inner, rep):
+    if not isinstance(rep_inner, list):
+        raise TypeError("smpls_inner must be a list of lists." +f"At least an element of smpls_inner is of type {str(type(rep))}")
+    
+    if len(rep_inner)!=len(rep):
+        raise ValueError("Incompatible smpls. Each smpls_inner rep must have the same number of folds as smpls."
+                         +f" smpls_inner[{str(index)}] has {str(len(rep_inner))} folds while smpls has {str(len(rep))} folds.")
+    
+    n_inner_folds = [len(fold) for fold in rep_inner]
+    if len(np.unique(n_inner_folds))!=1:
+        raise ValueError("Some of the folds contain different numbers of inner_folds.")
 
-def _check_inner_sample_fold(fold):
-    if not isinstance(fold, tuple):
-        raise TypeError("fold must be a tuple.")
-    if not len(fold) == 2:
-        raise ValueError("fold must be a pair of train and test indices.")
+    for fold_smpls_inner, fold_smpls in zip(rep_inner, rep):
+        _check_is_inner_partition(fold_smpls_inner, fold_smpls) 
+        _check_fold_smpls_inner(fold_smpls_inner)
+    return n_inner_folds[0]
+  
+def _check_fold_smpls_inner(fold_smpls_inner):
+    if not isinstance(fold_smpls_inner, list):
+        raise TypeError("smpls_inner must be a list of lists of lists." 
+                        +f"At least an element of a list of smpls_inner is of type {str(type(fold_smpls_inner))}")        
 
-
-def _check_is_inner_partition(inner_smpls, train_smpls):
+    for inner_fold in fold_smpls_inner:
+        if len(inner_fold)!=2:
+            raise ValueError("The smpls_inner inner_fold must contain exactly 2 elements."+f"inner_fold with {str(len(fold_smpls_inner))} elements found.")
+        if not isinstance(inner_fold, tuple):
+            raise TypeError("smpls_inner inner_folds must be a tuple")
+        
+def _check_is_inner_partition(fold, train_smpls):
     """
     Checks whether the inner smpls are correctly partitioned
     :param inner_smpls:
@@ -218,9 +214,11 @@ def _check_is_inner_partition(inner_smpls, train_smpls):
     :return:
     """
     test_set = set()
-    for _, test_index in inner_smpls:
+    for (_, test_index) in fold:
         temp = set(test_index)
         if not test_set.isdisjoint(temp):
             return False
         test_set |= temp
-    return test_set == set(train_smpls[0])
+
+    if not test_set == set(train_smpls[0]):
+        raise ValueError("Some of the smpls_inner_fold do not partition the training samples")

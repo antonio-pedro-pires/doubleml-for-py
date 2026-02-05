@@ -16,19 +16,15 @@ def learners(learner_tree):
 def med_objs(dml_data, learners, med_factory):
 
     meds_obj = DoubleMLMEDS(dml_data, **learners)
-
-    smpls = meds_obj.smpls
-    smpls_inner = meds_obj.smpls_inner
-
     scores = list(itertools.product(["potential", "counterfactual"], [0, 1]))
 
     individual_med_objs = {}
 
+    smpls = meds_obj._smpls
+    smpls_inner= None if not meds_obj.double_sample_splitting else meds_obj.smpls_inner
     for target, treatment in scores:
         model = med_factory(target, treatment, learners)
-        model._set_sample_splitting(smpls)
-        if target == "counterfactual":
-            model._set_sample_inner_splitting(smpls_inner)
+        model._set_smpls_sampling(smpls = smpls, smpls_inner=smpls_inner)
 
         individual_med_objs[f"{target}_{treatment}"] = model
 
