@@ -1,5 +1,6 @@
 import math
-
+import copy
+import re
 import numpy as np
 import pytest
 
@@ -96,9 +97,8 @@ def dml_med_fixture(
     smpls_inner= None if not med_obj.double_sample_splitting else med_obj.smpls_inner
     med_obj_ext._set_smpls_sampling(smpls = med_obj.smpls, smpls_inner =smpls_inner)
 
-    for obj in med_objs:
-        np.random.seed(3141)
-        obj.fit()
+    np.random.seed(3141)
+    med_obj.fit()
     
     prediction_dict = {"d": _get_preds(med_obj, med_obj.learner.keys())}
 
@@ -136,6 +136,25 @@ def test_dml_med_boot(dml_med_fixture):
             rtol=1e-9,
             atol=1e-4,
         )
+@pytest.fixture(scope="module")
+def external_predictions_exceptions_fixture(med_factory, learner_linear):
+    med_obj=med_factory(target="counterfactual", treatment_level= 1, learners=learner_linear)
+
+    med_obj_ext = copy.deepcopy(med_obj)
+    med_obj.fit()
+
+    prediction_dict = {"d": _get_preds(med_obj, med_obj.learner.keys())}
+
+    return prediction_dict, med_obj_ext
+
+@pytest.mark.ci
+def test_external_predictions_exceptions(external_predictions_exceptions_fixture):
+    prediction_dict, med_obj_ext = external_predictions_exceptions_fixture
+    with pytest.raises(ValueError, match=
+                            re.escape("When providing external predictions for ml_ymx, also inner predictions for all inner folds "
+                            +f"have to be provided (missing: {', '.join([str(i) for i in [0, 1, 2, 3, 4]])}).")
+                        ):
+                        med_obj_ext.fit(external_predictions=prediction_dict)
 
 @pytest.fixture(scope="module")
 def set_smpls_sampling_fixture(med_factory, learner_linear, binary_targets, binary_treats, double_sample_splitting):
@@ -161,6 +180,8 @@ def test_set_smpls_sampling_exceptions(set_smpls_sampling_fixture):
     if med_obj_ext.double_sample_splitting==True:
         with pytest.raises(ValueError, match="smpls_inner is required"):
             med_obj_ext._set_smpls_sampling(smpls=[], smpls_inner=None)
+
+
 
 def _get_preds(obj, keys):
     return {k: obj.predictions[k].reshape(-1, 1) for k in keys}
