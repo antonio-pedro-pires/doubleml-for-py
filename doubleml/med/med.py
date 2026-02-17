@@ -490,7 +490,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         n_iter_randomized_search,
     ):
         raise NotImplementedError(
-            "Nuisance tuning is not implemented for DoubleMLMediation. Please use the method _nuisance_tuning_optuna instead."
+            "Nuisance tuning using the 'tune' method is not implemented for DoubleMLMediation. Please use the 'tune_ml_models' method instead."
         )
 
     def _nuisance_tuning_optuna(self, optuna_params, scoring_methods, cv, optuna_settings):
