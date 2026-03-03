@@ -1,4 +1,5 @@
 import warnings
+from typing import Optional
 import numbers
 
 import numpy as np
@@ -18,6 +19,7 @@ from doubleml.utils._estimation import (
 )
 from doubleml.utils._tune_optuna import _dml_tune_optuna
 
+from doubleml.utils.propensity_score_processing import PSProcessorConfig, init_ps_processor
 
 # TODO: remove yx_learner in counterfactual nuisance estimation dependent on how trimming is applied
 class DoubleMLMED(LinearScoreMixin, DoubleML):
@@ -115,6 +117,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         trimming_threshold=1e-2,
         draw_sample_splitting=True,
         double_sample_splitting=True,
+        ps_processor_config: Optional[PSProcessorConfig] = None,
     ):
         self._dml_data = self._check_dml_data(dml_data)
 
@@ -137,6 +140,10 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         self._trimming_threshold = trimming_threshold
         self._external_predictions_implemented = True
         self._sensitivity_implemented = False
+
+        self._ps_processor_config, self._ps_processor = init_ps_processor(
+            ps_processor_config, trimming_rule, trimming_threshold
+            )
 
 
     @property
@@ -206,6 +213,19 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
     def _score_element_names(self):
         return ["psi_a", "psi_b"]
 
+    @property
+    def ps_processor_config(self):
+        """
+        Configuration for propensity score processing (clipping, calibration, etc.).
+        """
+        return self._ps_processor_config
+
+    @property
+    def ps_processor(self):
+        """
+        Propensity score processor.
+        """
+        return self._ps_processor
     def _initialize_ml_nuisance_params(self):
         if self._target == "potential":
             learners = ["ml_yx", "ml_px"]
@@ -248,7 +268,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
                     method=self._predict_method["ml_px"],
                     return_models=return_models,
                 )
-            px_hat["preds"] = np.clip(px_hat["preds"], 1e-12, 1 - 1e-12)
+            px_hat["preds"] = self._ps_processor.adjust_ps(px_hat["preds"], self.treated)
 
             if yx_external:
                 yx_hat = {
@@ -316,7 +336,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
                     method=self._predict_method["ml_px"],
                     return_models=return_models,
                 )
-            px_hat["preds"] = np.clip(px_hat["preds"], 1e-12, 1 - 1e-12)
+            px_hat["preds"] = self._ps_processor.adjust_ps(px_hat["preds"], self.treated)
 
             # Estimate the probability of treatment conditional on the mediator and covariates.
             if pmx_external:
@@ -332,7 +352,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
                     method=self._predict_method["ml_pmx"],
                     return_models=return_models,
                 )
-            pmx_hat["preds"] = np.clip(pmx_hat["preds"], 1e-12, 1 - 1e-12)
+            pmx_hat["preds"] = self._ps_processor.adjust_ps(pmx_hat["preds"], self.treated)
 
             inner_predictions={}
             inner_targets={}
