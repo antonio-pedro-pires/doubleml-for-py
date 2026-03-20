@@ -24,26 +24,31 @@ def _trim_probabilities(preds, trimming_threshold=None, method=None, conditions=
 
 def _normalize_propensity_med(
     normalize_ipw,
-    score_function,
     outcome,
     treatment_indicator,
-    propensity_score=None,
-    conditional_pot_med_prob=None,
-    conditional_counter_med_prob=None,
-    propensity_score_med=None,
+    px_preds,
+    pmx_preds = None,
 ):
+    n_obs = len(treatment_indicator)
     if normalize_ipw:
         if outcome == "potential":
-            propensity_coef = _normalize_potential(treatment_indicator, propensity_score)
+            #TODO: Have to check if only px_preds must be taken.
+            sumscore = np.sum(np.divide(treatment_indicator,px_preds))
+            result = np.multiply(np.divide(n_obs,sumscore),np.divide(treatment_indicator, px_preds))        
         elif outcome == "counterfactual":
-            if score_function == "efficient":
-                propensity_coef = _normalize_counterfactual()
-            elif score_function == "efficient-alt":
-                propensity_coef = _normalize_counterfactual_alt()
+            sumscore1 = np.sum(np.divide(np.multiply(treatment_indicator, 1.0-pmx_preds), np.multiply(pmx_preds, 1.0-px_preds)))
+            sumscore2 = np.sum(np.divide(1.0-treatment_indicator, 1.0-px_preds))
+            ps1 = np.multiply(np.divide(n_obs, sumscore1), np.divide(np.multiply(treatment_indicator, 1.0-pmx_preds), np.multiply(pmx_preds, 1.0-px_preds)))
+            ps2 = np.multiply(np.divide(n_obs, sumscore2), np.divide(1.0-treatment_indicator,(1.0-px_preds)))
+            result=(ps1, ps2)
     else:
-        propensity_coef = propensity_score
-
-    return propensity_coef
+        if outcome=="potential":
+            result = np.divide(treatment_indicator, px_preds)
+        elif outcome=="counterfactual":
+            ps1 = np.divide(np.multiply(treatment_indicator, 1.0-pmx_preds), np.multiply(pmx_preds, 1.0-px_preds))
+            ps2 = np.divide(1.0-treatment_indicator,1.0-px_preds)
+            result=(ps1, ps2)
+    return result
 
 
 def _normalize_potential(treatment_indicator, propensity_score):

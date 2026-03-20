@@ -9,7 +9,8 @@ from sklearn.utils import check_X_y
 from doubleml import DoubleMLMEDData
 from doubleml.double_ml import DoubleML
 from doubleml.double_ml_score_mixins import LinearScoreMixin
-from doubleml.med.utils._med_utils import _check_inner_sample_splitting
+from doubleml.med.utils._med_utils import _check_inner_sample_splitting, _normalize_propensity_med
+
 from doubleml.utils._checks import _check_finite_predictions, _check_sample_splitting, _check_score
 from doubleml.utils._estimation import (
     _cond_targets,
@@ -306,7 +307,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
                 },
             }
 
-            psi_a, psi_b = self._score_elements(y, px_hat["preds"], yx_hat["preds"])
+            psi_a, psi_b = self._score_elements(y, px_hat_preds=px_hat["preds"], yx_hat_preds=yx_hat["preds"])
             psi_elements = {"psi_a": psi_a, "psi_b": psi_b}
 
         else:  # target == "counterfactual"
@@ -474,28 +475,27 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
             }
 
             psi_a, psi_b = self._score_elements(
-                y, px_hat=px_hat["preds"], pmx_hat=pmx_hat["preds"], ymx_hat=ymx_hat["preds"], nested_hat=nested_hat["preds"]
+                y, px_hat_preds=px_hat["preds"], pmx_hat_preds=pmx_hat["preds"], ymx_hat_preds=ymx_hat["preds"], nested_hat_preds=nested_hat["preds"]
             )
             psi_elements = {"psi_a": psi_a, "psi_b": psi_b}
 
         return psi_elements, preds
 
-    def _score_elements(self, y, px_hat, yx_hat=None, pmx_hat=None, ymx_hat=None, nested_hat=None):
+    def _score_elements(self, y, px_hat_preds, yx_hat_preds=None, pmx_hat_preds=None, ymx_hat_preds=None, nested_hat_preds=None):
         if self._target == "potential":
-            u_hat = y - yx_hat
+            u_hat = y - yx_hat_preds
+            propensity_score = _normalize_propensity_med(self.normalize_ipw, outcome=self._target, treatment_indicator=self.treated,
+            px_preds = px_hat_preds)
             psi_a = -1.0
-            psi_b = np.multiply(np.divide(self.treated, px_hat), u_hat) + yx_hat
+            psi_b = np.multiply(propensity_score, u_hat) + yx_hat_preds
         else:
-            u_hat = y - ymx_hat
-            w_hat = ymx_hat - nested_hat
+            u_hat = y - ymx_hat_preds
+            w_hat = ymx_hat_preds - nested_hat_preds
             psi_a = -1.0
-
-            t1 = np.multiply(
-                np.multiply(np.divide(self.treated, 1.0 - px_hat), np.divide(1.0 - pmx_hat, pmx_hat)),
-                u_hat,
-            )
-            t2 = np.multiply(np.divide(1.0 - self.treated, 1.0 - px_hat), w_hat)
-            psi_b = t1 + t2 + nested_hat
+            ps1, ps2 = _normalize_propensity_med(self.normalize_ipw, outcome=self._target, treatment_indicator=self.treated,
+            px_preds = px_hat_preds,
+                           pmx_preds=pmx_hat_preds,               )
+            psi_b = np.multiply(ps1, u_hat) + np.multiply(ps2, w_hat) + nested_hat_preds
 
         return psi_a, psi_b
 
