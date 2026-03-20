@@ -86,7 +86,7 @@ class DoubleMLMEDData(DoubleMLData):
         d,
         m,
         z=None,
-        use_other_treat_as_covariate=True,
+        use_other_treat_as_covariate=False,
         force_all_x_finite=True,
         force_all_d_finite=True,
         force_all_m_finite=True,
