@@ -1,15 +1,19 @@
-import math
 import copy
+import math
 import re
+
 import numpy as np
 import pytest
-
-from doubleml.med.tests.conftest import binary_targets
 
 
 @pytest.fixture(scope="module")
 def n_folds():
     return 5
+
+
+@pytest.fixture(scope="module", params=[1, 2])
+def n_rep(request):
+    return request.param
 
 
 @pytest.fixture(scope="module")
@@ -45,12 +49,11 @@ def trimming_threshold(request):
 def treatment_mediation_level_counterfactual(request):
     return request.param
 
-@pytest.fixture(
-    scope="module",
-    params=[True, False]
-)
+
+@pytest.fixture(scope="module", params=[True, False])
 def double_sample_splitting(request):
     return request.param
+
 
 @pytest.fixture(scope="module")
 def med_objs(
@@ -63,6 +66,7 @@ def med_objs(
     n_folds,
     med_factory,
     double_sample_splitting,
+    n_rep,
 ):
 
     kwargs = {
@@ -74,7 +78,7 @@ def med_objs(
         "normalize_ipw": normalize_ipw,
         "trimming_threshold": trimming_threshold,
         "double_sample_splitting": double_sample_splitting,
-
+        "n_rep": n_rep,
     }
 
     np.random.seed(3141)
@@ -93,13 +97,13 @@ def dml_med_fixture(
     boot_methods = ["normal"]
 
     med_obj, med_obj_ext = med_objs
-    
-    smpls_inner= None if not med_obj.double_sample_splitting else med_obj.smpls_inner
-    med_obj_ext._set_smpls_sampling(smpls = med_obj.smpls, smpls_inner =smpls_inner)
+
+    smpls_inner = None if not med_obj.double_sample_splitting else med_obj.smpls_inner
+    med_obj_ext._set_smpls_sampling(smpls=med_obj.smpls, smpls_inner=smpls_inner)
 
     np.random.seed(3141)
     med_obj.fit()
-    
+
     prediction_dict = {"d": _get_preds(med_obj, med_obj.learner.keys())}
 
     if med_obj.double_sample_splitting and med_obj.target == "counterfactual":
@@ -136,9 +140,11 @@ def test_dml_med_boot(dml_med_fixture):
             rtol=1e-9,
             atol=1e-4,
         )
+
+
 @pytest.fixture(scope="module")
 def external_predictions_exceptions_fixture(med_factory, learner_linear):
-    med_obj=med_factory(target="counterfactual", treatment_level= 1, learners=learner_linear)
+    med_obj = med_factory(target="counterfactual", treatment_level=1, learners=learner_linear)
 
     med_obj_ext = copy.deepcopy(med_obj)
     med_obj.fit()
@@ -147,44 +153,61 @@ def external_predictions_exceptions_fixture(med_factory, learner_linear):
 
     return prediction_dict, med_obj_ext
 
+
 @pytest.mark.ci
 def test_external_predictions_exceptions(external_predictions_exceptions_fixture):
     prediction_dict, med_obj_ext = external_predictions_exceptions_fixture
-    with pytest.raises(ValueError, match=
-                            re.escape("When providing external predictions for ml_ymx, also inner predictions for all inner folds "
-                            +f"have to be provided (missing: {', '.join([str(i) for i in [0, 1, 2, 3, 4]])}).")
-                        ):
-                        med_obj_ext.fit(external_predictions=prediction_dict)
+    with pytest.raises(
+        ValueError,
+        match=re.escape(
+            "When providing external predictions for ml_ymx, also inner predictions for all inner folds "
+            + f"have to be provided (missing: {', '.join([str(i) for i in [0, 1, 2, 3, 4]])})."
+        ),
+    ):
+        med_obj_ext.fit(external_predictions=prediction_dict)
+
 
 @pytest.fixture(scope="module")
 def set_smpls_sampling_fixture(med_factory, learner_linear, binary_targets, binary_treats, double_sample_splitting):
-    #Treatment_level is hardcoded because set_smpls_sampling does not differentiate based on treatment_level
-    med_obj = med_factory(target=binary_targets, treatment_level=binary_treats, learners=learner_linear, double_sample_splitting=double_sample_splitting)
-    med_obj_ext = med_factory(target=binary_targets, treatment_level=binary_treats, learners=learner_linear, double_sample_splitting=double_sample_splitting, draw_sample_splitting=False)
+    # Treatment_level is hardcoded because set_smpls_sampling does not differentiate based on treatment_level
+    med_obj = med_factory(
+        target=binary_targets,
+        treatment_level=binary_treats,
+        learners=learner_linear,
+        double_sample_splitting=double_sample_splitting,
+    )
+    med_obj_ext = med_factory(
+        target=binary_targets,
+        treatment_level=binary_treats,
+        learners=learner_linear,
+        double_sample_splitting=double_sample_splitting,
+        draw_sample_splitting=False,
+    )
     return med_obj, med_obj_ext
+
 
 @pytest.mark.ci
 def test_set_smpls_sampling(set_smpls_sampling_fixture):
-    med_obj, med_obj_ext = set_smpls_sampling_fixture    
+    med_obj, med_obj_ext = set_smpls_sampling_fixture
     smpls_inner = None if not med_obj.double_sample_splitting else med_obj.smpls_inner
-    med_obj_ext._set_smpls_sampling(smpls = med_obj.smpls, smpls_inner = smpls_inner)
-    if med_obj.double_sample_splitting == True:
+    med_obj_ext._set_smpls_sampling(smpls=med_obj.smpls, smpls_inner=smpls_inner)
+    if med_obj.double_sample_splitting:
         np.testing.assert_equal(med_obj.smpls_inner, med_obj_ext.smpls_inner)
-    np.testing.assert_equal(med_obj.smpls,med_obj_ext.smpls)
+    np.testing.assert_equal(med_obj.smpls, med_obj_ext.smpls)
+
 
 @pytest.mark.ci
 def test_set_smpls_sampling_exceptions(set_smpls_sampling_fixture):
     _, med_obj_ext = set_smpls_sampling_fixture
     with pytest.raises(NotImplementedError, match="sample setting with cluster data and inner samples not supported."):
         med_obj_ext._set_smpls_sampling(smpls=[], smpls_inner=[], all_smpls_cluster=[])
-    if med_obj_ext.double_sample_splitting==True:
+    if med_obj_ext.double_sample_splitting:
         with pytest.raises(ValueError, match="smpls_inner is required"):
             med_obj_ext._set_smpls_sampling(smpls=[], smpls_inner=None)
 
 
-
 def _get_preds(obj, keys):
-    return {k: obj.predictions[k].reshape(-1, 1) for k in keys}
+    return {k: np.array([np.ndarray.flatten(subarray) for subarray in obj.predictions[k]]) for k in keys}
 
 
 def _get_res(obj, obj_ext, boot_methods, n_rep_boot):

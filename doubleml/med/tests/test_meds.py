@@ -13,6 +13,11 @@ def learners(learner_linear):
     return learner_linear
 
 
+@pytest.fixture(scope="module", params=[1, 2])
+def n_rep(request):
+    return request.param
+
+
 @pytest.fixture(scope="module")
 def meds_kwargs(dml_data, learners, double_sample_splitting):
     return {
@@ -46,9 +51,11 @@ def smpls_inner_outer(meds_obj):
 def treatment_mediation(meds_obj):
     return meds_obj.treatment_mediation_levels
 
+
 @pytest.fixture(scope="module", params=[True, False])
 def double_sample_splitting(request):
     return request.param
+
 
 @pytest.fixture(scope="module")
 def individual_med_objs(meds_obj, learners, med_factory, double_sample_splitting):
@@ -68,10 +75,10 @@ def individual_med_objs(meds_obj, learners, med_factory, double_sample_splitting
     individual_modeldict = {}
     for score, model in meds_obj.modeldict.items():
         if model.target == "potential":
-            ind_model = med_factory(target=model.target, treatment_level=model.treatment_level, learners=learners,**kwargs)
+            ind_model = med_factory(target=model.target, treatment_level=model.treatment_level, learners=learners, **kwargs)
             ind_model._smpls = meds_obj._smpls
         elif model.target == "counterfactual":
-            ind_model = med_factory(target=model.target, treatment_level=model.treatment_level, learners=learners,**kwargs)
+            ind_model = med_factory(target=model.target, treatment_level=model.treatment_level, learners=learners, **kwargs)
         individual_modeldict[score] = ind_model
         ind_model._set_smpls_sampling(smpls=smpls, smpls_inner=smpls_inner)
     return individual_modeldict
@@ -91,15 +98,10 @@ def test_set_smpls(meds_obj, individual_med_objs):
     reference_smpls = meds_obj.smpls
     reference_smpls_inner = meds_obj.smpls_inner
 
-    [np.testing.assert_equal(reference_smpls, model.smpls)
-        for _, model in individual_med_objs.items()]
+    [np.testing.assert_equal(reference_smpls, model.smpls) for _, model in individual_med_objs.items()]
     if meds_obj._double_sample_splitting:
         [
-            (
-                np.testing.assert_equal(reference_smpls_inner, model.smpls_inner)
-                if model.target == "counterfactual"
-                else None
-            )
+            (np.testing.assert_equal(reference_smpls_inner, model.smpls_inner) if model.target == "counterfactual" else None)
             for _, model in individual_med_objs.items()
         ]
 
@@ -119,7 +121,7 @@ def fit_objs(meds_obj, individual_med_objs):
 
 @pytest.mark.ci
 def test_fit(fit_objs):
-    # Test that the meds object models are fitted identically those same models when fitted individually using the DoubleMLMED class.
+    # Test that the meds object models are fitted identically.
     meds_obj, individual_med_objs_framework = fit_objs
     [
         np.testing.assert_array_equal(
@@ -132,6 +134,7 @@ def test_fit(fit_objs):
             "all_thetas",
         ]
     ]
+
 
 @pytest.mark.ci
 def test_effects_binary_treats(fit_objs, individual_med_objs):
