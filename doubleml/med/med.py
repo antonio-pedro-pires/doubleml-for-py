@@ -501,7 +501,11 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         if self._target == "potential":
             u_hat = y - yx_hat_preds
             propensity_score = _normalize_propensity_med(
-                self.normalize_ipw, outcome=self._target, treatment_indicator=self.treated, px_preds=px_hat_preds
+                self.normalize_ipw,
+                outcome=self._target,
+                d=self._dml_data.d,
+                treatment_level=self.treatment_level,
+                px_preds=px_hat_preds,
             )
             psi_a = -1.0
             psi_b = np.multiply(propensity_score, u_hat) + yx_hat_preds
@@ -512,7 +516,8 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
             ps1, ps2 = _normalize_propensity_med(
                 self.normalize_ipw,
                 outcome=self._target,
-                treatment_indicator=self.treated,
+                d=self._dml_data.d,
+                treatment_level=self._treatment_level,
                 px_preds=px_hat_preds,
                 pmx_preds=pmx_hat_preds,
             )
