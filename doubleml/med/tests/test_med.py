@@ -6,12 +6,12 @@ import numpy as np
 import pytest
 
 
-@pytest.fixture(scope="module")
-def n_folds():
-    return 5
+@pytest.fixture(scope="module", params=[2, 3], ids=["n_folds=1", "n_folds=2"])
+def n_folds(request):
+    return request.param
 
 
-@pytest.fixture(scope="module", params=[1, 2])
+@pytest.fixture(scope="module", params=[1, 2], ids=["n_folds=1", "n_folds=2"])
 def n_rep(request):
     return request.param
 
@@ -29,12 +29,12 @@ def learners(request):
     return request.getfixturevalue(request.param)
 
 
-@pytest.fixture(scope="module", params=[False, True])
+@pytest.fixture(scope="module", params=[False, True], ids=["normalize_ipw=False", "normalize_ipw=True"])
 def normalize_ipw(request):
     return request.param
 
 
-@pytest.fixture(scope="module", params=[0.15, 0.2])
+@pytest.fixture(scope="module", params=[0.15, 0.2], ids=["trimming_threshold=0.15", "trimming_threshold=0.2"])
 def trimming_threshold(request):
     return request.param
 
@@ -107,7 +107,7 @@ def dml_med_fixture(
     prediction_dict = {"d": _get_preds(med_obj, med_obj.learner.keys())}
 
     if med_obj.double_sample_splitting and med_obj.target == "counterfactual":
-        for i in range(med_obj.n_folds_inner):
+        for i in range(med_obj.n_folds):
             prediction_dict["d"][f"ml_ymx_inner_{i}"] = med_obj.predictions[f"ml_ymx_inner_{i}"][:, :, 0]
 
     med_obj_ext.fit(external_predictions=prediction_dict)
