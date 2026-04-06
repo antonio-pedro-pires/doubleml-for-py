@@ -1,24 +1,9 @@
 import pandas as pd
 
 
-# TODO: Create cleaner version:
-# Shouldn't have hard coded rows
-# Maybe there is a better way of adding the parameters of interest to the dataframe.
 def generate_effects_summary(effects):
-    rows = {
-        "ATE": None,
-        "DIR_TREAT": None,
-        "DIR_CONTROL": None,
-        "INDIR_TREAT": None,
-        "INDIR_CONTROL": None,
-    }
-    col_names = ["coef", "std err", "t", "P>|t|"]
-    for row in effects:
-        rows[row] = [
-            effects[row].all_thetas[0][0],
-            effects[row].all_ses[0][0],
-            effects[row].all_t_stats[0][0],
-            effects[row].all_pvals[0][0],
-        ]
-    df_effects = pd.DataFrame.from_dict(rows, orient="index", columns=col_names)
+    df_effects = pd.DataFrame()
+    for _, effect in effects.items():
+        df_effects = pd.concat([df_effects, effect.summary])
+    df_effects.index = list(effects)
     return df_effects
