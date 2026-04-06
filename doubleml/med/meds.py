@@ -12,6 +12,7 @@ from doubleml.med.med import DoubleMLMED
 from doubleml.med.utils._meds_utils import generate_effects_summary
 from doubleml.utils._descriptive import generate_summary
 
+
 # TODO Checklist:
 # Add possibility to not perform nested sampling
 # Add ipw_normalization (with ps module?)
@@ -58,7 +59,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
         self._n_folds_inner = n_folds_inner
 
         self._multmed = multmed
-        self._scores_combinations =self._valid_scores_combinations()
+        self._scores_combinations = self._valid_scores_combinations()
         self._scores = self._initialize_scores()
         # initialize learners and parameters which are set model specific
         self._learner = {
@@ -104,10 +105,6 @@ class DoubleMLMEDS(SampleSplittingMixin):
         effects_summary = str(self.effects_summary)
         res = res + "\n------------------ Effects summary       ------------------\n" + effects_summary
         return res
-
-    @property
-    def smpls(self):
-        return self._smpls
 
     @property
     def smpls_inner(self):
@@ -195,7 +192,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
         Describes the different treatment levels
         """
         return np.unique(self._dml_data.d)
-    
+
     @property
     def effects(self):
         """
@@ -478,34 +475,34 @@ class DoubleMLMEDS(SampleSplittingMixin):
         modeldict = {score: object for score in self.scores}
 
         pot_kwargs = {
-                "dml_data": self._dml_data,
-                "ml_px": self._learner["ml_px"],
-                "ml_yx": self._learner["ml_yx"],
-                "n_folds": self.n_folds,
-                "n_rep": self.n_rep,
-                "n_folds_inner": self.n_folds_inner,
-                "trimming_threshold": self.trimming_threshold,
-                "normalize_ipw": self.normalize_ipw,
-                "double_sample_splitting": self.double_sample_splitting,
-                "draw_sample_splitting": False,
-            }
-        counter_kwargs = {"dml_data": self._dml_data,
-                "ml_px": self._learner["ml_px"],
-                "ml_ymx": self._learner["ml_ymx"],
-                "ml_pmx": self._learner["ml_pmx"],
-                "ml_nested": self._learner["ml_nested"],
-                "n_folds": self.n_folds,
-                "n_rep": self.n_rep,
-                "n_folds_inner": self.n_folds_inner,
-                "trimming_threshold": self.trimming_threshold,
-                "normalize_ipw": self.normalize_ipw,
-                "double_sample_splitting": self.double_sample_splitting,
-                "draw_sample_splitting": False,
-            }
-
+            "dml_data": self._dml_data,
+            "ml_px": self._learner["ml_px"],
+            "ml_yx": self._learner["ml_yx"],
+            "n_folds": self.n_folds,
+            "n_rep": self.n_rep,
+            "n_folds_inner": self.n_folds_inner,
+            "trimming_threshold": self.trimming_threshold,
+            "normalize_ipw": self.normalize_ipw,
+            "double_sample_splitting": self.double_sample_splitting,
+            "draw_sample_splitting": False,
+        }
+        counter_kwargs = {
+            "dml_data": self._dml_data,
+            "ml_px": self._learner["ml_px"],
+            "ml_ymx": self._learner["ml_ymx"],
+            "ml_pmx": self._learner["ml_pmx"],
+            "ml_nested": self._learner["ml_nested"],
+            "n_folds": self.n_folds,
+            "n_rep": self.n_rep,
+            "n_folds_inner": self.n_folds_inner,
+            "trimming_threshold": self.trimming_threshold,
+            "normalize_ipw": self.normalize_ipw,
+            "double_sample_splitting": self.double_sample_splitting,
+            "draw_sample_splitting": False,
+        }
 
         for score, (target, treatment) in zip(self.scores, self._scores_combinations):
-            assert f"{target}_{treatment}"==score
+            assert f"{target}_{treatment}" == score
             if target == "potential":
                 model = DoubleMLMED(target=target, treatment_level=treatment, **pot_kwargs)
                 model._set_smpls_sampling(smpls=self.smpls)
@@ -513,8 +510,8 @@ class DoubleMLMEDS(SampleSplittingMixin):
             elif target == "counterfactual":
 
                 model = DoubleMLMED(target="counterfactual", treatment_level=treatment, **counter_kwargs)
-                smpls_inner= None if not self._double_sample_splitting else self._smpls_inner
-                model._set_smpls_sampling(smpls=self._smpls, smpls_inner = smpls_inner)
+                smpls_inner = None if not self._double_sample_splitting else self._smpls_inner
+                model._set_smpls_sampling(smpls=self._smpls, smpls_inner=smpls_inner)
 
             # TODO: Probably will need to set samples for the inner samples.
             modeldict[f"{target}_{treatment}"] = model
@@ -529,7 +526,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
 
     def _initialize_scores(self):
         return [f"{target}_{treatment}" for target, treatment in self._scores_combinations]
-    
+
     def _valid_scores_combinations(self):
         if all(self._dml_data.binary_treats):
             treatment_levels = self.treatments
@@ -540,35 +537,39 @@ class DoubleMLMEDS(SampleSplittingMixin):
     def _check_external_predictions(self, external_predictions_dict):
         external_predictions_keys = external_predictions_dict.keys()
         if not set(external_predictions_keys).issubset(set(self.scores)):
-                        raise ValueError(
+            raise ValueError(
                 "external_predictions must be a subset of all scores. "
                 + f"Expected keys: {set(self.scores)}. "
                 + f"Passed keys: {set(external_predictions_keys)}."
             )
 
-        expected_learners_keys = ["ml_px",
-                             "ml_pmx",
-                             "ml_yx",
-                             "ml_ymx",
-                             "ml_nested",
-                             ]
+        expected_learners_keys = [
+            "ml_px",
+            "ml_pmx",
+            "ml_yx",
+            "ml_ymx",
+            "ml_nested",
+        ]
         if self.double_sample_splitting:
             expected_inner_learners_keys = [f"ml_ymx_inner_{i}" for i in range(self.n_folds)]
             expected_learners_keys += expected_inner_learners_keys
 
-        #TODO: Do not hardcode "d". This has been set because multiple treatment levels have not been implemented yet.
         for key, value in external_predictions_dict.items():
             if not isinstance(value, dict):
                 raise TypeError(
-                    f"external_predictions[{key}] must be a dictionary. " + f"Object of type {type(value)} passed."
+                    f"external_predictions[{key}] must hold a dictionary. "
+                    + f"Current value in external_predictions[{key}] is of type {type(value)}"
                 )
-            if not set(value["d"].keys()).issubset(expected_learners_keys):
-                raise ValueError(
-                    f"external_predictions[{key}] must be a subset of {set(expected_learners_keys)}. "
-                    + f"Passed keys: {set(value["d"].keys())}."
-                )
-        return
-    
+            for d_col in value.keys():
+                assert d_col in set(self._dml_data.d_cols)
+                if not set(value[d_col].keys()).issubset(expected_learners_keys):
+                    raise ValueError(
+                        f"external_predictions[{d_col}] must hold a dictionnary whose keys are a "
+                        + f"subset of {set(expected_learners_keys)}. "
+                        + f"Passed keys: {set(value[self._dml_data.d_cols].keys())}."
+                    )
+            return
+
     def tune_ml_models(
         self,
         ml_param_space,
