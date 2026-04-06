@@ -326,12 +326,6 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
             # Get samples conditional on treatment:
             smpls_d0, smpls_d1 = _get_cond_smpls(smpls, self.treated)
 
-            # Get inner samples conditional on treatment:
-            smpls_inner_d1 = []
-            for fold in self._DoubleML__smpls__inner:
-                _, inner_smpls_d1 = _get_cond_smpls(fold, self.treated)
-                smpls_inner_d1.append(inner_smpls_d1)
-
             # Estimate the probability of treatment conditional on the covariates.
             if px_external:
                 px_hat = {"preds": external_predictions["ml_px"], "targets": None, "models": None}
@@ -367,6 +361,12 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
             inner_predictions = {}
             inner_targets = {}
             if self.double_sample_splitting:
+                # Get inner samples conditional on treatment:
+                smpls_inner_d1 = []
+                for fold in self._smpls_inner[self._i_rep]:
+                    _, inner_smpls_d1 = _get_cond_smpls(fold, self.treated)
+                    smpls_inner_d1.append(inner_smpls_d1)
+
                 if ymx_external:
                     # expect per-inner-fold keys ml_ymx_inner_i
                     missing = [
