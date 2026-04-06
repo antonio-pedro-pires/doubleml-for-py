@@ -323,8 +323,14 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
             ymx_external = external_predictions["ml_ymx"] is not None
             nested_external = external_predictions["ml_nested"] is not None
 
-            # Prepare the samples
+            # Get samples conditional on treatment:
             smpls_d0, smpls_d1 = _get_cond_smpls(smpls, self.treated)
+
+            # Get inner samples conditional on treatment:
+            smpls_inner_d1 = []
+            for fold in self._DoubleML__smpls__inner:
+                _, inner_smpls_d1 = _get_cond_smpls(fold, self.treated)
+                smpls_inner_d1.append(inner_smpls_d1)
 
             # Estimate the probability of treatment conditional on the covariates.
             if px_external:
@@ -382,12 +388,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
                         "models": None,
                     }
                 else:
-                    smpls_inner_d1 = []
-                    for fold in self._DoubleML__smpls__inner:
-                        _, smpls_d1 = _get_cond_smpls(fold, self.treated)
-                        smpls_inner_d1.append(smpls_d1)
 
-                    # TODO: Have to filter and only have observations where d=1
                     ymx_hat = _double_dml_cv_predict(
                         estimator=self._learner["ml_ymx"],
                         estimator_name=self._learner["ml_ymx"],
@@ -403,15 +404,21 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
                 if nested_external:
                     nested_hat = {"preds": external_predictions["ml_nested"], "targets": None, "models": None}
                 else:
-                    ymx_inner_preds = np.zeros_like(y)
-                    for pred, (train, test) in zip(ymx_hat["preds_inner"], smpls):
-                        ymx_inner_preds[train] += pred[train]
-                    ymx_inner_preds /= len(ymx_hat["preds_inner"])
+
+                    # _dml_cv_predict perceives the fitting of the nested estimator as a case where there are multiple
+                    # fold specific targets because of the shape of ymx_hat["preds"]. The method throws a
+                    # 'ValueError: shape mismatch' when setting xx[train_index]=y[idx]
+                    # (line 120 in doubleml/utils/_estimation.py). In order to avoid this error, it's necessary to
+                    # feed the method a 'y' parameter whose subarrays match the 'smpls' parameter's subarrays shapes,
+                    # which is exactly what the following line does.
+                    ymx_hat_inner_preds = [
+                        ymx_hat_preds[train] for (train, _), ymx_hat_preds in zip(smpls_d0, ymx_hat["preds_inner"])
+                    ]
 
                     nested_hat = _dml_cv_predict(
                         self._learner["ml_nested"],
                         xm,
-                        ymx_inner_preds,
+                        ymx_hat_inner_preds,
                         smpls=smpls_d0,
                         n_jobs=n_jobs_cv,
                         est_params=self._get_params("ml_nested"),
