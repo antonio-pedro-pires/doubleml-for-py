@@ -348,7 +348,9 @@ class DoubleMLMEDS(SampleSplittingMixin):
             df_summary = pd.DataFrame(columns=col_names)
         else:
             ci = self.confint()
-            df_summary = generate_summary(self.coef, self.se, self.t_stat, self.pval, ci, self.scores)
+            df_summary = generate_summary(
+                coef=self.coef, se=self.se, t_stat=self.t_stat, pval=self.pval, ci=ci, index_names=self.scores
+            )
         return df_summary
 
     @property
@@ -362,22 +364,6 @@ class DoubleMLMEDS(SampleSplittingMixin):
         else:
             df_effects_summary = generate_effects_summary(self._effects)
         return df_effects_summary
-
-    @property
-    def sensitivity_summary(self):
-        """
-        Returns a summary for the sensitivity analysis after calling :meth:`sensitivity_analysis`.
-
-        Returns
-        -------
-        res : str
-            Summary for the sensitivity analysis.
-        """
-        if self._framework is None:
-            raise ValueError("Apply sensitivity_analysis() before sensitivity_summary.")
-        else:
-            sensitivity_summary = self._framework.sensitivity_summary
-        return sensitivity_summary
 
     def fit(self, n_jobs_models=None, n_jobs_cv=None, store_predictions=True, store_models=False, external_predictions=None):
         if external_predictions is not None:
@@ -428,15 +414,8 @@ class DoubleMLMEDS(SampleSplittingMixin):
         if self.framework is None:
             raise ValueError("Apply fit() before confint().")
         df_ci = self.framework.confint(joint=joint, level=level)
-        # TODO: Add the score function to the index for better readibility.
-        # df_ci.set_index(pd.Index(self._treatment_levels), inplace=True)
+        df_ci.set_index(pd.Index(self.scores), inplace=True)
         return df_ci
-
-    def bootstrap(self, method="normal", n_rep_boot=500):
-        if self.framework is None:
-            raise ValueError("Apply fit() before calling bootstrap()")
-        self.framework.bootstrap(method=method, n_rep_boot=n_rep_boot)
-        return self
 
     def evaluate_effects(self):
         if self.framework is None:
