@@ -371,7 +371,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
                     # expect per-inner-fold keys ml_ymx_inner_i
                     missing = [
                         i
-                        for i in range(self.n_folds_inner)
+                        for i in range(self.n_folds)
                         if (f"ml_ymx_inner_{i}") not in external_predictions.keys()
                         or external_predictions[f"ml_ymx_inner_{i}"] is None
                     ]
@@ -380,7 +380,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
                             "When providing external predictions for ml_ymx, also inner predictions for all inner folds "
                             f"have to be provided (missing: {', '.join([str(i) for i in missing])})."
                         )
-                    ymx_hat_inner = [external_predictions[f"ml_ymx_inner_{i}"] for i in range(self.n_folds_inner)]
+                    ymx_hat_inner = [external_predictions[f"ml_ymx_inner_{i}"] for i in range(self.n_folds)]
                     ymx_hat = {
                         "preds": external_predictions["ml_ymx"],
                         "preds_inner": ymx_hat_inner,
