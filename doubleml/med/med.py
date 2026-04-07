@@ -686,11 +686,13 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
                 raise ValueError(f"Learner {learner_name} is required when the target is {self._target}.")
 
             if learner_name in ["ml_px", "ml_pmx"]:
-                is_classifier_ = self._check_learner(learner, learner_name, regressor=True, classifier=True)
+                is_classifier_ = self._check_learner(learner, learner_name, regressor=False, classifier=True)
                 if is_classifier_:
                     self._predict_method[learner_name] = "predict_proba"
                 else:
-                    self._predict_method
+                    raise ValueError(
+                        f"The learner {learner_name} must be a classifier. " f"{learner_name} identified as a regressor."
+                    )
             else:
                 is_classifier_ = self._check_learner(learner, learner_name, regressor=True, classifier=True)
                 if self._dml_data.binary_outcome and not is_classifier_:
