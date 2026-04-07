@@ -26,12 +26,11 @@ def _normalize_potential(normalize_ipw, d, treatment_level, px_preds, n_obs):
     """
     if normalize_ipw:
         if treatment_level == 0:
-            # TODO: Have to check if only px_preds must be taken.
             sumscore = np.sum(np.divide(1.0 - d, 1.0 - px_preds))
-            result = np.multiply(np.divide(n_obs, sumscore), np.divide(1.0 - d, 1.0 - px_preds))
+            result = np.multiply(np.divide(1.0 - d, 1.0 - px_preds), np.divide(n_obs, sumscore))
         elif treatment_level == 1:
             sumscore = np.sum(np.divide(d, px_preds))
-            result = np.multiply(np.divide(n_obs, sumscore), np.divide(d, px_preds))
+            result = np.multiply(np.divide(d, px_preds), np.divide(n_obs, sumscore))
     else:
         if treatment_level == 0:
             result = np.divide(1.0 - d, 1.0 - px_preds)
@@ -51,31 +50,34 @@ def _normalize_counterfactual(normalize_ipw, d, treatment_level, px_preds, pmx_p
             sumscore2 = np.sum(np.divide(d, px_preds))
 
             ps1 = np.multiply(
-                np.divide(n_obs, sumscore1), np.divide(np.multiply(1.0 - d, pmx_preds), np.multiply(1.0 - pmx_preds, px_preds))
+                np.divide(np.multiply(1.0 - d, pmx_preds), np.multiply(1.0 - pmx_preds, px_preds)), np.divide(n_obs, sumscore1)
             )
 
-            ps2 = np.multiply(np.divide(n_obs, sumscore2), np.divide(d, px_preds))
+            ps2 = np.multiply(np.divide(d, px_preds), np.divide(n_obs, sumscore2))
+
             result = (ps1, ps2)
+
         elif treatment_level == 1:
             sumscore1 = np.sum(np.divide(np.multiply(d, 1.0 - pmx_preds), np.multiply(pmx_preds, 1.0 - px_preds)))
             sumscore2 = np.sum(np.divide(1.0 - d, 1.0 - px_preds))
 
             ps1 = np.multiply(
-                np.divide(n_obs, sumscore1), np.divide(np.multiply(d, 1.0 - pmx_preds), np.multiply(pmx_preds, 1.0 - px_preds))
+                np.divide(np.multiply(d, 1.0 - pmx_preds), np.multiply(pmx_preds, 1.0 - px_preds)), np.divide(n_obs, sumscore1)
             )
 
-            ps2 = np.multiply(np.divide(n_obs, sumscore2), np.divide(1.0 - d, (1.0 - px_preds)))
+            ps2 = np.multiply(np.divide(1.0 - d, 1.0 - px_preds), np.divide(n_obs, sumscore2))
+
             result = (ps1, ps2)
 
     else:
         if treatment_level == 0:
-            ps1 = np.divide(np.multiply(d, 1.0 - pmx_preds), np.multiply(pmx_preds, 1.0 - px_preds))
-
+            ps1 = np.divide(np.multiply(1.0 - d, pmx_preds), np.multiply(1.0 - pmx_preds, px_preds))
             ps2 = np.divide(d, px_preds)
+
             result = (ps1, ps2)
         elif treatment_level == 1:
             ps1 = np.divide(np.multiply(d, 1.0 - pmx_preds), np.multiply(pmx_preds, 1.0 - px_preds))
-            ps2 = np.divide(1.0 - d, (1.0 - px_preds))
+            ps2 = np.divide(1.0 - d, 1.0 - px_preds)
 
             result = (ps1, ps2)
 
