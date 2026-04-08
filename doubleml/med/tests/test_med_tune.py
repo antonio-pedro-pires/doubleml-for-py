@@ -1,13 +1,16 @@
+import copy
 import random
 import re
 
 import pytest
 
+from doubleml import DoubleMLMED
 from doubleml.tests._utils_tune_optuna import (
     _assert_tree_params,
 )
 
-#TODO: Something broke in these tests, have to fix it.
+
+# TODO: Something broke in these tests, have to fix it.
 @pytest.fixture(scope="module")
 def learners(learner_tree):
     return learner_tree
@@ -18,15 +21,32 @@ def target(request):
     yield request.param
 
 
-@pytest.fixture(scope="module")
-def dml_med_obj(med_factory, binary_targets, binary_treats, learners):
-    yield med_factory(binary_targets, binary_treats, learners)
-
-
 @pytest.fixture(
     scope="module",
 )
-def untuned_tuned_scores(dml_med_obj, optuna_params, optuna_settings, binary_targets):
+def untuned_tuned_scores(dml_data, binary_targets, binary_treats, learners, optuna_params, optuna_settings):
+
+    if binary_targets == "potential":
+        model = DoubleMLMED(
+            dml_data=dml_data,
+            ml_yx=learners["ml_yx"],
+            ml_px=learners["ml_px"],
+            target=binary_targets,
+            treatment_level=binary_treats,
+        )
+    else:
+        model = DoubleMLMED(
+            dml_data=dml_data,
+            target=binary_targets,
+            treatment_level=binary_treats,
+            ml_yx=learners["ml_yx"],
+            ml_px=learners["ml_px"],
+            ml_ymx=learners["ml_ymx"],
+            ml_pmx=learners["ml_pmx"],
+            ml_nested=learners["ml_nested"],
+        )
+
+    med_obj = copy.deepcopy(model)
     if binary_targets == "potential":
         ml_param_space = {
             "ml_yx": optuna_params["ml_yx"],
@@ -41,26 +61,33 @@ def untuned_tuned_scores(dml_med_obj, optuna_params, optuna_settings, binary_tar
         }
 
     random.seed(0)
-    dml_med_obj.fit()
-    untuned_score = dml_med_obj.evaluate_learners()
+    med_obj.fit()
+    untuned_score = med_obj.evaluate_learners()
 
     random.seed(0)
-    tune_res = dml_med_obj.tune_ml_models(
+    tune_res = med_obj.tune_ml_models(
         ml_param_space=ml_param_space,
         optuna_settings=optuna_settings,
         return_tune_res=True,
     )
 
     random.seed(0)
-    dml_med_obj.fit()
+    med_obj.fit()
 
     random.seed(0)
-    tuned_score = dml_med_obj.evaluate_learners()
-    return {"untuned_score": untuned_score, "tuned_score": tuned_score, "tune_res": tune_res, "ml_param_space": ml_param_space}
+    tuned_score = med_obj.evaluate_learners()
+    return {
+        "med_obj": med_obj,
+        "untuned_score": untuned_score,
+        "tuned_score": tuned_score,
+        "tune_res": tune_res,
+        "ml_param_space": ml_param_space,
+    }
 
 
 @pytest.mark.ci
-def test_tune_ml_models(untuned_tuned_scores, dml_med_obj):
+def test_tune_ml_models(untuned_tuned_scores):
+    dml_med_obj = untuned_tuned_scores["med_obj"]
     untuned_score = untuned_tuned_scores["untuned_score"]
     tuned_score = untuned_tuned_scores["tuned_score"]
     tune_res = untuned_tuned_scores["tune_res"]
