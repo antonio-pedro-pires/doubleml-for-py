@@ -1,10 +1,8 @@
-from random import seed
+import copy
 
 import numpy as np
 import pytest
-import copy
 
-from doubleml.double_ml_framework import concat
 from doubleml.med import DoubleMLMEDS
 
 
@@ -24,8 +22,6 @@ def meds_kwargs(dml_data, learners, double_sample_splitting):
         "score": "MED",
         "normalize_ipw": False,
         "trimming_threshold": 1e-2,
-        "order": 1,
-        "multmed": True,
         "draw_sample_splitting": True,
         "double_sample_splitting": double_sample_splitting,
         **learners,
@@ -47,28 +43,38 @@ def smpls_inner_outer(meds_obj):
 def treatment_mediation(meds_obj):
     return meds_obj.treatment_mediation_levels
 
+
 @pytest.fixture(scope="module", params=[True, False])
 def double_sample_splitting(request):
     return request.param
+
 
 @pytest.fixture(scope="module")
 def meds_fixture_binary_treat(meds_obj):
     meds_obj_ext = copy.deepcopy(meds_obj)
 
     meds_obj.fit()
-    #The following line is hardcoded for binary treatments. It should be possible to make it work for multiple treatments, but it would require implementing some logic in meds.py.
-    external_predictions_dict = {score: {"d":{key: value[:,:,0] for (key, value) in meds_obj.modeldict[score].predictions.items()}} for score in meds_obj.scores}
+    # The following line is hardcoded for binary treatments.
+    # It should be possible to make it work for multiple treatments,
+    # but it would require implementing some logic in meds.py.
+    external_predictions_dict = {
+        score: {"d": {key: value[:, :, 0] for (key, value) in meds_obj.modeldict[score].predictions.items()}}
+        for score in meds_obj.scores
+    }
     meds_obj_ext.fit(external_predictions=external_predictions_dict)
-    
+
     return meds_obj, meds_obj_ext
+
 
 @pytest.mark.ci
 def test_external_predictions_binary_treat(meds_fixture_binary_treat):
-    values_of_interest = ["all_pvals",
-            "all_ses",
-            "all_t_stats",
-            "all_thetas",]
+    values_of_interest = [
+        "all_pvals",
+        "all_ses",
+        "all_t_stats",
+        "all_thetas",
+    ]
     meds_obj, meds_obj_ext = meds_fixture_binary_treat
 
     for elem in values_of_interest:
-        assert np.array_equal(meds_obj.framework.__getattribute__(elem),meds_obj_ext.framework.__getattribute__(elem)) 
+        assert np.array_equal(meds_obj.framework.__getattribute__(elem), meds_obj_ext.framework.__getattribute__(elem))
