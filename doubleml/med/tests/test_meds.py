@@ -28,8 +28,6 @@ def meds_kwargs(dml_data, learners, double_sample_splitting):
         "score": "MED",
         "normalize_ipw": False,
         "trimming_threshold": 1e-2,
-        "order": 1,
-        "multmed": True,
         "draw_sample_splitting": True,
         "double_sample_splitting": double_sample_splitting,
         **learners,

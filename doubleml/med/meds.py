@@ -37,8 +37,6 @@ class DoubleMLMEDS(SampleSplittingMixin):
         score=None,
         normalize_ipw=False,
         trimming_threshold=1e-2,
-        order=1,
-        multmed=True,
         draw_sample_splitting=True,
         double_sample_splitting=True,
     ):
@@ -49,8 +47,6 @@ class DoubleMLMEDS(SampleSplittingMixin):
         self._treatment_mediation_levels = self._initialize_treatment_mediation_levels()
 
         self._trimming_threshold = trimming_threshold
-        self._order = order
-        self._multmed = multmed
         self._normalize_ipw = normalize_ipw
         self._double_sample_splitting = double_sample_splitting
         # _check_resampling_specifications(n_folds, n_rep)
@@ -58,7 +54,6 @@ class DoubleMLMEDS(SampleSplittingMixin):
         self._n_rep = n_rep
         self._n_folds_inner = n_folds_inner
 
-        self._multmed = multmed
         self._scores_combinations = self._valid_scores_combinations()
         self._scores = self._initialize_scores()
         # initialize learners and parameters which are set model specific
