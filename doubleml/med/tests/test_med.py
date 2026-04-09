@@ -169,7 +169,6 @@ def test_external_predictions_exceptions(external_predictions_exceptions_fixture
 
 @pytest.fixture(scope="module")
 def set_smpls_sampling_fixture(med_factory, learner_linear, binary_targets, binary_treats, double_sample_splitting):
-    # Treatment_level is hardcoded because set_smpls_sampling does not differentiate based on treatment_level
     med_obj = med_factory(
         target=binary_targets,
         treatment_level=binary_treats,

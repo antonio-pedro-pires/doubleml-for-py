@@ -138,6 +138,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
         """
         return self._normalize_ipw
 
+    # TODO: Replace trimming-type properties by psprocessor ones.
     @property
     def trimming_rule(self):
         """
@@ -162,22 +163,6 @@ class DoubleMLMEDS(SampleSplittingMixin):
     @property
     def scores(self):
         return self._scores
-
-    # TODO: Check if the definition is true
-    @property
-    def order(self):
-        """
-        Specifies the order of the terms (interactions)
-        """
-        return self._order
-
-    @property
-    def multmed(self):
-        """
-        Indicates if the mediator variable is continuous and/or multiple.
-        Determines the score function for the counterfactual E[Y(D=d, M(1-d))].
-        """
-        return self._multmed
 
     @property
     def double_sample_splitting(self):
@@ -205,7 +190,6 @@ class DoubleMLMEDS(SampleSplittingMixin):
             effects = self._effects
         return effects
 
-    # TODO: Add definition
     @property
     def coef(self):
         """
@@ -293,6 +277,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
         """
         return self._framework
 
+    # TODO: Add bootstrap or remove it
     @property
     def boot_t_stat(self):
         """
@@ -311,32 +296,6 @@ class DoubleMLMEDS(SampleSplittingMixin):
         The list of models for each level.
         """
         return self._modeldict
-
-    @property
-    def sensitivity_elements(self):
-        """
-        Values of the sensitivity components after calling :meth:`fit`;
-        If available (e.g., PLR, IRM) a dictionary with entries ``sigma2``, ``nu2``, ``psi_sigma2``, ``psi_nu2``
-        and ``riesz_rep``.
-        """
-        if self._framework is None:
-            sensitivity_elements = None
-        else:
-            sensitivity_elements = self._framework.sensitivity_elements
-        return sensitivity_elements
-
-    @property
-    def sensitivity_params(self):
-        """
-        Values of the sensitivity parameters after calling :meth:`sesitivity_analysis`;
-        If available (e.g., PLR, IRM) a dictionary with entries ``theta``, ``se``, ``ci``, ``rv``
-        and ``rva``.
-        """
-        if self._framework is None:
-            sensitivity_params = None
-        else:
-            sensitivity_params = self._framework.sensitivity_params
-        return sensitivity_params
 
     @property
     def summary(self):
@@ -386,7 +345,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
             assert fitted_models[idx].treatment_level == treatment
 
             self._modeldict[score] = fitted_models[idx]
-            framework_list[idx] = self._modeldict[score].framework  # TODO: make framework dict instead of list
+            framework_list[idx] = self._modeldict[score].framework
 
         # aggregate all frameworks
         self._framework = concat(framework_list)
@@ -406,7 +365,6 @@ class DoubleMLMEDS(SampleSplittingMixin):
             store_models=store_models,
             external_predictions=external_predictions,
         )
-        # TODO: Add external predictions
 
         return model
 
@@ -449,8 +407,6 @@ class DoubleMLMEDS(SampleSplittingMixin):
         return self
 
     def _initialize_models(self):
-
-        # TODO: Maybe will have to work this out. How to create dict to contain objects.
         modeldict = {score: object for score in self.scores}
 
         pot_kwargs = {
@@ -492,7 +448,6 @@ class DoubleMLMEDS(SampleSplittingMixin):
                 smpls_inner = None if not self._double_sample_splitting else self._smpls_inner
                 model._set_smpls_sampling(smpls=self._smpls, smpls_inner=smpls_inner)
 
-            # TODO: Probably will need to set samples for the inner samples.
             modeldict[f"{target}_{treatment}"] = model
 
         return modeldict

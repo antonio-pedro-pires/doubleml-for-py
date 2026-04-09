@@ -58,7 +58,6 @@ def make_med_data(n_obs=1000, dim_x=20, return_type="DoubleMLMediationData", **k
     beta = [b / (i**2) for i in range(1, dim_x + 1)]
 
     # Draw covariates X.
-
     # Each entry ij in the covariance matrix equals 0.5^(abs(i-j)). which is a Toeplitz matrix.
     covmat = toeplitz([np.power(0.5, k) for k in range(dim_x)])
     x = np.random.multivariate_normal(mean=np.zeros(dim_x), cov=covmat, size=[n_obs])

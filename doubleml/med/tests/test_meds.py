@@ -114,7 +114,7 @@ def fit_objs(meds_obj, individual_med_objs):
     seed(123)
     framework_list = [None] * len(individual_med_objs)
     for idx, model in enumerate(individual_med_objs.values()):
-        framework_list[idx] = model.fit().framework  # TODO: make framework dict instead of list
+        framework_list[idx] = model.fit().framework
     individual_med_objs_framework = concat(framework_list)
     return meds_obj, individual_med_objs_framework
 
