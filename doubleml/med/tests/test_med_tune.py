@@ -28,8 +28,8 @@ def untuned_tuned_scores(dml_data, binary_targets, binary_treats, learners, optu
     if binary_targets == "potential":
         model = DoubleMLMED(
             dml_data=dml_data,
-            ml_yx=learners["ml_yx"],
-            ml_px=learners["ml_px"],
+            ml_g=learners["ml_g"],
+            ml_m=learners["ml_m"],
             target=binary_targets,
             treatment_level=binary_treats,
         )
@@ -38,25 +38,25 @@ def untuned_tuned_scores(dml_data, binary_targets, binary_treats, learners, optu
             dml_data=dml_data,
             target=binary_targets,
             treatment_level=binary_treats,
-            ml_yx=learners["ml_yx"],
-            ml_px=learners["ml_px"],
-            ml_ymx=learners["ml_ymx"],
-            ml_pmx=learners["ml_pmx"],
-            ml_nested=learners["ml_nested"],
+            ml_g=learners["ml_g"],
+            ml_m=learners["ml_m"],
+            ml_G=learners["ml_G"],
+            ml_M=learners["ml_M"],
+            ml_nested_g=learners["ml_nested_g"],
         )
 
     med_obj = copy.deepcopy(model)
     if binary_targets == "potential":
         ml_param_space = {
-            "ml_yx": optuna_params["ml_yx"],
-            "ml_px": optuna_params["ml_px"],
+            "ml_g": optuna_params["ml_g"],
+            "ml_m": optuna_params["ml_m"],
         }
     else:
         ml_param_space = {
-            "ml_px": optuna_params["ml_px"],
-            "ml_ymx": optuna_params["ml_ymx"],
-            "ml_pmx": optuna_params["ml_pmx"],
-            "ml_nested": optuna_params["ml_nested"],
+            "ml_m": optuna_params["ml_m"],
+            "ml_G": optuna_params["ml_G"],
+            "ml_M": optuna_params["ml_M"],
+            "ml_nested_g": optuna_params["ml_nested_g"],
         }
 
     random.seed(0)
@@ -99,7 +99,7 @@ def test_tune_ml_models(untuned_tuned_scores):
     for key in params_names:
         is_inner_model = re.findall(r"[0-9]", key) != []
 
-        if not (key == "ml_nested" or is_inner_model):
+        if not (key == "ml_nested_g" or is_inner_model):
             assert hasattr(tune_res[0][key], "best_params")
             _assert_tree_params(tune_res[0][key].best_params)
             msg = (

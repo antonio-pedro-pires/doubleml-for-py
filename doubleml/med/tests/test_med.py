@@ -108,7 +108,7 @@ def dml_med_fixture(
 
     if med_obj.double_sample_splitting and med_obj.target == "counterfactual":
         for i in range(med_obj.n_folds):
-            prediction_dict["d"][f"ml_ymx_inner_{i}"] = med_obj.predictions[f"ml_ymx_inner_{i}"][:, :, 0]
+            prediction_dict["d"][f"ml_G_inner_{i}"] = med_obj.predictions[f"ml_G_inner_{i}"][:, :, 0]
 
     med_obj_ext.fit(external_predictions=prediction_dict)
 
@@ -160,7 +160,7 @@ def test_external_predictions_exceptions(external_predictions_exceptions_fixture
     with pytest.raises(
         ValueError,
         match=re.escape(
-            "When providing external predictions for ml_ymx, also inner predictions for all inner folds "
+            "When providing external predictions for ml_G, also inner predictions for all inner folds "
             + f"have to be provided (missing: {', '.join([str(i) for i in [0, 1, 2, 3, 4]])})."
         ),
     ):

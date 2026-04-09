@@ -26,11 +26,11 @@ class DoubleMLMEDS(SampleSplittingMixin):
     def __init__(
         self,
         dml_data,
-        ml_px,
-        ml_yx,
-        ml_ymx,
-        ml_pmx,
-        ml_nested,
+        ml_m,
+        ml_g,
+        ml_G,
+        ml_M,
+        ml_nested_g,
         n_folds=5,
         n_rep=1,
         n_folds_inner=5,
@@ -63,11 +63,11 @@ class DoubleMLMEDS(SampleSplittingMixin):
         self._scores = self._initialize_scores()
         # initialize learners and parameters which are set model specific
         self._learner = {
-            "ml_px": clone(ml_px),
-            "ml_yx": clone(ml_yx),
-            "ml_ymx": clone(ml_ymx),
-            "ml_pmx": clone(ml_pmx),
-            "ml_nested": clone(ml_nested),
+            "ml_m": clone(ml_m),
+            "ml_g": clone(ml_g),
+            "ml_G": clone(ml_G),
+            "ml_M": clone(ml_M),
+            "ml_nested_g": clone(ml_nested_g),
         }
         self._params = None
 
@@ -411,8 +411,8 @@ class DoubleMLMEDS(SampleSplittingMixin):
 
         pot_kwargs = {
             "dml_data": self._dml_data,
-            "ml_px": self._learner["ml_px"],
-            "ml_yx": self._learner["ml_yx"],
+            "ml_m": self._learner["ml_m"],
+            "ml_g": self._learner["ml_g"],
             "n_folds": self.n_folds,
             "n_rep": self.n_rep,
             "n_folds_inner": self.n_folds_inner,
@@ -423,10 +423,10 @@ class DoubleMLMEDS(SampleSplittingMixin):
         }
         counter_kwargs = {
             "dml_data": self._dml_data,
-            "ml_px": self._learner["ml_px"],
-            "ml_ymx": self._learner["ml_ymx"],
-            "ml_pmx": self._learner["ml_pmx"],
-            "ml_nested": self._learner["ml_nested"],
+            "ml_m": self._learner["ml_m"],
+            "ml_G": self._learner["ml_G"],
+            "ml_M": self._learner["ml_M"],
+            "ml_nested_g": self._learner["ml_nested_g"],
             "n_folds": self.n_folds,
             "n_rep": self.n_rep,
             "n_folds_inner": self.n_folds_inner,
@@ -478,14 +478,14 @@ class DoubleMLMEDS(SampleSplittingMixin):
             )
 
         expected_learners_keys = [
-            "ml_px",
-            "ml_pmx",
-            "ml_yx",
-            "ml_ymx",
-            "ml_nested",
+            "ml_m",
+            "ml_M",
+            "ml_g",
+            "ml_G",
+            "ml_nested_g",
         ]
         if self.double_sample_splitting:
-            expected_inner_learners_keys = [f"ml_ymx_inner_{i}" for i in range(self.n_folds)]
+            expected_inner_learners_keys = [f"ml_G_inner_{i}" for i in range(self.n_folds)]
             expected_learners_keys += expected_inner_learners_keys
 
         for key, value in external_predictions_dict.items():
@@ -527,18 +527,18 @@ class DoubleMLMEDS(SampleSplittingMixin):
             if model.target == "potential":
                 res = model.tune_ml_models(
                     ml_param_space={
-                        "ml_yx": ml_param_space["ml_yx"],
-                        "ml_px": ml_param_space["ml_px"],
+                        "ml_g": ml_param_space["ml_g"],
+                        "ml_m": ml_param_space["ml_m"],
                     },
                     **tuning_kwargs,
                 )
             elif model.target == "counterfactual":
                 res = model.tune_ml_models(
                     ml_param_space={
-                        "ml_px": ml_param_space["ml_px"],
-                        "ml_ymx": ml_param_space["ml_ymx"],
-                        "ml_pmx": ml_param_space["ml_pmx"],
-                        "ml_nested": ml_param_space["ml_nested"],
+                        "ml_m": ml_param_space["ml_m"],
+                        "ml_G": ml_param_space["ml_G"],
+                        "ml_M": ml_param_space["ml_M"],
+                        "ml_nested_g": ml_param_space["ml_nested_g"],
                     },
                     **tuning_kwargs,
                 )

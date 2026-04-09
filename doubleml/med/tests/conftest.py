@@ -21,33 +21,33 @@ def dml_data():
 @pytest.fixture(scope="session")
 def learner_linear():
     return {
-        "ml_yx": LinearRegression(),
-        "ml_px": LogisticRegression(solver="saga", l1_ratio=1, max_iter=250, random_state=42),
-        "ml_ymx": LinearRegression(),
-        "ml_pmx": LogisticRegression(solver="saga", l1_ratio=1, max_iter=250, random_state=42),
-        "ml_nested": LinearRegression(),
+        "ml_g": LinearRegression(),
+        "ml_m": LogisticRegression(solver="saga", l1_ratio=1, max_iter=250, random_state=42),
+        "ml_G": LinearRegression(),
+        "ml_M": LogisticRegression(solver="saga", l1_ratio=1, max_iter=250, random_state=42),
+        "ml_nested_g": LinearRegression(),
     }
 
 
 @pytest.fixture(scope="session")
 def learner_tree():
     return {
-        "ml_yx": DecisionTreeRegressor(random_state=123),
-        "ml_ymx": DecisionTreeRegressor(random_state=123),
-        "ml_px": DecisionTreeClassifier(random_state=123),
-        "ml_pmx": DecisionTreeClassifier(random_state=123),
-        "ml_nested": DecisionTreeRegressor(random_state=123),
+        "ml_g": DecisionTreeRegressor(random_state=123),
+        "ml_G": DecisionTreeRegressor(random_state=123),
+        "ml_m": DecisionTreeClassifier(random_state=123),
+        "ml_M": DecisionTreeClassifier(random_state=123),
+        "ml_nested_g": DecisionTreeRegressor(random_state=123),
     }
 
 
 @pytest.fixture(scope="session")
 def learner_forest():
     return {
-        "ml_yx": RandomForestRegressor(max_depth=5, n_estimators=10, random_state=42),
-        "ml_ymx": RandomForestRegressor(max_depth=5, n_estimators=10, random_state=42),
-        "ml_px": RandomForestClassifier(max_depth=5, n_estimators=10, random_state=42),
-        "ml_pmx": RandomForestClassifier(max_depth=5, n_estimators=10, random_state=42),
-        "ml_nested": RandomForestRegressor(max_depth=5, n_estimators=10, random_state=42),
+        "ml_g": RandomForestRegressor(max_depth=5, n_estimators=10, random_state=42),
+        "ml_G": RandomForestRegressor(max_depth=5, n_estimators=10, random_state=42),
+        "ml_m": RandomForestClassifier(max_depth=5, n_estimators=10, random_state=42),
+        "ml_M": RandomForestClassifier(max_depth=5, n_estimators=10, random_state=42),
+        "ml_nested_g": RandomForestRegressor(max_depth=5, n_estimators=10, random_state=42),
     }
 
 
@@ -69,11 +69,11 @@ def binary_scores(binary_targets, binary_treats):
 @pytest.fixture(scope="session")
 def optuna_params():
     return {
-        "ml_yx": _small_tree_params,
-        "ml_px": _small_tree_params,
-        "ml_ymx": _small_tree_params,
-        "ml_pmx": _small_tree_params,
-        "ml_nested": _small_tree_params,
+        "ml_g": _small_tree_params,
+        "ml_m": _small_tree_params,
+        "ml_G": _small_tree_params,
+        "ml_M": _small_tree_params,
+        "ml_nested_g": _small_tree_params,
     }
 
 
@@ -87,9 +87,9 @@ def optuna_settings(request):
 def med_factory(dml_data):
     def _factory(target, treatment_level, learners, **kwargs):
         if target == "potential":
-            active_learners = {k: clone(v) for k, v in learners.items() if k in ["ml_yx", "ml_px"]}
+            active_learners = {k: clone(v) for k, v in learners.items() if k in ["ml_g", "ml_m"]}
         elif target == "counterfactual":
-            active_learners = {k: clone(v) for k, v in learners.items() if k in ["ml_px", "ml_ymx", "ml_pmx", "ml_nested"]}
+            active_learners = {k: clone(v) for k, v in learners.items() if k in ["ml_m", "ml_G", "ml_M", "ml_nested_g"]}
 
         return DoubleMLMED(dml_data=dml_data, target=target, treatment_level=treatment_level, **active_learners, **kwargs)
 

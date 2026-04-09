@@ -6,78 +6,78 @@ def _normalize_propensity_med(
     outcome,
     d,
     treatment_level,
-    px_preds,
-    pmx_preds=None,
+    m_preds,
+    M_preds=None,
 ):
     """
     Normalizes propensity scores for causal mediation analysis. Normalizes both potential and counterfactual scores.
     """
     n_obs = len(d)
     if outcome == "potential":
-        result = _normalize_potential(normalize_ipw, d, treatment_level, px_preds, n_obs)
+        result = _normalize_potential(normalize_ipw, d, treatment_level, m_preds, n_obs)
     elif outcome == "counterfactual":
-        result = _normalize_counterfactual(normalize_ipw, d, treatment_level, px_preds, pmx_preds, n_obs)
+        result = _normalize_counterfactual(normalize_ipw, d, treatment_level, m_preds, M_preds, n_obs)
     return result
 
 
-def _normalize_potential(normalize_ipw, d, treatment_level, px_preds, n_obs):
+def _normalize_potential(normalize_ipw, d, treatment_level, m_preds, n_obs):
     """
     Normalizes potential scores in the context of causal mediation analysis.
     """
     if normalize_ipw:
         if treatment_level == 0:
-            sumscore = np.sum(np.divide(1.0 - d, 1.0 - px_preds))
-            result = np.multiply(np.divide(1.0 - d, 1.0 - px_preds), np.divide(n_obs, sumscore))
+            sumscore = np.sum(np.divide(1.0 - d, 1.0 - m_preds))
+            result = np.multiply(np.divide(1.0 - d, 1.0 - m_preds), np.divide(n_obs, sumscore))
         elif treatment_level == 1:
-            sumscore = np.sum(np.divide(d, px_preds))
-            result = np.multiply(np.divide(d, px_preds), np.divide(n_obs, sumscore))
+            sumscore = np.sum(np.divide(d, m_preds))
+            result = np.multiply(np.divide(d, m_preds), np.divide(n_obs, sumscore))
     else:
         if treatment_level == 0:
-            result = np.divide(1.0 - d, 1.0 - px_preds)
+            result = np.divide(1.0 - d, 1.0 - m_preds)
         if treatment_level == 1:
-            result = np.divide(d, px_preds)
+            result = np.divide(d, m_preds)
     return result
 
 
-def _normalize_counterfactual(normalize_ipw, d, treatment_level, px_preds, pmx_preds, n_obs):
+def _normalize_counterfactual(normalize_ipw, d, treatment_level, m_preds, M_preds, n_obs):
     """
     Normalizes counterfactual scores in the context of causal mediation analysis.
     """
 
     if normalize_ipw:
         if treatment_level == 0:
-            sumscore1 = np.sum(np.divide(np.multiply(1.0 - d, pmx_preds), np.multiply(1.0 - pmx_preds, px_preds)))
-            sumscore2 = np.sum(np.divide(d, px_preds))
+            sumscore1 = np.sum(np.divide(np.multiply(1.0 - d, M_preds), np.multiply(1.0 - M_preds, m_preds)))
+            sumscore2 = np.sum(np.divide(d, m_preds))
 
             ps1 = np.multiply(
-                np.divide(np.multiply(1.0 - d, pmx_preds), np.multiply(1.0 - pmx_preds, px_preds)), np.divide(n_obs, sumscore1)
+                np.divide(np.multiply(1.0 - d, M_preds), np.multiply(1.0 - M_preds, m_preds)), np.divide(n_obs, sumscore1)
             )
 
-            ps2 = np.multiply(np.divide(d, px_preds), np.divide(n_obs, sumscore2))
+            ps2 = np.multiply(np.divide(d, m_preds), np.divide(n_obs, sumscore2))
 
             result = (ps1, ps2)
 
         elif treatment_level == 1:
-            sumscore1 = np.sum(np.divide(np.multiply(d, 1.0 - pmx_preds), np.multiply(pmx_preds, 1.0 - px_preds)))
-            sumscore2 = np.sum(np.divide(1.0 - d, 1.0 - px_preds))
+            sumscore1 = np.sum(np.divide(np.multiply(d, 1.0 - M_preds), np.multiply(M_preds, 1.0 - m_preds)))
+            sumscore2 = np.sum(np.divide(1.0 - d, 1.0 - m_preds))
 
             ps1 = np.multiply(
-                np.divide(np.multiply(d, 1.0 - pmx_preds), np.multiply(pmx_preds, 1.0 - px_preds)), np.divide(n_obs, sumscore1)
+                np.divide(np.multiply(d, 1.0 - M_preds), np.multiply(M_preds, 1.0 - m_preds)), np.divide(n_obs, sumscore1)
             )
 
-            ps2 = np.multiply(np.divide(1.0 - d, 1.0 - px_preds), np.divide(n_obs, sumscore2))
+            ps2 = np.multiply(np.divide(1.0 - d, 1.0 - m_preds), np.divide(n_obs, sumscore2))
 
             result = (ps1, ps2)
 
     else:
         if treatment_level == 0:
-            ps1 = np.divide(np.multiply(1.0 - d, pmx_preds), np.multiply(1.0 - pmx_preds, px_preds))
-            ps2 = np.divide(d, px_preds)
+            ps1 = np.divide(np.multiply(1.0 - d, M_preds), np.multiply(1.0 - M_preds, m_preds))
+            ps2 = np.divide(d, m_preds)
 
             result = (ps1, ps2)
         elif treatment_level == 1:
-            ps1 = np.divide(np.multiply(d, 1.0 - pmx_preds), np.multiply(pmx_preds, 1.0 - px_preds))
-            ps2 = np.divide(1.0 - d, 1.0 - px_preds)
+            ps1 = np.divide(np.multiply(d, 1.0 - M_preds), np.multiply(M_preds, 1.0 - m_preds))
+            ps2 = np.divide(1.0 - d, 1.0 - m_preds)
 
             result = (ps1, ps2)
 
