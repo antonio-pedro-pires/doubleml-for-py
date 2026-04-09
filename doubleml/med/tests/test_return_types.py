@@ -41,7 +41,7 @@ def test_return_types(dml_med_fixture):
     check_basic_return_types(dml_obj, cls)
 
     # further return type tests
-    assert isinstance(dml_obj.get_params("ml_px"), dict)
+    assert isinstance(dml_obj.get_params("ml_m"), dict)
 
 
 @pytest.fixture(scope="module")

@@ -21,10 +21,10 @@ def med_objs(dml_data, learners, med_factory):
     individual_med_objs = {}
 
     smpls = meds_obj._smpls
-    smpls_inner= None if not meds_obj.double_sample_splitting else meds_obj.smpls_inner
+    smpls_inner = None if not meds_obj.double_sample_splitting else meds_obj.smpls_inner
     for target, treatment in scores:
         model = med_factory(target, treatment, learners)
-        model._set_smpls_sampling(smpls = smpls, smpls_inner=smpls_inner)
+        model._set_smpls_sampling(smpls=smpls, smpls_inner=smpls_inner)
 
         individual_med_objs[f"{target}_{treatment}"] = model
 
@@ -33,9 +33,9 @@ def med_objs(dml_data, learners, med_factory):
 
 def _get_param_space_for_target(target, optuna_params):
     if target == "potential":
-        return {k: v for k, v in optuna_params.items() if k in ["ml_yx", "ml_px"]}
+        return {k: v for k, v in optuna_params.items() if k in ["ml_g", "ml_m"]}
     elif target == "counterfactual":
-        return {k: v for k, v in optuna_params.items() if k in ["ml_px", "ml_ymx", "ml_pmx", "ml_nested"]}
+        return {k: v for k, v in optuna_params.items() if k in ["ml_m", "ml_G", "ml_M", "ml_nested_g"]}
 
 
 @pytest.fixture(

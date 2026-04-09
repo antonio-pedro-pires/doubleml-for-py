@@ -29,24 +29,25 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
     dml_data : :class:`DoubleMLMediationData` object
         The :class:`DoubleMLMediationData` object providing the data and specifying the variables for the causal model.
 
-    ml_yx : estimator implementing ``fit()`` and ``predict()``
+    ml_g : estimator implementing ``fit()`` and ``predict()``
         A machine learner implementing ``fit()`` and ``predict()`` methods (e.g.
         :py:class:`sklearn.ensemble.RandomForestRegressor`) for the nuisance function :math:`E[Y|D,X]`.
 
-    ml_px : classifier implementing ``fit()`` and ``predict_proba()``
-        A machine learner implementing ``fit()`` and ``predict_proba()`` methods (e.g.
-        :py:class:`sklearn.ensemble.RandomForestClassifier`) for the nuisance function :math:`P(D=d|X)`.
-
-    ml_ymx : estimator implementing ``fit()`` and ``predict()``
+    ml_G : estimator implementing ``fit()`` and ``predict()``
         A machine learner implementing ``fit()`` and ``predict()`` methods for the nuisance function :math:`E[Y|D,M,X]`.
         Only required if ``target`` is 'counterfactual'.
 
-    ml_pmx : classifier implementing ``fit()`` and ``predict_proba()``
-        A machine learner implementing ``fit()`` and ``predict_proba()`` methods for the nuisance function :math:`P(D=d|M,X)`.
+    ml_nested_g : estimator implementing ``fit()`` and ``predict()``
+        A machine learner implementing ``fit()`` and ``predict()`` methods for the nested outcome.
+        :math:`E[E[Y|D=d,M,X]|D=1-d, X]`
         Only required if ``target`` is 'counterfactual'.
 
-    ml_nested : estimator implementing ``fit()`` and ``predict()``
-        A machine learner implementing ``fit()`` and ``predict()`` methods for the nested outcome.
+    ml_m : classifier implementing ``fit()`` and ``predict_proba()``
+        A machine learner implementing ``fit()`` and ``predict_proba()`` methods (e.g.
+        :py:class:`sklearn.ensemble.RandomForestClassifier`) for the nuisance function :math:`P(D=d|X)`.
+
+    ml_M : classifier implementing ``fit()`` and ``predict_proba()``
+        A machine learner implementing ``fit()`` and ``predict_proba()`` methods for the nuisance function :math:`P(D=d|M,X)`.
         Only required if ``target`` is 'counterfactual'.
 
     target : str
@@ -98,11 +99,11 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
     def __init__(
         self,
         dml_data,
-        ml_px,
-        ml_yx=None,
-        ml_ymx=None,
-        ml_pmx=None,
-        ml_nested=None,
+        ml_m,
+        ml_g=None,
+        ml_G=None,
+        ml_M=None,
+        ml_nested_g=None,
         target="potential",
         treatment_level=1,
         mediation_level=1,
@@ -136,7 +137,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         self._mediated = self._dml_data.m == mediation_level
 
         self._predict_method = {}
-        self._check_learners(ml_yx=ml_yx, ml_px=ml_px, ml_ymx=ml_ymx, ml_pmx=ml_pmx, ml_nested=ml_nested)
+        self._check_learners(ml_g=ml_g, ml_m=ml_m, ml_G=ml_G, ml_M=ml_M, ml_nested_g=ml_nested_g)
 
         self._normalize_ipw = normalize_ipw
         self._trimming_rule = trimming_rule
@@ -231,12 +232,12 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
 
     def _initialize_ml_nuisance_params(self):
         if self._target == "potential":
-            learners = ["ml_yx", "ml_px"]
+            learners = ["ml_g", "ml_m"]
         else:
-            learners = ["ml_px", "ml_ymx", "ml_pmx", "ml_nested"]
+            learners = ["ml_m", "ml_G", "ml_M", "ml_nested_g"]
             if self.double_sample_splitting:
-                inner_ymx_learners = [f"ml_ymx_inner_{i}" for i in range(self.n_folds)]
-                learners += inner_ymx_learners
+                inner_G_learners = [f"ml_G_inner_{i}" for i in range(self.n_folds)]
+                learners += inner_G_learners
 
         self._params = {learner: {key: [None] * self.n_rep for key in self._dml_data.d_cols} for learner in learners}
 
@@ -252,64 +253,64 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
 
         if self._target == "potential":
             # Check whether there are external predictions for each parameter.
-            px_external = external_predictions["ml_px"] is not None
-            yx_external = external_predictions["ml_yx"] is not None
+            m_external = external_predictions["ml_m"] is not None
+            g_external = external_predictions["ml_g"] is not None
 
             # Prepare the samples
             _, smpls_d1 = _get_cond_smpls(smpls, self.treated)
 
-            if px_external:
-                px_hat = {"preds": external_predictions["ml_px"], "targets": None, "models": None}
+            if m_external:
+                m_hat = {"preds": external_predictions["ml_m"], "targets": None, "models": None}
             else:
-                px_hat = _dml_cv_predict(
-                    self._learner["ml_px"],
+                m_hat = _dml_cv_predict(
+                    self._learner["ml_m"],
                     x,
                     self.treated,
                     smpls=smpls,
                     n_jobs=n_jobs_cv,
-                    est_params=self._get_params("ml_px"),
-                    method=self._predict_method["ml_px"],
+                    est_params=self._get_params("ml_m"),
+                    method=self._predict_method["ml_m"],
                     return_models=return_models,
                 )
-            px_hat["preds"] = self._ps_processor.adjust_ps(px_hat["preds"], self.treated)
+            m_hat["preds"] = self._ps_processor.adjust_ps(m_hat["preds"], self.treated)
 
-            if yx_external:
-                yx_hat = {
-                    "preds": external_predictions["ml_yx"],
+            if g_external:
+                g_hat = {
+                    "preds": external_predictions["ml_g"],
                     "targets": _cond_targets(y, cond_sample=(self.treated == 1)),
                     "models": None,
                 }
             else:
-                yx_hat = _dml_cv_predict(
-                    self._learner["ml_yx"],
+                g_hat = _dml_cv_predict(
+                    self._learner["ml_g"],
                     x,
                     y,
                     smpls=smpls_d1,
                     n_jobs=n_jobs_cv,
-                    est_params=self._get_params("ml_yx"),
-                    method=self._predict_method["ml_yx"],
+                    est_params=self._get_params("ml_g"),
+                    method=self._predict_method["ml_g"],
                     return_models=return_models,
                 )
-            _check_finite_predictions(yx_hat["preds"], self._learner["ml_yx"], "ml_yx", smpls)
+            _check_finite_predictions(g_hat["preds"], self._learner["ml_g"], "ml_g", smpls)
             # adjust target values to consider only compatible subsamples
-            yx_hat["targets"] = _cond_targets(yx_hat["targets"], cond_sample=(self.treated == 1))
+            g_hat["targets"] = _cond_targets(g_hat["targets"], cond_sample=(self.treated == 1))
 
             preds = {
                 "predictions": {
-                    "ml_px": px_hat["preds"],
-                    "ml_yx": yx_hat["preds"],
+                    "ml_m": m_hat["preds"],
+                    "ml_g": g_hat["preds"],
                 },
                 "targets": {
-                    "ml_px": px_hat["targets"],
-                    "ml_yx": yx_hat["targets"],
+                    "ml_m": m_hat["targets"],
+                    "ml_g": g_hat["targets"],
                 },
                 "models": {
-                    "ml_px": px_hat["models"],
-                    "ml_yx": yx_hat["models"],
+                    "ml_m": m_hat["models"],
+                    "ml_g": g_hat["models"],
                 },
             }
 
-            psi_a, psi_b = self._score_elements(y, px_hat_preds=px_hat["preds"], yx_hat_preds=yx_hat["preds"])
+            psi_a, psi_b = self._score_elements(y, m_hat_preds=m_hat["preds"], g_hat_preds=g_hat["preds"])
             psi_elements = {"psi_a": psi_a, "psi_b": psi_b}
 
         else:  # target == "counterfactual"
@@ -317,45 +318,45 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
             xm = np.column_stack((x, m))
 
             # Check whether there are external predictions for each parameter.
-            px_external = external_predictions["ml_px"] is not None
-            pmx_external = external_predictions["ml_pmx"] is not None
-            ymx_external = external_predictions["ml_ymx"] is not None
-            nested_external = external_predictions["ml_nested"] is not None
+            m_external = external_predictions["ml_m"] is not None
+            M_external = external_predictions["ml_M"] is not None
+            G_external = external_predictions["ml_G"] is not None
+            nested_g_external = external_predictions["ml_nested_g"] is not None
 
             # Get samples conditional on treatment:
             smpls_d0, smpls_d1 = _get_cond_smpls(smpls, self.treated)
 
             # Estimate the probability of treatment conditional on the covariates.
-            if px_external:
-                px_hat = {"preds": external_predictions["ml_px"], "targets": None, "models": None}
+            if m_external:
+                m_hat = {"preds": external_predictions["ml_m"], "targets": None, "models": None}
             else:
-                px_hat = _dml_cv_predict(
-                    self._learner["ml_px"],
+                m_hat = _dml_cv_predict(
+                    self._learner["ml_m"],
                     x,
                     d,
                     smpls=smpls,
                     n_jobs=n_jobs_cv,
-                    est_params=self._get_params("ml_px"),
-                    method=self._predict_method["ml_px"],
+                    est_params=self._get_params("ml_m"),
+                    method=self._predict_method["ml_m"],
                     return_models=return_models,
                 )
-            px_hat["preds"] = self._ps_processor.adjust_ps(px_hat["preds"], self.treated)
+            m_hat["preds"] = self._ps_processor.adjust_ps(m_hat["preds"], self.treated)
 
             # Estimate the probability of treatment conditional on the mediator and covariates.
-            if pmx_external:
-                pmx_hat = {"preds": external_predictions["ml_pmx"], "targets": None, "models": None}
+            if M_external:
+                M_hat = {"preds": external_predictions["ml_M"], "targets": None, "models": None}
             else:
-                pmx_hat = _dml_cv_predict(
-                    self._learner["ml_pmx"],
+                M_hat = _dml_cv_predict(
+                    self._learner["ml_M"],
                     xm,
                     d,
                     smpls=smpls,
                     n_jobs=n_jobs_cv,
-                    est_params=self._get_params("ml_pmx"),
-                    method=self._predict_method["ml_pmx"],
+                    est_params=self._get_params("ml_M"),
+                    method=self._predict_method["ml_M"],
                     return_models=return_models,
                 )
-            pmx_hat["preds"] = self._ps_processor.adjust_ps(pmx_hat["preds"], self.treated)
+            M_hat["preds"] = self._ps_processor.adjust_ps(M_hat["preds"], self.treated)
 
             inner_predictions = {}
             inner_targets = {}
@@ -366,168 +367,162 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
                     _, inner_smpls_d1 = _get_cond_smpls(fold, self.treated)
                     smpls_inner_d1.append(inner_smpls_d1)
 
-                if ymx_external:
-                    # expect per-inner-fold keys ml_ymx_inner_i
+                if G_external:
+                    # expect per-inner-fold keys ml_G_inner_i
                     missing = [
                         i
                         for i in range(self.n_folds)
-                        if (f"ml_ymx_inner_{i}") not in external_predictions.keys()
-                        or external_predictions[f"ml_ymx_inner_{i}"] is None
+                        if (f"ml_G_inner_{i}") not in external_predictions.keys()
+                        or external_predictions[f"ml_G_inner_{i}"] is None
                     ]
                     if len(missing) > 0:
                         raise ValueError(
-                            "When providing external predictions for ml_ymx, also inner predictions for all inner folds "
+                            "When providing external predictions for ml_G, also inner predictions for all inner folds "
                             f"have to be provided (missing: {', '.join([str(i) for i in missing])})."
                         )
-                    ymx_hat_inner = [external_predictions[f"ml_ymx_inner_{i}"] for i in range(self.n_folds)]
-                    ymx_hat = {
-                        "preds": external_predictions["ml_ymx"],
-                        "preds_inner": ymx_hat_inner,
+                    G_hat_inner = [external_predictions[f"ml_G_inner_{i}"] for i in range(self.n_folds)]
+                    G_hat = {
+                        "preds": external_predictions["ml_G"],
+                        "preds_inner": G_hat_inner,
                         "targets": self._dml_data.y,
                         "models": None,
                     }
                 else:
 
-                    ymx_hat = _double_dml_cv_predict(
-                        estimator=self._learner["ml_ymx"],
-                        estimator_name=self._learner["ml_ymx"],
+                    G_hat = _double_dml_cv_predict(
+                        estimator=self._learner["ml_G"],
+                        estimator_name=self._learner["ml_G"],
                         x=xm,
                         y=y,
                         smpls=smpls_d1,
                         smpls_inner=smpls_inner_d1,
                         n_jobs=n_jobs_cv,
-                        est_params=self._get_params("ml_ymx"),
-                        method=self._predict_method["ml_ymx"],
+                        est_params=self._get_params("ml_G"),
+                        method=self._predict_method["ml_G"],
                     )
 
-                if nested_external:
-                    nested_hat = {"preds": external_predictions["ml_nested"], "targets": None, "models": None}
+                if nested_g_external:
+                    nested_g_hat = {"preds": external_predictions["ml_nested_g"], "targets": None, "models": None}
                 else:
 
                     # _dml_cv_predict perceives the fitting of the nested estimator as a case where there are multiple
-                    # fold specific targets because of the shape of ymx_hat["preds"]. The method throws a
+                    # fold specific targets because of the shape of G_hat["preds"]. The method throws a
                     # 'ValueError: shape mismatch' when setting xx[train_index]=y[idx]
                     # (line 120 in doubleml/utils/_estimation.py). In order to avoid this error, it's necessary to
                     # feed the method a 'y' parameter whose subarrays match the 'smpls' parameter's subarrays shapes,
                     # which is exactly what the following line does.
-                    ymx_hat_inner_preds = [
-                        ymx_hat_preds[train] for (train, _), ymx_hat_preds in zip(smpls_d0, ymx_hat["preds_inner"])
-                    ]
+                    G_hat_inner_preds = [G_hat_preds[train] for (train, _), G_hat_preds in zip(smpls_d0, G_hat["preds_inner"])]
 
-                    nested_hat = _dml_cv_predict(
-                        self._learner["ml_nested"],
+                    nested_g_hat = _dml_cv_predict(
+                        self._learner["ml_nested_g"],
                         xm,
-                        ymx_hat_inner_preds,
+                        G_hat_inner_preds,
                         smpls=smpls_d0,
                         n_jobs=n_jobs_cv,
-                        est_params=self._get_params("ml_nested"),
-                        method=self._predict_method["ml_nested"],
+                        est_params=self._get_params("ml_nested_g"),
+                        method=self._predict_method["ml_nested_g"],
                         return_models=return_models,
                     )
                 # store inner predictions as separate keys per inner fold
-                inner_predictions = {
-                    f"ml_ymx_inner_{i}": ymx_hat["preds_inner"][i] for i in range(len(ymx_hat["preds_inner"]))
-                }
+                inner_predictions = {f"ml_G_inner_{i}": G_hat["preds_inner"][i] for i in range(len(G_hat["preds_inner"]))}
                 inner_targets = {
-                    f"ml_ymx_inner_{i}": (
-                        ymx_hat.get("targets_inner")[i]
-                        if ymx_hat.get("targets_inner") is not None and i < len(ymx_hat["targets_inner"])
+                    f"ml_G_inner_{i}": (
+                        G_hat.get("targets_inner")[i]
+                        if G_hat.get("targets_inner") is not None and i < len(G_hat["targets_inner"])
                         else None
                     )
-                    for i in range(len(ymx_hat.get("preds_inner", [])))
+                    for i in range(len(G_hat.get("preds_inner", [])))
                 }
 
             else:
-                if ymx_external:
-                    ymx_hat = {
-                        "preds": external_predictions["ml_ymx"],
+                if G_external:
+                    G_hat = {
+                        "preds": external_predictions["ml_G"],
                         "targets": None,
                         "models": None,
                     }
                 else:
-                    ymx_hat = _dml_cv_predict(
-                        self.learner["ml_ymx"],
+                    G_hat = _dml_cv_predict(
+                        self.learner["ml_G"],
                         x=xm,
                         y=y,
                         smpls=smpls_d1,
                         n_jobs=n_jobs_cv,
-                        est_params=self._get_params("ml_ymx"),
-                        method=self._predict_method["ml_ymx"],
+                        est_params=self._get_params("ml_G"),
+                        method=self._predict_method["ml_G"],
                     )
-                if nested_external:
-                    nested_hat = {"preds": external_predictions["ml_nested"], "targets": None, "models": None}
+                if nested_g_external:
+                    nested_g_hat = {"preds": external_predictions["ml_nested_g"], "targets": None, "models": None}
                 else:
-                    nested_hat = _dml_cv_predict(
-                        self.learner["ml_nested"],
+                    nested_g_hat = _dml_cv_predict(
+                        self.learner["ml_nested_g"],
                         x=xm,
-                        y=ymx_hat["preds"],
+                        y=G_hat["preds"],
                         smpls=smpls_d0,
                         n_jobs=n_jobs_cv,
-                        est_params=self._get_params("ml_nested"),
-                        method=self._predict_method["ml_nested"],
+                        est_params=self._get_params("ml_nested_g"),
+                        method=self._predict_method["ml_nested_g"],
                         return_models=return_models,
                     )
             preds = {
                 "predictions": {
-                    "ml_px": px_hat["preds"],
-                    "ml_pmx": pmx_hat["preds"],
-                    "ml_ymx": ymx_hat["preds"],
-                    "ml_nested": nested_hat["preds"],
+                    "ml_m": m_hat["preds"],
+                    "ml_M": M_hat["preds"],
+                    "ml_G": G_hat["preds"],
+                    "ml_nested_g": nested_g_hat["preds"],
                     **inner_predictions,
                 },
                 "targets": {
-                    "ml_px": px_hat["targets"],
-                    "ml_pmx": pmx_hat["targets"],
-                    "ml_ymx": ymx_hat["targets"],
-                    "ml_nested": nested_hat["targets"],
+                    "ml_m": m_hat["targets"],
+                    "ml_M": M_hat["targets"],
+                    "ml_G": G_hat["targets"],
+                    "ml_nested_g": nested_g_hat["targets"],
                     **inner_targets,
                 },
                 "models": {
-                    "ml_px": px_hat["models"],
-                    "ml_pmx": pmx_hat["models"],
-                    "ml_ymx": ymx_hat["models"],
-                    "ml_nested": nested_hat["models"],
+                    "ml_m": m_hat["models"],
+                    "ml_M": M_hat["models"],
+                    "ml_G": G_hat["models"],
+                    "ml_nested_g": nested_g_hat["models"],
                 },
             }
 
             psi_a, psi_b = self._score_elements(
                 y,
-                px_hat_preds=px_hat["preds"],
-                pmx_hat_preds=pmx_hat["preds"],
-                ymx_hat_preds=ymx_hat["preds"],
-                nested_hat_preds=nested_hat["preds"],
+                m_hat_preds=m_hat["preds"],
+                M_hat_preds=M_hat["preds"],
+                G_hat_preds=G_hat["preds"],
+                nested_g_hat_preds=nested_g_hat["preds"],
             )
             psi_elements = {"psi_a": psi_a, "psi_b": psi_b}
 
         return psi_elements, preds
 
-    def _score_elements(
-        self, y, px_hat_preds, yx_hat_preds=None, pmx_hat_preds=None, ymx_hat_preds=None, nested_hat_preds=None
-    ):
+    def _score_elements(self, y, m_hat_preds, g_hat_preds=None, M_hat_preds=None, G_hat_preds=None, nested_g_hat_preds=None):
         if self._target == "potential":
-            u_hat = y - yx_hat_preds
+            u_hat = y - g_hat_preds
             propensity_score = _normalize_propensity_med(
                 self.normalize_ipw,
                 outcome=self._target,
                 d=self._dml_data.d,
                 treatment_level=self.treatment_level,
-                px_preds=px_hat_preds,
+                m_preds=m_hat_preds,
             )
             psi_a = -1.0
-            psi_b = np.multiply(propensity_score, u_hat) + yx_hat_preds
+            psi_b = np.multiply(propensity_score, u_hat) + g_hat_preds
         else:
-            u_hat = y - ymx_hat_preds
-            w_hat = ymx_hat_preds - nested_hat_preds
+            u_hat = y - G_hat_preds
+            w_hat = G_hat_preds - nested_g_hat_preds
             psi_a = -1.0
             ps1, ps2 = _normalize_propensity_med(
                 self.normalize_ipw,
                 outcome=self._target,
                 d=self._dml_data.d,
                 treatment_level=self._treatment_level,
-                px_preds=px_hat_preds,
-                pmx_preds=pmx_hat_preds,
+                m_preds=m_hat_preds,
+                M_preds=M_hat_preds,
             )
-            psi_b = np.multiply(ps1, u_hat) + np.multiply(ps2, w_hat) + nested_hat_preds
+            psi_b = np.multiply(ps1, u_hat) + np.multiply(ps2, w_hat) + nested_g_hat_preds
 
         return psi_a, psi_b
 
@@ -551,94 +546,94 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         x, d = check_X_y(x, self._dml_data.d, ensure_all_finite=True)
 
         if scoring_methods is None:
-            scoring_methods = {"ml_yx": None, "ml_px": None, "ml_ymx": None, "ml_pmx": None, "ml_nested": None}
+            scoring_methods = {"ml_g": None, "ml_m": None, "ml_G": None, "ml_M": None, "ml_nested_g": None}
 
         treated_mask = self.treated
         not_treated_mask = np.logical_not(treated_mask)
 
-        px_tune_res = _dml_tune_optuna(
+        m_tune_res = _dml_tune_optuna(
             y=d,
             x=x,
-            learner=self._learner["ml_px"],
-            param_grid_func=optuna_params["ml_px"],
-            scoring_method=scoring_methods["ml_px"],
+            learner=self._learner["ml_m"],
+            param_grid_func=optuna_params["ml_m"],
+            scoring_method=scoring_methods["ml_m"],
             cv=cv,
             optuna_settings=optuna_settings,
-            learner_name="ml_px",
-            params_name="ml_px",
+            learner_name="ml_m",
+            params_name="ml_m",
         )
 
         if self.target == "potential":
-            yx_tune_res = _dml_tune_optuna(
+            g_tune_res = _dml_tune_optuna(
                 y=y[treated_mask],
                 x=x[treated_mask],
-                learner=self._learner["ml_yx"],
-                param_grid_func=optuna_params["ml_yx"],
-                scoring_method=scoring_methods["ml_yx"],
+                learner=self._learner["ml_g"],
+                param_grid_func=optuna_params["ml_g"],
+                scoring_method=scoring_methods["ml_g"],
                 cv=cv,
                 optuna_settings=optuna_settings,
-                learner_name="ml_yx",
-                params_name="ml_yx",
+                learner_name="ml_g",
+                params_name="ml_g",
             )
 
             results = {
-                "ml_px": px_tune_res,
-                "ml_yx": yx_tune_res,
+                "ml_m": m_tune_res,
+                "ml_g": g_tune_res,
             }
 
         else:
             x, m = check_X_y(x, self._dml_data.m, ensure_all_finite=False, multi_output=True)
             xm = np.column_stack((x, m))
 
-            pmx_tune_res = _dml_tune_optuna(
+            M_tune_res = _dml_tune_optuna(
                 y=d,
                 x=xm,
-                learner=self._learner["ml_pmx"],
-                param_grid_func=optuna_params["ml_pmx"],
-                scoring_method=scoring_methods["ml_pmx"],
+                learner=self._learner["ml_M"],
+                param_grid_func=optuna_params["ml_M"],
+                scoring_method=scoring_methods["ml_M"],
                 cv=cv,
                 optuna_settings=optuna_settings,
-                learner_name="ml_pmx",
-                params_name="ml_pmx",
+                learner_name="ml_M",
+                params_name="ml_M",
             )
 
-            ymx_tune_res = _dml_tune_optuna(
+            G_tune_res = _dml_tune_optuna(
                 y=y[treated_mask],
                 x=xm[treated_mask],
-                learner=self._learner["ml_ymx"],
-                param_grid_func=optuna_params["ml_ymx"],
-                scoring_method=scoring_methods.get("ml_ymx"),
+                learner=self._learner["ml_G"],
+                param_grid_func=optuna_params["ml_G"],
+                scoring_method=scoring_methods.get("ml_G"),
                 cv=cv,
                 optuna_settings=optuna_settings,
-                learner_name="ml_ymx",
-                params_name="ml_ymx",
+                learner_name="ml_G",
+                params_name="ml_G",
             )
 
             # Prepare targets for the nested estimator
-            ymx_hat = cross_val_predict(
-                estimator=self._learner["ml_nested"],
+            G_hat = cross_val_predict(
+                estimator=self._learner["ml_nested_g"],
                 X=xm,
                 y=y,
                 cv=cv,
-                method=self._predict_method["ml_nested"],
+                method=self._predict_method["ml_nested_g"],
             )
 
-            nested_tune_res = _dml_tune_optuna(
-                y=ymx_hat[not_treated_mask],
+            nested_g_tune_res = _dml_tune_optuna(
+                y=G_hat[not_treated_mask],
                 x=xm[not_treated_mask],
-                learner=self._learner["ml_nested"],
-                param_grid_func=optuna_params["ml_nested"],
-                scoring_method=scoring_methods["ml_nested"],
+                learner=self._learner["ml_nested_g"],
+                param_grid_func=optuna_params["ml_nested_g"],
+                scoring_method=scoring_methods["ml_nested_g"],
                 cv=cv,
                 optuna_settings=optuna_settings,
-                learner_name="ml_nested",
-                params_name="ml_nested",
+                learner_name="ml_nested_g",
+                params_name="ml_nested_g",
             )
             results = {
-                "ml_px": px_tune_res,
-                "ml_ymx": ymx_tune_res,
-                "ml_pmx": pmx_tune_res,
-                "ml_nested": nested_tune_res,
+                "ml_m": m_tune_res,
+                "ml_G": G_tune_res,
+                "ml_M": M_tune_res,
+                "ml_nested_g": nested_g_tune_res,
             }
 
         return results
@@ -674,17 +669,17 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
                 n_obs=None,
             )
 
-    def _check_learners(self, ml_yx, ml_px, ml_ymx, ml_pmx, ml_nested):
+    def _check_learners(self, ml_g, ml_m, ml_G, ml_M, ml_nested_g):
         if self._target == "potential":
-            self._learner = {"ml_yx": ml_yx, "ml_px": ml_px}
+            self._learner = {"ml_g": ml_g, "ml_m": ml_m}
         else:
-            self._learner = {"ml_px": ml_px, "ml_ymx": ml_ymx, "ml_pmx": ml_pmx, "ml_nested": ml_nested}
+            self._learner = {"ml_m": ml_m, "ml_G": ml_G, "ml_M": ml_M, "ml_nested_g": ml_nested_g}
 
         for learner_name, learner in self._learner.items():
             if self._learner[learner_name] is None:
                 raise ValueError(f"Learner {learner_name} is required when the target is {self._target}.")
 
-            if learner_name in ["ml_px", "ml_pmx"]:
+            if learner_name in ["ml_m", "ml_M"]:
                 is_classifier_ = self._check_learner(learner, learner_name, regressor=False, classifier=True)
                 if is_classifier_:
                     self._predict_method[learner_name] = "predict_proba"
