@@ -10,7 +10,6 @@ from doubleml.tests._utils_tune_optuna import (
 )
 
 
-# TODO: Something broke in these tests, have to fix it.
 @pytest.fixture(scope="module")
 def learners(learner_tree):
     return learner_tree
