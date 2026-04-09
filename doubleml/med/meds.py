@@ -149,13 +149,6 @@ class DoubleMLMEDS(SampleSplittingMixin):
         return self._trimming_threshold
 
     @property
-    def treatment_mediation_levels(self):
-        """
-        Specifies the possible combinations of treatment and mediation levels.
-        """
-        return self._treatment_mediation_levels
-
-    @property
     def scores(self):
         return self._scores
 
