@@ -402,7 +402,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
         return self
 
     def _initialize_models(self):
-        modeldict = {score: object for score in self.scores}
+        modeldict = {score: None for score in self.scores}
 
         pot_kwargs = {
             "dml_data": self._dml_data,
