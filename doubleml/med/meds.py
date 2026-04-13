@@ -68,8 +68,8 @@ class DoubleMLMEDS(SampleSplittingMixin):
         self._n_rep = n_rep
         self._n_folds_inner = n_folds_inner
 
-        self._scores_combinations = self._valid_scores_combinations()
-        self._scores = self._initialize_scores()
+        self._id_pairs = self._valid_id_pairs()
+        self._models_ids = self._initialize_models_ids()
         # initialize learners and parameters which are set model specific
         self._learner = {
             "ml_m": clone(ml_m),
@@ -170,8 +170,8 @@ class DoubleMLMEDS(SampleSplittingMixin):
         return self._trimming_threshold
 
     @property
-    def scores(self):
-        return self._scores
+    def models_ids(self):
+        return self._models_ids
 
     @property
     def double_sample_splitting(self):
@@ -317,7 +317,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
         else:
             ci = self.confint()
             df_summary = generate_summary(
-                coef=self.coef, se=self.se, t_stat=self.t_stat, pval=self.pval, ci=ci, index_names=self.scores
+                coef=self.coef, se=self.se, t_stat=self.t_stat, pval=self.pval, ci=ci, index_names=self.models_ids
             )
         return df_summary
 
@@ -343,18 +343,19 @@ class DoubleMLMEDS(SampleSplittingMixin):
         # parallel estimation of the models
         parallel = Parallel(n_jobs=n_jobs_models, verbose=0, pre_dispatch="2*n_jobs")
         fitted_models = parallel(
-            delayed(self._fit_model)(score, n_jobs_cv, store_predictions, store_models, ext_pred_dict) for score in self.scores
+            delayed(self._fit_model)(model_id, n_jobs_cv, store_predictions, store_models, ext_pred_dict)
+            for model_id in self.models_ids
         )
 
-        # combine the estimates and scores
-        framework_list = [None] * len(self.scores)
+        # combine the estimates and model_ids
+        framework_list = [None] * len(self.models_ids)
 
-        for idx, (score, (outcome, treatment)) in enumerate(zip(self.scores, self._scores_combinations)):
+        for idx, (model_id, (outcome, treatment)) in enumerate(zip(self.models_ids, self._id_pairs)):
             assert fitted_models[idx].outcome == outcome
             assert fitted_models[idx].treatment_level == treatment
 
-            self._modeldict[score] = fitted_models[idx]
-            framework_list[idx] = self._modeldict[score].framework
+            self._modeldict[model_id] = fitted_models[idx]
+            framework_list[idx] = self._modeldict[model_id].framework
 
         # aggregate all frameworks
         self._framework = concat(framework_list)
@@ -381,7 +382,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
         if self.framework is None:
             raise ValueError("Apply fit() before confint().")
         df_ci = self.framework.confint(joint=joint, level=level)
-        df_ci.set_index(pd.Index(self.scores), inplace=True)
+        df_ci.set_index(pd.Index(self.models_ids), inplace=True)
         return df_ci
 
     def evaluate_effects(self):
@@ -416,7 +417,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
         return self
 
     def _initialize_models(self):
-        modeldict = {score: None for score in self.scores}
+        modeldict = {score: None for score in self.models_ids}
 
         pot_kwargs = {
             "dml_data": self._dml_data,
@@ -445,7 +446,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
             "draw_sample_splitting": False,
         }
 
-        for score, (outcome, treatment) in zip(self.scores, self._scores_combinations):
+        for score, (outcome, treatment) in zip(self.models_ids, self._id_pairs):
             assert f"{outcome}_{treatment}" == score
             if outcome == "potential":
                 model = DoubleMLMED(outcome=outcome, treatment_level=treatment, **pot_kwargs)
@@ -467,22 +468,22 @@ class DoubleMLMEDS(SampleSplittingMixin):
 
         return list(itertools.product(treatment_levels, mediation_levels))
 
-    def _initialize_scores(self):
-        return [f"{outcome}_{treatment}" for outcome, treatment in self._scores_combinations]
+    def _initialize_models_ids(self):
+        return [f"{outcome}_{treatment}" for outcome, treatment in self._id_pairs]
 
-    def _valid_scores_combinations(self):
+    def _valid_id_pairs(self):
         if all(self._dml_data.binary_treats):
             treatment_levels = self.treatments
             self.valid_outcomes = ["potential", "counterfactual"]
-            score_combinations = list(itertools.product(self.valid_outcomes, map(int, treatment_levels)))
-        return score_combinations
+            valid_id_pairs = list(itertools.product(self.valid_outcomes, map(int, treatment_levels)))
+        return valid_id_pairs
 
     def _check_external_predictions(self, external_predictions_dict):
         external_predictions_keys = external_predictions_dict.keys()
-        if not set(external_predictions_keys).issubset(set(self.scores)):
+        if not set(external_predictions_keys).issubset(set(self.models_ids)):
             raise ValueError(
                 "external_predictions must be a subset of all scores. "
-                + f"Expected keys: {set(self.scores)}. "
+                + f"Expected keys: {set(self.models_ids)}. "
                 + f"Passed keys: {set(external_predictions_keys)}."
             )
 

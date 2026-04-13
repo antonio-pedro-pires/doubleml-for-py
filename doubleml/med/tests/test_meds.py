@@ -71,13 +71,13 @@ def individual_med_objs(meds_obj, learners, med_factory, double_sample_splitting
     smpls = meds_obj._smpls
 
     individual_modeldict = {}
-    for score, model in meds_obj.modeldict.items():
+    for model_id, model in meds_obj.modeldict.items():
         if model.outcome == "potential":
             ind_model = med_factory(outcome=model.outcome, treatment_level=model.treatment_level, learners=learners, **kwargs)
             ind_model._smpls = meds_obj._smpls
         elif model.outcome == "counterfactual":
             ind_model = med_factory(outcome=model.outcome, treatment_level=model.treatment_level, learners=learners, **kwargs)
-        individual_modeldict[score] = ind_model
+        individual_modeldict[model_id] = ind_model
         ind_model._set_smpls_sampling(smpls=smpls, smpls_inner=smpls_inner)
     return individual_modeldict
 
@@ -85,7 +85,7 @@ def individual_med_objs(meds_obj, learners, med_factory, double_sample_splitting
 @pytest.mark.ci
 def test_meds_modeldict(meds_obj):
     # Test that meds has the correct amount of models.
-    n_models = len(meds_obj.scores)
+    n_models = len(meds_obj.models_ids)
     assert len(meds_obj.modeldict) == n_models
 
 
