@@ -19,7 +19,7 @@ def meds_kwargs(dml_data, learners, double_sample_splitting):
         "n_folds": 5,
         "n_rep": 3,
         "n_folds_inner": 5,
-        "score": "MED",
+        "score": "efficient-alt",
         "normalize_ipw": False,
         "trimming_threshold": 1e-2,
         "draw_sample_splitting": True,

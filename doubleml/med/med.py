@@ -64,11 +64,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         Only required if ``outcome`` is 'counterfactual'.
 
     score : str
-        The score function to use.
-        Default is 'MED'.
-
-    score_function : str
-        The specific score type.
+        A str (``'efficient-alt'``)  specifying the score function to use.
         Default is 'efficient-alt'.
 
     n_folds : int
@@ -107,8 +103,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         outcome="potential",
         treatment_level=1,
         mediation_level=1,
-        score="MED",
-        score_function="efficient-alt",
+        score="efficient-alt",
         n_folds=5,
         n_rep=1,
         n_folds_inner=5,
