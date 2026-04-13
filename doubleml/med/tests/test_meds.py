@@ -72,11 +72,11 @@ def individual_med_objs(meds_obj, learners, med_factory, double_sample_splitting
 
     individual_modeldict = {}
     for score, model in meds_obj.modeldict.items():
-        if model.target == "potential":
-            ind_model = med_factory(target=model.target, treatment_level=model.treatment_level, learners=learners, **kwargs)
+        if model.outcome == "potential":
+            ind_model = med_factory(outcome=model.outcome, treatment_level=model.treatment_level, learners=learners, **kwargs)
             ind_model._smpls = meds_obj._smpls
-        elif model.target == "counterfactual":
-            ind_model = med_factory(target=model.target, treatment_level=model.treatment_level, learners=learners, **kwargs)
+        elif model.outcome == "counterfactual":
+            ind_model = med_factory(outcome=model.outcome, treatment_level=model.treatment_level, learners=learners, **kwargs)
         individual_modeldict[score] = ind_model
         ind_model._set_smpls_sampling(smpls=smpls, smpls_inner=smpls_inner)
     return individual_modeldict
@@ -99,7 +99,7 @@ def test_set_smpls(meds_obj, individual_med_objs):
     [np.testing.assert_equal(reference_smpls, model.smpls) for _, model in individual_med_objs.items()]
     if meds_obj._double_sample_splitting:
         [
-            (np.testing.assert_equal(reference_smpls_inner, model.smpls_inner) if model.target == "counterfactual" else None)
+            (np.testing.assert_equal(reference_smpls_inner, model.smpls_inner) if model.outcome == "counterfactual" else None)
             for _, model in individual_med_objs.items()
         ]
 

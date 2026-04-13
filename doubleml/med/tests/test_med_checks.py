@@ -29,7 +29,7 @@ def check_med_data_fixture():
 
 
 @pytest.fixture(scope="module")
-def check_med_targets_fixture():
+def check_med_outcomes_fixture():
     return ["potential", "counterfactual", "other", 2]
 
 
@@ -78,28 +78,28 @@ def test_med_data_check(check_med_data_fixture, learner_linear):
 
 
 @pytest.mark.ci
-def test_med_target_check(dml_data, med_factory, check_med_targets_fixture, learner_linear):
-    potential_t, counterfactual_t, value_error_t, type_error_t = check_med_targets_fixture
+def test_med_outcome_check(dml_data, med_factory, check_med_outcomes_fixture, learner_linear):
+    potential_t, counterfactual_t, value_error_t, type_error_t = check_med_outcomes_fixture
     treatment_level = 1
 
     learners = {"ml_g": learner_linear["ml_g"], "ml_m": learner_linear["ml_m"]}
 
-    msg = "Target must be a string." + f"{str(type_error_t)} of type {str(type(type_error_t))} provided instead."
+    msg = "Outcome must be a string." + f"{str(type_error_t)} of type {str(type(type_error_t))} provided instead."
     with pytest.raises(TypeError, match=msg):
-        DoubleMLMED(dml_data=dml_data, target=type_error_t, treatment_level=treatment_level, **learners)
+        DoubleMLMED(dml_data=dml_data, outcome=type_error_t, treatment_level=treatment_level, **learners)
 
-    valid_targets = ["potential", "counterfactual"]
-    msg = f"Invalid target {value_error_t}. " + "Valid targets " + " or ".join(valid_targets) + "."
+    valid_outcomes = ["potential", "counterfactual"]
+    msg = f"Invalid outcome {value_error_t}. " + "Valid outcomes " + " or ".join(valid_outcomes) + "."
     with pytest.raises(ValueError, match=msg):
-        DoubleMLMED(dml_data=dml_data, target=value_error_t, treatment_level=treatment_level, **learners)
+        DoubleMLMED(dml_data=dml_data, outcome=value_error_t, treatment_level=treatment_level, **learners)
 
 
 @pytest.mark.ci
 def test_med_levels_check(dml_data, learner_linear, med_factory, check_med_levels_fixture):
 
     good_levels, treat_not_int_levels, med_not_number_levels, not_01_treat_levels = check_med_levels_fixture
-    target = "potential"
-    med_factory(target=target, treatment_level=good_levels[0], mediation_level=good_levels[1], learners=learner_linear)
+    outcome = "potential"
+    med_factory(outcome=outcome, treatment_level=good_levels[0], mediation_level=good_levels[1], learners=learner_linear)
 
     msg = (
         "Treatment level must be an integer."
@@ -107,7 +107,7 @@ def test_med_levels_check(dml_data, learner_linear, med_factory, check_med_level
     )
     with pytest.raises(TypeError, match=msg):
         med_factory(
-            target=target,
+            outcome=outcome,
             treatment_level=treat_not_int_levels[0],
             mediation_level=treat_not_int_levels[1],
             learners=learner_linear,
@@ -119,7 +119,7 @@ def test_med_levels_check(dml_data, learner_linear, med_factory, check_med_level
     )
     with pytest.raises(TypeError, match=msg):
         med_factory(
-            target=target,
+            outcome=outcome,
             treatment_level=med_not_number_levels[0],
             mediation_level=med_not_number_levels[1],
             learners=learner_linear,
@@ -128,7 +128,7 @@ def test_med_levels_check(dml_data, learner_linear, med_factory, check_med_level
     msg = "Treatment level must be either 0 or 1" + f" Treatment level provided was {str(not_01_treat_levels[0])}."
     with pytest.raises(ValueError, match=msg):
         med_factory(
-            target=target,
+            outcome=outcome,
             treatment_level=not_01_treat_levels[0],
             mediation_level=not_01_treat_levels[1],
             learners=learner_linear,
@@ -138,22 +138,22 @@ def test_med_levels_check(dml_data, learner_linear, med_factory, check_med_level
 @pytest.mark.ci
 def test_med_learners_check(dml_data, check_med_learners_fixture, learner_linear, med_factory):
     good_learners, missing_g_learner, missing_G_learner = check_med_learners_fixture
-    med_factory(target="potential", treatment_level=1, learners=good_learners)
-    med_factory(target="counterfactual", treatment_level=0, learners=good_learners)
+    med_factory(outcome="potential", treatment_level=1, learners=good_learners)
+    med_factory(outcome="counterfactual", treatment_level=0, learners=good_learners)
 
-    msg = "Learner ml_g is required when the target is potential."
+    msg = "Learner ml_g is required when the outcome is potential."
     with pytest.raises(ValueError, match=msg):
-        med_factory(target="potential", treatment_level=1, learners=missing_g_learner)
+        med_factory(outcome="potential", treatment_level=1, learners=missing_g_learner)
 
-    msg = "Learner ml_G is required when the target is counterfactual."
+    msg = "Learner ml_G is required when the outcome is counterfactual."
     with pytest.raises(ValueError, match=msg):
-        med_factory(target="counterfactual", treatment_level=1, learners=missing_G_learner)
+        med_factory(outcome="counterfactual", treatment_level=1, learners=missing_G_learner)
 
     missmatched_learner = copy.deepcopy(missing_g_learner)
     missmatched_learner["ml_g"] = LogisticRegression()
     msg = "The learner ml_g was identified as a classifier " + "but the outcome variable is not binary with values 0 and 1."
     with pytest.raises(ValueError, match=msg):
-        med_factory(target="potential", treatment_level=1, learners=missmatched_learner)
+        med_factory(outcome="potential", treatment_level=1, learners=missmatched_learner)
 
     x = dml_data.x
     m = dml_data.m

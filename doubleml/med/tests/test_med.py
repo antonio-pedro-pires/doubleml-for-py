@@ -58,7 +58,7 @@ def double_sample_splitting(request):
 @pytest.fixture(scope="module")
 def med_objs(
     learners,
-    binary_targets,
+    binary_outcomes,
     binary_scores,
     normalize_ipw,
     trimming_threshold,
@@ -70,7 +70,7 @@ def med_objs(
 ):
 
     kwargs = {
-        "target": binary_targets,
+        "outcome": binary_outcomes,
         "treatment_level": binary_treats,
         "learners": learners,
         "score": binary_scores,
@@ -106,7 +106,7 @@ def dml_med_fixture(
 
     prediction_dict = {"d": _get_preds(med_obj, med_obj.learner.keys())}
 
-    if med_obj.double_sample_splitting and med_obj.target == "counterfactual":
+    if med_obj.double_sample_splitting and med_obj.outcome == "counterfactual":
         for i in range(med_obj.n_folds):
             prediction_dict["d"][f"ml_G_inner_{i}"] = med_obj.predictions[f"ml_G_inner_{i}"][:, :, 0]
 
@@ -144,7 +144,7 @@ def test_dml_med_boot(dml_med_fixture):
 
 @pytest.fixture(scope="module")
 def external_predictions_exceptions_fixture(med_factory, learner_linear):
-    med_obj = med_factory(target="counterfactual", treatment_level=1, learners=learner_linear)
+    med_obj = med_factory(outcome="counterfactual", treatment_level=1, learners=learner_linear)
 
     med_obj_ext = copy.deepcopy(med_obj)
     med_obj.fit()
@@ -168,15 +168,15 @@ def test_external_predictions_exceptions(external_predictions_exceptions_fixture
 
 
 @pytest.fixture(scope="module")
-def set_smpls_sampling_fixture(med_factory, learner_linear, binary_targets, binary_treats, double_sample_splitting):
+def set_smpls_sampling_fixture(med_factory, learner_linear, binary_outcomes, binary_treats, double_sample_splitting):
     med_obj = med_factory(
-        target=binary_targets,
+        outcome=binary_outcomes,
         treatment_level=binary_treats,
         learners=learner_linear,
         double_sample_splitting=double_sample_splitting,
     )
     med_obj_ext = med_factory(
-        target=binary_targets,
+        outcome=binary_outcomes,
         treatment_level=binary_treats,
         learners=learner_linear,
         double_sample_splitting=double_sample_splitting,

@@ -22,19 +22,19 @@ def med_objs(dml_data, learners, med_factory):
 
     smpls = meds_obj._smpls
     smpls_inner = None if not meds_obj.double_sample_splitting else meds_obj.smpls_inner
-    for target, treatment in scores:
-        model = med_factory(target, treatment, learners)
+    for outcome, treatment in scores:
+        model = med_factory(outcome, treatment, learners)
         model._set_smpls_sampling(smpls=smpls, smpls_inner=smpls_inner)
 
-        individual_med_objs[f"{target}_{treatment}"] = model
+        individual_med_objs[f"{outcome}_{treatment}"] = model
 
     return meds_obj, individual_med_objs
 
 
-def _get_param_space_for_target(target, optuna_params):
-    if target == "potential":
+def _get_param_space_for_outcome(outcome, optuna_params):
+    if outcome == "potential":
         return {k: v for k, v in optuna_params.items() if k in ["ml_g", "ml_m"]}
-    elif target == "counterfactual":
+    elif outcome == "counterfactual":
         return {k: v for k, v in optuna_params.items() if k in ["ml_m", "ml_G", "ml_M", "ml_nested_g"]}
 
 
@@ -56,7 +56,7 @@ def tune_res(med_objs, optuna_params, optuna_settings):
     # same idea as above
     optuna_settings_ind = deepcopy(optuna_settings)
     for key, model in individual_med_objs.items():
-        ml_param_space = _get_param_space_for_target(model.target, optuna_params)
+        ml_param_space = _get_param_space_for_outcome(model.outcome, optuna_params)
         tune_ind_med_res[key] = model.tune_ml_models(
             ml_param_space=ml_param_space, optuna_settings=optuna_settings_ind, return_tune_res=True
         )

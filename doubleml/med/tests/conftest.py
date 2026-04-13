@@ -56,14 +56,14 @@ def binary_treats(request):
     return request.param
 
 
-@pytest.fixture(scope="session", params=["potential", "counterfactual"], ids=["target=potential", "target=counterfactual"])
-def binary_targets(request):
+@pytest.fixture(scope="session", params=["potential", "counterfactual"], ids=["outcome=potential", "outcome=counterfactual"])
+def binary_outcomes(request):
     return request.param
 
 
 @pytest.fixture(scope="session")
-def binary_scores(binary_targets, binary_treats):
-    return f"{binary_targets}_{binary_treats}"
+def binary_scores(binary_outcomes, binary_treats):
+    return f"{binary_outcomes}_{binary_treats}"
 
 
 @pytest.fixture(scope="session")
@@ -85,12 +85,12 @@ def optuna_settings(request):
 
 @pytest.fixture(scope="session")
 def med_factory(dml_data):
-    def _factory(target, treatment_level, learners, **kwargs):
-        if target == "potential":
+    def _factory(outcome, treatment_level, learners, **kwargs):
+        if outcome == "potential":
             active_learners = {k: clone(v) for k, v in learners.items() if k in ["ml_g", "ml_m"]}
-        elif target == "counterfactual":
+        elif outcome == "counterfactual":
             active_learners = {k: clone(v) for k, v in learners.items() if k in ["ml_m", "ml_G", "ml_M", "ml_nested_g"]}
 
-        return DoubleMLMED(dml_data=dml_data, target=target, treatment_level=treatment_level, **active_learners, **kwargs)
+        return DoubleMLMED(dml_data=dml_data, outcome=outcome, treatment_level=treatment_level, **active_learners, **kwargs)
 
     return _factory

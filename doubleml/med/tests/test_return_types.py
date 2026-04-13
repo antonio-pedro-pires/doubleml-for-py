@@ -21,15 +21,15 @@ dml_args = {
 
 
 @pytest.fixture(scope="module", params=["potential", "counterfactual"])
-def target(request):
+def outcome(request):
     return request.param
 
 
 @pytest.fixture(scope="module")
-def dml_med_fixture(binary_targets, binary_treats, dml_data, med_factory, learner_linear):
-    # dml_args["binary_targets"] = target # Removed to avoid duplication
+def dml_med_fixture(binary_outcomes, binary_treats, dml_data, med_factory, learner_linear):
+    # dml_args["binary_outcomes"] = outcome # Removed to avoid duplication
 
-    dml_med_obj = med_factory(binary_targets, binary_treats, learner_linear, **dml_args)
+    dml_med_obj = med_factory(binary_outcomes, binary_treats, learner_linear, **dml_args)
 
     dml_objs = (dml_med_obj, DoubleMLMED)
     return dml_objs

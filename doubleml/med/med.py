@@ -35,12 +35,12 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
 
     ml_G : estimator implementing ``fit()`` and ``predict()``
         A machine learner implementing ``fit()`` and ``predict()`` methods for the nuisance function :math:`E[Y|D,M,X]`.
-        Only required if ``target`` is 'counterfactual'.
+        Only required if ``outcome`` is 'counterfactual'.
 
     ml_nested_g : estimator implementing ``fit()`` and ``predict()``
         A machine learner implementing ``fit()`` and ``predict()`` methods for the nested outcome.
         :math:`E[E[Y|D=d,M,X]|D=1-d, X]`
-        Only required if ``target`` is 'counterfactual'.
+        Only required if ``outcome`` is 'counterfactual'.
 
     ml_m : classifier implementing ``fit()`` and ``predict_proba()``
         A machine learner implementing ``fit()`` and ``predict_proba()`` methods (e.g.
@@ -48,10 +48,10 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
 
     ml_M : classifier implementing ``fit()`` and ``predict_proba()``
         A machine learner implementing ``fit()`` and ``predict_proba()`` methods for the nuisance function :math:`P(D=d|M,X)`.
-        Only required if ``target`` is 'counterfactual'.
+        Only required if ``outcome`` is 'counterfactual'.
 
-    target : str
-        The target parameter to estimate.
+    outcome : str
+        The outcome parameter to estimate.
         - 'potential': Estimate the potential outcome :math:`E[Y(d, M(d))]`.
         - 'counterfactual': Estimate the counterfactual outcome :math:`E[Y(d, M(d'))]`.
         Default is 'potential'.
@@ -61,7 +61,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
 
     mediation_level : int
         The treatment level :math:`d'` for the mediator.
-        Only required if ``target`` is 'counterfactual'.
+        Only required if ``outcome`` is 'counterfactual'.
 
     score : str
         The score function to use.
@@ -104,7 +104,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         ml_G=None,
         ml_M=None,
         ml_nested_g=None,
-        target="potential",
+        outcome="potential",
         treatment_level=1,
         mediation_level=1,
         score="MED",
@@ -122,7 +122,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         self._dml_data = self._check_dml_data(dml_data)
 
         self._double_sample_splitting = (
-            double_sample_splitting if double_sample_splitting and target == "counterfactual" else False
+            double_sample_splitting if double_sample_splitting and outcome == "counterfactual" else False
         )
         self.n_folds_inner = n_folds_inner
 
@@ -130,7 +130,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
             dml_data, n_folds, n_rep, score, draw_sample_splitting, double_sample_splitting=self.double_sample_splitting
         )
 
-        self._target = self._check_target(target)
+        self._outcome = self._check_outcome(outcome)
         self._treatment_level, self._mediation_level = self._check_levels(treatment_level, mediation_level)
 
         self._treated = self._dml_data.d == treatment_level
@@ -150,11 +150,11 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         )
 
     @property
-    def target(self):
+    def outcome(self):
         """
-        The target parameter to estimate.
+        The outcome parameter to estimate.
         """
-        return self._target
+        return self._outcome
 
     @property
     def normalize_ipw(self):
@@ -231,7 +231,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         return self._ps_processor
 
     def _initialize_ml_nuisance_params(self):
-        if self._target == "potential":
+        if self._outcome == "potential":
             learners = ["ml_g", "ml_m"]
         else:
             learners = ["ml_m", "ml_G", "ml_M", "ml_nested_g"]
@@ -251,7 +251,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         x, y = check_X_y(self._dml_data.x, self._dml_data.y, ensure_all_finite=True)
         x, d = check_X_y(x, self._dml_data.d, ensure_all_finite=True)
 
-        if self._target == "potential":
+        if self._outcome == "potential":
             # Check whether there are external predictions for each parameter.
             m_external = external_predictions["ml_m"] is not None
             g_external = external_predictions["ml_g"] is not None
@@ -313,7 +313,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
             psi_a, psi_b = self._score_elements(y, m_hat_preds=m_hat["preds"], g_hat_preds=g_hat["preds"])
             psi_elements = {"psi_a": psi_a, "psi_b": psi_b}
 
-        else:  # target == "counterfactual"
+        else:  # outcome == "counterfactual"
             x, m = check_X_y(x, self._dml_data.m, ensure_all_finite=True, multi_output=True)
             xm = np.column_stack((x, m))
 
@@ -499,11 +499,11 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         return psi_elements, preds
 
     def _score_elements(self, y, m_hat_preds, g_hat_preds=None, M_hat_preds=None, G_hat_preds=None, nested_g_hat_preds=None):
-        if self._target == "potential":
+        if self._outcome == "potential":
             u_hat = y - g_hat_preds
             propensity_score = _normalize_propensity_med(
                 self.normalize_ipw,
-                outcome=self._target,
+                outcome=self._outcome,
                 d=self._dml_data.d,
                 treatment_level=self.treatment_level,
                 m_preds=m_hat_preds,
@@ -516,7 +516,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
             psi_a = -1.0
             ps1, ps2 = _normalize_propensity_med(
                 self.normalize_ipw,
-                outcome=self._target,
+                outcome=self._outcome,
                 d=self._dml_data.d,
                 treatment_level=self._treatment_level,
                 m_preds=m_hat_preds,
@@ -563,7 +563,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
             params_name="ml_m",
         )
 
-        if self.target == "potential":
+        if self.outcome == "potential":
             g_tune_res = _dml_tune_optuna(
                 y=y[treated_mask],
                 x=x[treated_mask],
@@ -670,14 +670,14 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
             )
 
     def _check_learners(self, ml_g, ml_m, ml_G, ml_M, ml_nested_g):
-        if self._target == "potential":
+        if self._outcome == "potential":
             self._learner = {"ml_g": ml_g, "ml_m": ml_m}
         else:
             self._learner = {"ml_m": ml_m, "ml_G": ml_G, "ml_M": ml_M, "ml_nested_g": ml_nested_g}
 
         for learner_name, learner in self._learner.items():
             if self._learner[learner_name] is None:
-                raise ValueError(f"Learner {learner_name} is required when the target is {self._target}.")
+                raise ValueError(f"Learner {learner_name} is required when the outcome is {self._outcome}.")
 
             if learner_name in ["ml_m", "ml_M"]:
                 is_classifier_ = self._check_learner(learner, learner_name, regressor=False, classifier=True)
@@ -724,15 +724,15 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
             )
         return dml_data
 
-    def _check_target(self, target):
-        if not isinstance(target, str):
-            raise TypeError("Target must be a string." + f"{str(target)} of type {str(type(target))} provided instead.")
+    def _check_outcome(self, outcome):
+        if not isinstance(outcome, str):
+            raise TypeError("Outcome must be a string." + f"{str(outcome)} of type {str(type(outcome))} provided instead.")
 
-        valid_targets = ["potential", "counterfactual"]
-        if target not in valid_targets:
-            raise ValueError(f"Invalid target {target}. " + "Valid targets " + " or ".join(valid_targets) + ".")
+        valid_outcomes = ["potential", "counterfactual"]
+        if outcome not in valid_outcomes:
+            raise ValueError(f"Invalid outcome {outcome}. " + "Valid outcomes " + " or ".join(valid_outcomes) + ".")
 
-        return target
+        return outcome
 
     def _check_levels(self, treatment_level, mediation_level):
         if not isinstance(treatment_level, int):
