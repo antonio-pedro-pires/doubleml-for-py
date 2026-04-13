@@ -16,27 +16,27 @@ def learners(learner_tree):
 
 
 @pytest.fixture(scope="module", params=["potential", "counterfactual"])
-def target(request):
+def outcome(request):
     yield request.param
 
 
 @pytest.fixture(
     scope="module",
 )
-def untuned_tuned_scores(dml_data, binary_targets, binary_treats, learners, optuna_params, optuna_settings):
+def untuned_tuned_scores(dml_data, binary_outcomes, binary_treats, learners, optuna_params, optuna_settings):
 
-    if binary_targets == "potential":
+    if binary_outcomes == "potential":
         model = DoubleMLMED(
             dml_data=dml_data,
             ml_g=learners["ml_g"],
             ml_m=learners["ml_m"],
-            target=binary_targets,
+            outcome=binary_outcomes,
             treatment_level=binary_treats,
         )
     else:
         model = DoubleMLMED(
             dml_data=dml_data,
-            target=binary_targets,
+            outcome=binary_outcomes,
             treatment_level=binary_treats,
             ml_g=learners["ml_g"],
             ml_m=learners["ml_m"],
@@ -46,7 +46,7 @@ def untuned_tuned_scores(dml_data, binary_targets, binary_treats, learners, optu
         )
 
     med_obj = copy.deepcopy(model)
-    if binary_targets == "potential":
+    if binary_outcomes == "potential":
         ml_param_space = {
             "ml_g": optuna_params["ml_g"],
             "ml_m": optuna_params["ml_m"],

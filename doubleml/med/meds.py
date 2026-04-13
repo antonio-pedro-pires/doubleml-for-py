@@ -328,8 +328,8 @@ class DoubleMLMEDS(SampleSplittingMixin):
         # combine the estimates and scores
         framework_list = [None] * len(self.scores)
 
-        for idx, (score, (target, treatment)) in enumerate(zip(self.scores, self._scores_combinations)):
-            assert fitted_models[idx].target == target
+        for idx, (score, (outcome, treatment)) in enumerate(zip(self.scores, self._scores_combinations)):
+            assert fitted_models[idx].outcome == outcome
             assert fitted_models[idx].treatment_level == treatment
 
             self._modeldict[score] = fitted_models[idx]
@@ -424,19 +424,19 @@ class DoubleMLMEDS(SampleSplittingMixin):
             "draw_sample_splitting": False,
         }
 
-        for score, (target, treatment) in zip(self.scores, self._scores_combinations):
-            assert f"{target}_{treatment}" == score
-            if target == "potential":
-                model = DoubleMLMED(target=target, treatment_level=treatment, **pot_kwargs)
+        for score, (outcome, treatment) in zip(self.scores, self._scores_combinations):
+            assert f"{outcome}_{treatment}" == score
+            if outcome == "potential":
+                model = DoubleMLMED(outcome=outcome, treatment_level=treatment, **pot_kwargs)
                 model._set_smpls_sampling(smpls=self.smpls)
 
-            elif target == "counterfactual":
+            elif outcome == "counterfactual":
 
-                model = DoubleMLMED(target="counterfactual", treatment_level=treatment, **counter_kwargs)
+                model = DoubleMLMED(outcome="counterfactual", treatment_level=treatment, **counter_kwargs)
                 smpls_inner = None if not self._double_sample_splitting else self._smpls_inner
                 model._set_smpls_sampling(smpls=self._smpls, smpls_inner=smpls_inner)
 
-            modeldict[f"{target}_{treatment}"] = model
+            modeldict[f"{outcome}_{treatment}"] = model
 
         return modeldict
 
@@ -447,13 +447,13 @@ class DoubleMLMEDS(SampleSplittingMixin):
         return list(itertools.product(treatment_levels, mediation_levels))
 
     def _initialize_scores(self):
-        return [f"{target}_{treatment}" for target, treatment in self._scores_combinations]
+        return [f"{outcome}_{treatment}" for outcome, treatment in self._scores_combinations]
 
     def _valid_scores_combinations(self):
         if all(self._dml_data.binary_treats):
             treatment_levels = self.treatments
-            self.valid_targets = ["potential", "counterfactual"]
-            score_combinations = list(itertools.product(self.valid_targets, map(int, treatment_levels)))
+            self.valid_outcomes = ["potential", "counterfactual"]
+            score_combinations = list(itertools.product(self.valid_outcomes, map(int, treatment_levels)))
         return score_combinations
 
     def _check_external_predictions(self, external_predictions_dict):
@@ -512,7 +512,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
         tune_res = {} if return_tune_res else None
 
         for key, model in self.modeldict.items():
-            if model.target == "potential":
+            if model.outcome == "potential":
                 res = model.tune_ml_models(
                     ml_param_space={
                         "ml_g": ml_param_space["ml_g"],
@@ -520,7 +520,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
                     },
                     **tuning_kwargs,
                 )
-            elif model.target == "counterfactual":
+            elif model.outcome == "counterfactual":
                 res = model.tune_ml_models(
                     ml_param_space={
                         "ml_m": ml_param_space["ml_m"],

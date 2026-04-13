@@ -4,16 +4,16 @@ from doubleml.utils._check_defaults import _check_basic_defaults_after_fit, _che
 
 
 @pytest.fixture(scope="module", params=["potential", "counterfactual"])
-def target(request):
+def outcome(request):
     return request.param
 
 
 @pytest.fixture(scope="module")
-def dml_med_fixture(binary_targets, dml_data, med_factory, learner_linear):
-    if binary_targets == "potential":
-        med_obj = med_factory(binary_targets, 1, learner_linear)
-    if binary_targets == "counterfactual":
-        med_obj = med_factory(binary_targets, 1, learner_linear)
+def dml_med_fixture(binary_outcomes, dml_data, med_factory, learner_linear):
+    if binary_outcomes == "potential":
+        med_obj = med_factory(binary_outcomes, 1, learner_linear)
+    if binary_outcomes == "counterfactual":
+        med_obj = med_factory(binary_outcomes, 1, learner_linear)
     return med_obj
 
 
