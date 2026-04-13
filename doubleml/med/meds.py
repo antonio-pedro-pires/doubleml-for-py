@@ -10,6 +10,7 @@ from doubleml.double_ml_framework import concat
 from doubleml.double_ml_sampling_mixins import SampleSplittingMixin
 from doubleml.med.med import DoubleMLMED
 from doubleml.med.utils._meds_utils import generate_effects_summary
+from doubleml.utils._checks import _check_score
 from doubleml.utils._descriptive import generate_summary
 
 
@@ -21,7 +22,15 @@ from doubleml.utils._descriptive import generate_summary
 # Check bootstrap logic
 # Add sensitivity analysis
 class DoubleMLMEDS(SampleSplittingMixin):
-    """Mediation analysis with double machine learning."""
+    """Mediation analysis with double machine learning.
+
+    Parameters
+    ----------
+
+        score : str
+        A str (``'efficient-alt'``)  specifying the score function to use.
+        Default is 'efficient-alt'.
+    """
 
     def __init__(
         self,
@@ -34,7 +43,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
         n_folds=5,
         n_rep=1,
         n_folds_inner=5,
-        score=None,
+        score="efficient-alt",
         normalize_ipw=False,
         trimming_threshold=1e-2,
         draw_sample_splitting=True,
@@ -45,6 +54,11 @@ class DoubleMLMEDS(SampleSplittingMixin):
         self._dml_data = dml_data
         self._is_cluster_data = self._dml_data.is_cluster_data
         self._treatment_mediation_levels = self._initialize_treatment_mediation_levels()
+
+        # Check score
+        self._score = score
+        valid_scores = ["efficient-alt"]
+        _check_score(self._score, valid_scores, allow_callable=False)
 
         self._trimming_threshold = trimming_threshold
         self._normalize_ipw = normalize_ipw
@@ -100,6 +114,13 @@ class DoubleMLMEDS(SampleSplittingMixin):
         effects_summary = str(self.effects_summary)
         res = res + "\n------------------ Effects summary       ------------------\n" + effects_summary
         return res
+
+    @property
+    def score(self):
+        """
+        The score function.
+        """
+        return self._score
 
     @property
     def smpls_inner(self):

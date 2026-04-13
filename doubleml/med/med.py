@@ -10,7 +10,7 @@ from doubleml import DoubleMLMEDData
 from doubleml.double_ml import DoubleML
 from doubleml.double_ml_score_mixins import LinearScoreMixin
 from doubleml.med.utils._med_utils import _check_inner_sample_splitting, _normalize_propensity_med
-from doubleml.utils._checks import _check_finite_predictions, _check_sample_splitting
+from doubleml.utils._checks import _check_finite_predictions, _check_sample_splitting, _check_score
 from doubleml.utils._estimation import (
     _cond_targets,
     _dml_cv_predict,
@@ -124,6 +124,9 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         super().__init__(
             dml_data, n_folds, n_rep, score, draw_sample_splitting, double_sample_splitting=self.double_sample_splitting
         )
+
+        valid_scores = ["efficient-alt"]
+        _check_score(self.score, valid_scores, allow_callable=False)
 
         self._outcome = self._check_outcome(outcome)
         self._treatment_level, self._mediation_level = self._check_levels(treatment_level, mediation_level)
