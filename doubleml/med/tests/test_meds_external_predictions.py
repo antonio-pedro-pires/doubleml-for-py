@@ -58,8 +58,8 @@ def meds_fixture_binary_treat(meds_obj):
     # It should be possible to make it work for multiple treatments,
     # but it would require implementing some logic in meds.py.
     external_predictions_dict = {
-        score: {"d": {key: value[:, :, 0] for (key, value) in meds_obj.modeldict[score].predictions.items()}}
-        for score in meds_obj.scores
+        model_id: {"d": {key: value[:, :, 0] for (key, value) in meds_obj.modeldict[model_id].predictions.items()}}
+        for model_id in meds_obj.models_ids
     }
     meds_obj_ext.fit(external_predictions=external_predictions_dict)
 

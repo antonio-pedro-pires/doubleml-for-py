@@ -16,13 +16,13 @@ def learners(learner_tree):
 def med_objs(dml_data, learners, med_factory):
 
     meds_obj = DoubleMLMEDS(dml_data, **learners)
-    scores = list(itertools.product(["potential", "counterfactual"], [0, 1]))
+    id_pairs = list(itertools.product(["potential", "counterfactual"], [0, 1]))
 
     individual_med_objs = {}
 
     smpls = meds_obj._smpls
     smpls_inner = None if not meds_obj.double_sample_splitting else meds_obj.smpls_inner
-    for outcome, treatment in scores:
+    for outcome, treatment in id_pairs:
         model = med_factory(outcome, treatment, learners)
         model._set_smpls_sampling(smpls=smpls, smpls_inner=smpls_inner)
 
