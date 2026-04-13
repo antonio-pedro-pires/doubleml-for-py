@@ -58,7 +58,7 @@ def double_sample_splitting(request):
 @pytest.fixture(scope="module")
 def individual_med_objs(meds_obj, learners, med_factory, double_sample_splitting):
     kwargs = {
-        "score": "MED",
+        "score": "efficient-alt",
         "n_folds": meds_obj.n_folds,
         "n_rep": meds_obj.n_rep,
         "n_folds_inner": meds_obj.n_folds_inner,

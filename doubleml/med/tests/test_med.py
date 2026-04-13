@@ -73,7 +73,7 @@ def med_objs(
         "outcome": binary_outcomes,
         "treatment_level": binary_treats,
         "learners": learners,
-        "score": binary_scores,
+        "score": "efficient-alt",
         "n_folds": n_folds,
         "normalize_ipw": normalize_ipw,
         "trimming_threshold": trimming_threshold,
