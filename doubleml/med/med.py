@@ -21,7 +21,7 @@ from doubleml.utils.propensity_score_processing import PSProcessorConfig, init_p
 
 
 class DoubleMLMED(LinearScoreMixin, DoubleML):
-    """Double machine learning for causal mediation analysis.
+    """Double machine learning for causal mediation analysis with binary treatment.
 
     Parameters
     ----------
@@ -33,12 +33,13 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         :py:class:`sklearn.ensemble.RandomForestRegressor`) for the nuisance function :math:`E[Y|D,X]`.
 
     ml_G : estimator implementing ``fit()`` and ``predict()``
-        A machine learner implementing ``fit()`` and ``predict()`` methods for the nuisance function :math:`E[Y|D,M,X]`.
+        A machine learner implementing ``fit()`` and ``predict()`` methods (e.g.
+        :py:class:`sklearn.ensemble.RandomForestRegressor`) for the nuisance function :math:`E[Y|D,M,X]`.
         Only required if ``outcome`` is 'counterfactual'.
 
     ml_nested_g : estimator implementing ``fit()`` and ``predict()``
-        A machine learner implementing ``fit()`` and ``predict()`` methods for the nested outcome.
-        :math:`E[E[Y|D=d,M,X]|D=1-d, X]`
+        A machine learner implementing ``fit()`` and ``predict()`` methods (e.g.
+        :py:class:`sklearn.ensemble.RandomForestRegressor`) for the nuisance function :math:`E[E[Y|D=d,M,X]|D=1-d, X]`
         Only required if ``outcome`` is 'counterfactual'.
 
     ml_m : classifier implementing ``fit()`` and ``predict_proba()``
@@ -53,6 +54,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         The outcome parameter to estimate.
         - 'potential': Estimate the potential outcome :math:`E[Y(d, M(d))]`.
         - 'counterfactual': Estimate the counterfactual outcome :math:`E[Y(d, M(d'))]`.
+        where :math:`d' \neq d
 
     treatment_level : int
         The treatment level :math:`d`.
@@ -71,7 +73,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
 
     normalize_ipw : bool
         Indicates whether the inverse probability weights are normalized.
-        Default is ``False``.
+        Default is ``True``.
 
     trimming_rule : str
         A str (``'truncate'`` is the only choice) specifying the trimming approach.
@@ -83,6 +85,10 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
 
     draw_sample_splitting : bool
         Indicates whether the sample splitting should be drawn during initialization of the object.
+        Default is ``True``.
+
+    double_sample_splitting : bool
+        Indicates whether the data is resampled for the estimation of the nested parameter.
         Default is ``True``.
     """
 
@@ -100,7 +106,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         n_folds=5,
         n_rep=1,
         n_folds_inner=5,
-        normalize_ipw=False,
+        normalize_ipw=True,
         trimming_rule="truncate",
         trimming_threshold=1e-2,
         draw_sample_splitting=True,
@@ -184,7 +190,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
     @property
     def double_sample_splitting(self):
         """
-        Indicates whether the training data is split for estimating the nested models of the nuisance parameter .
+        Indicates whether the data is resampled for the estimation of the nested parameter.
         """
         return self._double_sample_splitting
 

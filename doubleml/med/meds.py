@@ -22,14 +22,85 @@ from doubleml.utils._descriptive import generate_summary
 # Check bootstrap logic
 # Add sensitivity analysis
 class DoubleMLMEDS(SampleSplittingMixin):
-    """Mediation analysis with double machine learning.
+    """Double machine learning for causal mediation analysis with binary treatment.
 
-    Parameters
-    ----------
+        Parameters
+        ----------
+        dml_data : :class:`DoubleMLMediationData` object
+            The :class:`DoubleMLMediationData` object providing the data and specifying the variables for the causal model.
+
+        ml_g : estimator implementing ``fit()`` and ``predict()``
+            A machine learner implementing ``fit()`` and ``predict()`` methods (e.g.
+            :py:class:`sklearn.linear_model.Lasso`) for the nuisance function :math:`E[Y|D,X]`.
+
+        ml_G : estimator implementing ``fit()`` and ``predict()``
+            A machine learner implementing ``fit()`` and ``predict()`` methods (e.g.
+            :py:class:`sklearn.linear_model.Lasso`) for the nuisance function :math:`E[Y|D,M,X]`.
+            Only required if ``outcome`` is 'counterfactual'.
+
+        ml_nested_g : estimator implementing ``fit()`` and ``predict()``
+            A machine learner implementing ``fit()`` and ``predict()`` methods (e.g.
+            :py:class:`sklearn.linear_model.Lasso`) for the nuisance function :math:`E[E[Y|D=d,M,X]|D=1-d, X]`
+            Only required if ``outcome`` is 'counterfactual'.
+
+        ml_m : classifier implementing ``fit()`` and ``predict_proba()``
+            A machine learner implementing ``fit()`` and ``predict_proba()`` methods (e.g.
+            :py:class:`sklearn.linear_model.LogisticRegression`) for the nuisance function :math:`P(D=d|X)`.
+
+        ml_M : classifier implementing ``fit()`` and ``predict_proba()``
+            A machine learner implementing ``fit()`` and ``predict_proba()`` methods (e.g.
+            :py:class:`sklearn.linear_model.LogisticRegression`) for the nuisance function :math:`P(D=d|M,X)`.
+            Only required if ``outcome`` is 'counterfactual'.
 
         score : str
-        A str (``'efficient-alt'``)  specifying the score function to use.
-        Default is 'efficient-alt'.
+            A str (``'efficient-alt'`` is the only choice)  specifying the score function to use.
+            Default is 'efficient-alt'.
+
+        n_folds : int
+            Number of folds.
+            Default is ``5``.
+
+        n_rep : int
+            Number of repetitions for the sample splitting.
+            Default is ``1``.
+
+        normalize_ipw : bool
+            Indicates whether the inverse probability weights are normalized.
+            Default is ``True``.
+
+        trimming_rule : str
+            A str (``'truncate'`` is the only choice) specifying the trimming approach.
+            Default is ``'truncate'``.
+
+        trimming_threshold : float
+            The threshold used for trimming.
+            Default is ``1e-2``.
+
+        draw_sample_splitting : bool
+            Indicates whether the sample splitting should be drawn during initialization of the object.
+            Default is ``True``.
+
+        double_sample_splitting : bool
+            Indicates whether the data is resampled for the estimation of the nested parameter.
+            Default is ``True``.
+
+        Examples
+    --------
+
+    >>> import numpy as np
+    >>> import doubleml as dml
+    >>> from doubleml.med.datasets import make_med_data
+    >>> from sklearn.linear_model import LogisticRegression, Lasso
+    >>> from sklearn.base import clone
+    >>> np.random.seed(3141)
+    >>> ml_g = Lasso()
+    >>> ml_G = Lasso()
+    >>> ml_nested_g = Lasso()
+    >>> ml_m = LogisticRegression(l1_ratio=1, solver="liblinear", max_iter=1000)
+    >>> ml_M = LogisticRegression(l1_ratio=1, solver="liblinear", max_iter=1000)
+    >>> obj_dml_data = make_med_data()
+    >>> dml_med_obj = dml.DoubleMLMED(obj_dml_data, ml_m, ml_g, ml_G, ml_M, ml_nested_g)
+    >>> dml_med_obj.fit().summary  # doctest: +SKIP
     """
 
     def __init__(
@@ -44,7 +115,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
         n_rep=1,
         n_folds_inner=5,
         score="efficient-alt",
-        normalize_ipw=False,
+        normalize_ipw=True,
         trimming_threshold=1e-2,
         draw_sample_splitting=True,
         double_sample_splitting=True,
@@ -175,7 +246,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
     @property
     def double_sample_splitting(self):
         """
-        Indicates whether the training data is split for estimating the nested models of the nuisance parameter .
+        Indicates whether the data is resampled for the estimation of the nested parameter.
         """
         return self._double_sample_splitting
 
