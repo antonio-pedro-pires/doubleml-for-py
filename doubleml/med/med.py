@@ -641,15 +641,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
                 self._smpls,
             )
         else:
-            if all_smpls_cluster is not None or is_cluster_data:
-                raise NotImplementedError("sample setting with cluster data and inner samples not supported.")
-            self._smpls, self._smpls_cluster, self._n_rep, self._n_folds = _check_sample_splitting(
-                all_smpls=smpls,
-                all_smpls_cluster=all_smpls_cluster,
-                dml_data=self._dml_data,
-                is_cluster_data=is_cluster_data,
-                n_obs=None,
-            )
+            super().set_sample_splitting(all_smpls=smpls, all_smpls_cluster=all_smpls_cluster)
 
     def _check_learners(self, ml_g, ml_m, ml_G, ml_M, ml_nested_g):
         if self._outcome == "potential":
