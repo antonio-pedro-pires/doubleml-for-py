@@ -53,28 +53,30 @@ def test_med_data_check(check_med_data_fixture, binary_treats, learner_linear):
     good_data, not_med_data, med_data_instrumental, med_data_not_binary_treats = check_med_data_fixture
     ml_m = learner_linear["ml_m"]
     ml_g = learner_linear["ml_g"]
-    DoubleMLMED(dml_data=good_data, treatment_level=binary_treats, ml_m=ml_m, ml_g=ml_g)
+    DoubleMLMED(dml_data=good_data, outcome="potential", treatment_level=binary_treats, ml_m=ml_m, ml_g=ml_g)
 
     msg = (
         "Mediation analysis requires data of type DoubleMLMediationData."
         + f" Data of type {str(type(not_med_data))} was provided instead."
     )
     with pytest.raises(TypeError, match=msg):
-        DoubleMLMED(dml_data=not_med_data, treatment_level=binary_treats, ml_m=ml_m, ml_g=ml_g)
+        DoubleMLMED(dml_data=not_med_data, outcome="potential", treatment_level=binary_treats, ml_m=ml_m, ml_g=ml_g)
 
     msg = (
         f"Treatment data {med_data_not_binary_treats.d} must be a binary variable with values either 0 or 1."
         + f" Treatment data contains levels {np.unique(med_data_not_binary_treats.d)}."
     )
     with pytest.raises(ValueError, match=re.escape(msg)):
-        DoubleMLMED(dml_data=med_data_not_binary_treats, treatment_level=binary_treats, ml_m=ml_m, ml_g=ml_g)
+        DoubleMLMED(
+            dml_data=med_data_not_binary_treats, outcome="potential", treatment_level=binary_treats, ml_m=ml_m, ml_g=ml_g
+        )
 
     msg = (
         "The current framework for causal mediation analysis does not perform analysis with instrumental variables."
         + " The results will not take into account the instrumental variables."
     )
     with pytest.warns(UserWarning, match=msg):
-        DoubleMLMED(dml_data=med_data_instrumental, treatment_level=binary_treats, ml_m=ml_m, ml_g=ml_g)
+        DoubleMLMED(dml_data=med_data_instrumental, outcome="potential", treatment_level=binary_treats, ml_m=ml_m, ml_g=ml_g)
 
 
 @pytest.mark.ci
@@ -121,7 +123,7 @@ def test_med_levels_check(dml_data, learner_linear, med_factory, check_med_level
 
 
 @pytest.mark.ci
-def test_med_learners_check(dml_data, binary_treats, check_med_learners_fixture, learner_linear, med_factory):
+def test_med_learners_check(dml_data, binary_treats, binary_outcomes, check_med_learners_fixture, learner_linear, med_factory):
     good_learners, missing_g_learner, missing_G_learner = check_med_learners_fixture
     med_factory(outcome="potential", treatment_level=binary_treats, learners=good_learners)
     med_factory(outcome="counterfactual", treatment_level=binary_treats, learners=good_learners)
@@ -154,6 +156,7 @@ def test_med_learners_check(dml_data, binary_treats, check_med_learners_fixture,
         DoubleMLMED(
             dml_data=binary_y_data,
             treatment_level=binary_treats,
+            outcome="potential",
             ml_m=missmatched_learner["ml_m"],
             ml_g=missmatched_learner["ml_g"],
         )
