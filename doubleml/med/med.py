@@ -53,10 +53,9 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         The outcome parameter to estimate.
         - 'potential': Estimate the potential outcome :math:`E[Y(d, M(d))]`.
         - 'counterfactual': Estimate the counterfactual outcome :math:`E[Y(d, M(d'))]`.
-        Default is 'potential'.
 
     treatment_level : int
-        The treatment level :math:`d` for the potential outcome.
+        The treatment level :math:`d`.
 
     score : str
         A str (``'efficient-alt'``)  specifying the score function to use.
@@ -90,13 +89,13 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
     def __init__(
         self,
         dml_data,
-        ml_m,
         treatment_level,
+        outcome,
+        ml_m,
         ml_g=None,
         ml_G=None,
         ml_M=None,
         ml_nested_g=None,
-        outcome="potential",
         score="efficient-alt",
         n_folds=5,
         n_rep=1,
