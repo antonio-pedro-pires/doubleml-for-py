@@ -78,7 +78,7 @@ def individual_med_objs(meds_obj, learners, med_factory, double_sample_splitting
         elif model.outcome == "counterfactual":
             ind_model = med_factory(outcome=model.outcome, treatment_level=model.treatment_level, learners=learners, **kwargs)
         individual_modeldict[model_id] = ind_model
-        ind_model._set_smpls_sampling(smpls=smpls, smpls_inner=smpls_inner)
+        ind_model.set_sample_splitting(smpls=smpls, smpls_inner=smpls_inner)
     return individual_modeldict
 
 

@@ -623,7 +623,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
     def _sensitivity_element_est(self, preds):
         pass
 
-    def _set_smpls_sampling(self, smpls, all_smpls_cluster=None, is_cluster_data=False, smpls_inner=None):
+    def set_sample_splitting(self, smpls, all_smpls_cluster=None, is_cluster_data=False, smpls_inner=None):
         if self.double_sample_splitting:
             if smpls_inner is None:
                 raise ValueError("smpls_inner is required")

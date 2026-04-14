@@ -24,7 +24,7 @@ def med_objs(dml_data, learners, med_factory):
     smpls_inner = None if not meds_obj.double_sample_splitting else meds_obj.smpls_inner
     for outcome, treatment in id_pairs:
         model = med_factory(outcome, treatment, learners)
-        model._set_smpls_sampling(smpls=smpls, smpls_inner=smpls_inner)
+        model.set_sample_splitting(smpls=smpls, smpls_inner=smpls_inner)
 
         individual_med_objs[f"{outcome}_{treatment}"] = model
 
