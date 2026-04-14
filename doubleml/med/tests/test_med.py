@@ -199,7 +199,7 @@ def test_set_smpls_sampling(set_smpls_sampling_fixture):
 def test_set_smpls_sampling_exceptions(set_smpls_sampling_fixture):
     _, med_obj_ext = set_smpls_sampling_fixture
     with pytest.raises(NotImplementedError, match="sample setting with cluster data and inner samples not supported."):
-        med_obj_ext._set_smpls_sampling(smpls=[], smpls_inner=[], all_smpls_cluster=[])
+        med_obj_ext._set_smpls_sampling(smpls=[], all_smpls_cluster=[], smpls_inner=[])
     if med_obj_ext.double_sample_splitting:
         with pytest.raises(ValueError, match="smpls_inner is required"):
             med_obj_ext._set_smpls_sampling(smpls=[], smpls_inner=None)
