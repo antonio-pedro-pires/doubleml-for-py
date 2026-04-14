@@ -171,8 +171,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
 
         if draw_sample_splitting:
             self.draw_sample_splitting()
-
-            self._initialize_med_models()
+            self._initialize_dml_model()
 
         self._effects = None
 
@@ -482,7 +481,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
         if meds_data.z_cols is not None:
             raise NotImplementedError("instrumental variables for mediation analysis is not yet implemented.")
 
-    def _initialize_med_models(self):
+    def _initialize_dml_model(self):
         self._modeldict = self._initialize_models()
         return self
 
