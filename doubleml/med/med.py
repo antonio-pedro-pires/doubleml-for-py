@@ -1,4 +1,3 @@
-import numbers
 import warnings
 from typing import Optional
 
@@ -59,10 +58,6 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
     treatment_level : int
         The treatment level :math:`d` for the potential outcome.
 
-    mediation_level : int
-        The treatment level :math:`d'` for the mediator.
-        Only required if ``outcome`` is 'counterfactual'.
-
     score : str
         A str (``'efficient-alt'``)  specifying the score function to use.
         Default is 'efficient-alt'.
@@ -96,13 +91,12 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         self,
         dml_data,
         ml_m,
+        treatment_level,
         ml_g=None,
         ml_G=None,
         ml_M=None,
         ml_nested_g=None,
         outcome="potential",
-        treatment_level=1,
-        mediation_level=1,
         score="efficient-alt",
         n_folds=5,
         n_rep=1,
@@ -129,10 +123,9 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         _check_score(self.score, valid_scores, allow_callable=False)
 
         self._outcome = self._check_outcome(outcome)
-        self._treatment_level, self._mediation_level = self._check_levels(treatment_level, mediation_level)
+        self._treatment_level = self._check_levels(treatment_level)
 
         self._treated = self._dml_data.d == treatment_level
-        self._mediated = self._dml_data.m == mediation_level
 
         self._predict_method = {}
         self._check_learners(ml_g=ml_g, ml_m=ml_m, ml_G=ml_G, ml_M=ml_M, ml_nested_g=ml_nested_g)
@@ -183,25 +176,11 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         return self._treatment_level
 
     @property
-    def mediation_level(self):
-        """
-        Chosen mediation level.
-        """
-        return self._mediation_level
-
-    @property
     def treated(self):
         """
         Indicator for observations with chosen treatment level.
         """
         return self._treated
-
-    @property
-    def mediated(self):
-        """
-        Indicator for observations with chosen mediation level.
-        """
-        return self._mediated
 
     @property
     def double_sample_splitting(self):
@@ -732,19 +711,15 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
 
         return outcome
 
-    def _check_levels(self, treatment_level, mediation_level):
+    def _check_levels(self, treatment_level):
         if not isinstance(treatment_level, int):
             raise TypeError(
                 "Treatment level must be an integer."
                 + f" Treatment level {str(treatment_level)} of type {str(type(treatment_level))} provided."
             )
-        if not isinstance(mediation_level, numbers.Number):
-            raise TypeError(
-                "Mediation level must be a number."
-                + f" Mediation level {str(mediation_level)} of type {str(type(mediation_level))} provided."
-            )
+
         if not 0 <= treatment_level <= 1:
             raise ValueError(
                 "Treatment level must be either 0 or 1" + f" Treatment level provided was {str(treatment_level)}."
             )
-        return treatment_level, mediation_level
+        return treatment_level

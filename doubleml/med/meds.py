@@ -53,7 +53,6 @@ class DoubleMLMEDS(SampleSplittingMixin):
         self._check_data(dml_data, trimming_threshold)
         self._dml_data = dml_data
         self._is_cluster_data = self._dml_data.is_cluster_data
-        self._treatment_mediation_levels = self._initialize_treatment_mediation_levels()
 
         # Check score
         self._score = score
@@ -461,12 +460,6 @@ class DoubleMLMEDS(SampleSplittingMixin):
             modeldict[f"{outcome}_{treatment}"] = model
 
         return modeldict
-
-    def _initialize_treatment_mediation_levels(self):
-        treatment_levels = [int(number) for number in np.unique(self._dml_data.d)]
-        mediation_levels = [int(number) for number in np.unique(self._dml_data.m)]
-
-        return list(itertools.product(treatment_levels, mediation_levels))
 
     def _initialize_models_ids(self):
         return [f"{outcome}_{treatment}" for outcome, treatment in self._id_pairs]
