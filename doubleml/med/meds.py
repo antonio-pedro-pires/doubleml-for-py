@@ -520,13 +520,13 @@ class DoubleMLMEDS(SampleSplittingMixin):
             assert f"{outcome}_{treatment}" == score
             if outcome == "potential":
                 model = DoubleMLMED(outcome=outcome, treatment_level=treatment, **pot_kwargs)
-                model._set_smpls_sampling(smpls=self.smpls)
+                model.set_sample_splitting(smpls=self.smpls)
 
             elif outcome == "counterfactual":
 
                 model = DoubleMLMED(outcome="counterfactual", treatment_level=treatment, **counter_kwargs)
                 smpls_inner = None if not self._double_sample_splitting else self._smpls_inner
-                model._set_smpls_sampling(smpls=self._smpls, smpls_inner=smpls_inner)
+                model.set_sample_splitting(smpls=self._smpls, smpls_inner=smpls_inner)
 
             modeldict[f"{outcome}_{treatment}"] = model
 
