@@ -126,8 +126,12 @@ def test_med_levels_check(dml_data, learner_linear, med_factory, check_med_level
 
     good_levels, treat_not_int_levels, med_not_number_levels, not_01_treat_levels = check_med_levels_fixture
     outcome = "potential"
-    med_factory(
-        outcome=outcome, treatment_level=good_levels[0], learners=learner_linear, ps_processor_config=ps_processor_config
+    DoubleMLMED(
+        dml_data=dml_data,
+        outcome=outcome,
+        treatment_level=good_levels[0],
+        ps_processor_config=ps_processor_config,
+        **learner_linear,
     )
 
     msg = (
@@ -135,20 +139,22 @@ def test_med_levels_check(dml_data, learner_linear, med_factory, check_med_level
         + f" Treatment level {str(treat_not_int_levels[0])} of type {str(type(treat_not_int_levels[0]))} provided."
     )
     with pytest.raises(TypeError, match=msg):
-        med_factory(
+        DoubleMLMED(
+            dml_data=dml_data,
             outcome=outcome,
             treatment_level=treat_not_int_levels[0],
-            learners=learner_linear,
             ps_processor_config=ps_processor_config,
+            **learner_linear,
         )
 
     msg = "Treatment level must be either 0 or 1" + f" Treatment level provided was {str(not_01_treat_levels[0])}."
     with pytest.raises(ValueError, match=msg):
-        med_factory(
+        DoubleMLMED(
+            dml_data=dml_data,
             outcome=outcome,
             treatment_level=not_01_treat_levels[0],
-            learners=learner_linear,
             ps_processor_config=ps_processor_config,
+            **learner_linear,
         )
 
 
@@ -157,43 +163,51 @@ def test_med_learners_check(
     dml_data, binary_treats, binary_outcomes, check_med_learners_fixture, learner_linear, med_factory, ps_processor_config
 ):
     good_learners, missing_g_learner, missing_G_learner = check_med_learners_fixture
-    med_factory(
-        outcome="potential", treatment_level=binary_treats, learners=good_learners, ps_processor_config=ps_processor_config
+    DoubleMLMED(
+        dml_data=dml_data,
+        outcome="potential",
+        treatment_level=binary_treats,
+        ps_processor_config=ps_processor_config,
+        **good_learners,
     )
-    med_factory(
+    DoubleMLMED(
+        dml_data=dml_data,
         outcome="counterfactual",
         treatment_level=binary_treats,
-        learners=good_learners,
         ps_processor_config=ps_processor_config,
+        **good_learners,
     )
 
     msg = "Learner ml_g is required when the outcome is potential."
     with pytest.raises(ValueError, match=msg):
-        med_factory(
+        DoubleMLMED(
+            dml_data=dml_data,
             outcome="potential",
             treatment_level=binary_treats,
-            learners=missing_g_learner,
             ps_processor_config=ps_processor_config,
+            **missing_g_learner,
         )
 
     msg = "Learner ml_G is required when the outcome is counterfactual."
     with pytest.raises(ValueError, match=msg):
-        med_factory(
+        DoubleMLMED(
+            dml_data=dml_data,
             outcome="counterfactual",
             treatment_level=binary_treats,
-            learners=missing_G_learner,
             ps_processor_config=ps_processor_config,
+            **missing_G_learner,
         )
 
     missmatched_learner = copy.deepcopy(missing_g_learner)
     missmatched_learner["ml_g"] = LogisticRegression()
     msg = "The learner ml_g was identified as a classifier " + "but the outcome variable is not binary with values 0 and 1."
     with pytest.raises(ValueError, match=msg):
-        med_factory(
+        DoubleMLMED(
+            dml_data=dml_data,
             outcome="potential",
             treatment_level=binary_treats,
-            learners=missmatched_learner,
             ps_processor_config=ps_processor_config,
+            **missmatched_learner,
         )
 
     x = dml_data.x
