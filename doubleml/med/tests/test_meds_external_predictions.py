@@ -10,51 +10,27 @@ pytestmark = pytest.mark.filterwarnings("ignore: l1_ratio parameter is only used
 
 
 @pytest.fixture(scope="module")
-def meds_kwargs(dml_data, learner_linear, double_sample_splitting):
-    return {
-        "dml_data": dml_data,
-        "n_folds": 5,
-        "n_rep": 3,
-        "n_folds_inner": 5,
-        "score": "efficient-alt",
-        "normalize_ipw": False,
-        "draw_sample_splitting": True,
-        "double_sample_splitting": double_sample_splitting,
+def meds_obj(dml_data, double_sample_splitting, ps_processor_config, learner_linear):
+    meds_obj = DoubleMLMEDS(
+        dml_data=dml_data,
+        double_sample_splitting=double_sample_splitting,
+        ps_processor_config=ps_processor_config,
         **learner_linear,
-    }
+    )
 
-
-@pytest.fixture(scope="module")
-def meds_obj(meds_kwargs):
-    meds_obj = DoubleMLMEDS(**meds_kwargs)
-    return meds_obj
-
-
-@pytest.fixture(scope="module")
-def smpls_inner_outer(meds_obj):
-    return meds_obj.smpls, meds_obj.smpls_inner
-
-
-@pytest.fixture(scope="module")
-def treatment_mediation(meds_obj):
-    return meds_obj.treatment_mediation_levels
-
-
-@pytest.fixture(scope="module", params=[True, False])
-def double_sample_splitting(request):
-    return request.param
+    meds_obj_ext = copy.deepcopy(meds_obj)
+    return meds_obj, meds_obj_ext
 
 
 @pytest.fixture(scope="module")
 def meds_fixture_binary_treat(meds_obj):
-    meds_obj_ext = copy.deepcopy(meds_obj)
+    meds_obj, meds_obj_ext = meds_obj
 
     meds_obj.fit()
-    # The following line is hardcoded for binary treatments.
-    # It should be possible to make it work for multiple treatments,
-    # but it would require implementing some logic in meds.py.
+
+    d_col = meds_obj._dml_data.d_cols[0]
     external_predictions_dict = {
-        model_id: {"d": {key: value[:, :, 0] for (key, value) in meds_obj.modeldict[model_id].predictions.items()}}
+        model_id: {d_col: {key: value[:, :, 0] for (key, value) in meds_obj.modeldict[model_id].predictions.items()}}
         for model_id in meds_obj.models_ids
     }
     meds_obj_ext.fit(external_predictions=external_predictions_dict)
