@@ -28,7 +28,7 @@ def meds_obj(dml_data, learner_linear, double_sample_splitting, ps_processor_con
 
 
 @pytest.fixture(scope="module")
-def individual_med_objs(meds_obj, learner_linear, med_factory, double_sample_splitting):
+def individual_med_objs(meds_obj, learner_linear, double_sample_splitting):
     smpls_inner = None if not meds_obj.double_sample_splitting else meds_obj.smpls_inner
     smpls = meds_obj._smpls
 
