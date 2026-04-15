@@ -2,6 +2,9 @@ import pytest
 
 from doubleml.utils._check_defaults import _check_basic_defaults_after_fit, _check_basic_defaults_before_fit, _fit_bootstrap
 
+# TODO: Remove warning filter once sklearn gets to version 1.10
+pytestmark = pytest.mark.filterwarnings("ignore: l1_ratio parameter is only used when penalty ")
+
 
 @pytest.fixture(scope="module", params=["potential", "counterfactual"])
 def outcome(request):

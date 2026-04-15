@@ -5,6 +5,9 @@ import re
 import numpy as np
 import pytest
 
+# TODO: Remove warning filter once sklearn gets to version 1.10
+pytestmark = pytest.mark.filterwarnings("ignore: l1_ratio parameter is only used when penalty ")
+
 
 @pytest.fixture(scope="module", params=[2, 3], ids=["n_folds=1", "n_folds=2"])
 def n_folds(request):
