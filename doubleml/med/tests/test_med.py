@@ -28,6 +28,7 @@ def med_objs(
     med_factory,
     double_sample_splitting,
     n_rep,
+    ps_processor_config,
 ):
 
     kwargs = {
@@ -39,6 +40,7 @@ def med_objs(
         "normalize_ipw": normalize_ipw,
         "double_sample_splitting": double_sample_splitting,
         "n_rep": n_rep,
+        "ps_processor_config": ps_processor_config,
     }
 
     np.random.seed(3141)
@@ -103,8 +105,10 @@ def test_dml_med_boot(dml_med_fixture):
 
 
 @pytest.fixture(scope="module")
-def external_predictions_exceptions_fixture(med_factory, learner_linear):
-    med_obj = med_factory(outcome="counterfactual", treatment_level=1, learners=learner_linear)
+def external_predictions_exceptions_fixture(med_factory, learner_linear, ps_processor_config):
+    med_obj = med_factory(
+        outcome="counterfactual", treatment_level=1, learners=learner_linear, ps_processor_config=ps_processor_config
+    )
 
     med_obj_ext = copy.deepcopy(med_obj)
     med_obj.fit()
@@ -128,12 +132,15 @@ def test_external_predictions_exceptions(external_predictions_exceptions_fixture
 
 
 @pytest.fixture(scope="module")
-def set_smpls_sampling_fixture(med_factory, learner_linear, binary_outcomes, binary_treats, double_sample_splitting):
+def set_smpls_sampling_fixture(
+    med_factory, learner_linear, binary_outcomes, binary_treats, double_sample_splitting, ps_processor_config
+):
     med_obj = med_factory(
         outcome=binary_outcomes,
         treatment_level=binary_treats,
         learners=learner_linear,
         double_sample_splitting=double_sample_splitting,
+        ps_processor_config=ps_processor_config,
     )
     med_obj_ext = med_factory(
         outcome=binary_outcomes,
@@ -141,6 +148,7 @@ def set_smpls_sampling_fixture(med_factory, learner_linear, binary_outcomes, bin
         learners=learner_linear,
         double_sample_splitting=double_sample_splitting,
         draw_sample_splitting=False,
+        ps_processor_config=ps_processor_config,
     )
     return med_obj, med_obj_ext
 

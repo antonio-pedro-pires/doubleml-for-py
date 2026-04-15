@@ -11,6 +11,7 @@ from doubleml.tests._utils_tune_optuna import (
     _basic_optuna_settings,
     _small_tree_params,
 )
+from doubleml.utils import PSProcessorConfig
 
 
 @pytest.fixture(scope="module", params=[True, False])
@@ -106,6 +107,11 @@ def optuna_params():
 def optuna_settings(request):
     sampler_name, optuna_sampler = request.param
     return _basic_optuna_settings({"sampler": optuna_sampler, "n_trials": 10})
+
+
+@pytest.fixture(scope="session", params=[PSProcessorConfig()])
+def ps_processor_config(request):
+    return request.param
 
 
 @pytest.fixture(scope="session")

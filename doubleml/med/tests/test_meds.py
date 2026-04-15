@@ -11,7 +11,7 @@ pytestmark = pytest.mark.filterwarnings("ignore: l1_ratio parameter is only used
 
 
 @pytest.fixture(scope="module")
-def meds_kwargs(dml_data, learner_linear, double_sample_splitting):
+def meds_kwargs(dml_data, learner_linear, double_sample_splitting, ps_processor_config):
     return {
         "dml_data": dml_data,
         "n_folds": 5,
@@ -21,6 +21,7 @@ def meds_kwargs(dml_data, learner_linear, double_sample_splitting):
         "normalize_ipw": False,
         "draw_sample_splitting": True,
         "double_sample_splitting": double_sample_splitting,
+        "ps_processor_config": ps_processor_config,
         **learner_linear,
     }
 
@@ -56,6 +57,7 @@ def individual_med_objs(meds_obj, learner_linear, med_factory, double_sample_spl
         "normalize_ipw": meds_obj.normalize_ipw,
         "draw_sample_splitting": False,
         "double_sample_splitting": double_sample_splitting,
+        "ps_processor_config": meds_obj.ps_processor_config,
     }
     smpls_inner = None if not meds_obj.double_sample_splitting else meds_obj.smpls_inner
     smpls = meds_obj._smpls
