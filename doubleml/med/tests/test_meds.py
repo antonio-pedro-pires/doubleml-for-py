@@ -6,6 +6,9 @@ import pytest
 from doubleml.double_ml_framework import concat
 from doubleml.med import DoubleMLMEDS
 
+# TODO: Remove warning filter once sklearn gets to version 1.10
+pytestmark = pytest.mark.filterwarnings("ignore: l1_ratio parameter is only used when penalty ")
+
 
 # TODO: Will need to test with data with multiple m columns
 @pytest.fixture(scope="module")

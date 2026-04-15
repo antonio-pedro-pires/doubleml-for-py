@@ -19,6 +19,9 @@ dml_args = {
     "n_folds": N_FOLDS,
 }
 
+# TODO: Remove warning filter once sklearn gets to version 1.10
+pytestmark = pytest.mark.filterwarnings("ignore: l1_ratio parameter is only used when penalty ")
+
 
 @pytest.fixture(scope="module", params=["potential", "counterfactual"])
 def outcome(request):
