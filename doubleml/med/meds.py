@@ -1,4 +1,5 @@
 import itertools
+from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -10,6 +11,7 @@ from doubleml.double_ml_framework import concat
 from doubleml.double_ml_sampling_mixins import SampleSplittingMixin
 from doubleml.med.med import DoubleMLMED
 from doubleml.med.utils._meds_utils import generate_effects_summary
+from doubleml.utils import PSProcessorConfig
 from doubleml.utils._checks import _check_score
 from doubleml.utils._descriptive import generate_summary
 
@@ -76,6 +78,11 @@ class DoubleMLMEDS(SampleSplittingMixin):
             Indicates whether the data is resampled for the estimation of the nested parameter.
             Default is ``True``.
 
+        ps_processor_config : PSProcessorConfig
+            configuration file for the propensity score processor (PSProcessor) object.
+            When None, the PSProcessor is initialized with its default values.
+            Default is ``None``
+
         Examples
     --------
 
@@ -110,6 +117,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
         normalize_ipw=True,
         draw_sample_splitting=True,
         double_sample_splitting=True,
+        ps_processor_config: Optional[PSProcessorConfig] = None,
     ):
 
         self._check_data(dml_data)
@@ -158,6 +166,8 @@ class DoubleMLMEDS(SampleSplittingMixin):
         self._smpls_inner = None
         self._n_obs_sample_splitting = self._dml_data.n_obs
         self._strata = None
+
+        self._ps_processor_config = ps_processor_config if ps_processor_config is not None else PSProcessorConfig()
 
         if draw_sample_splitting:
             self.draw_sample_splitting()
@@ -230,6 +240,13 @@ class DoubleMLMEDS(SampleSplittingMixin):
         Describes the different treatment levels
         """
         return np.unique(self._dml_data.d)
+
+    @property
+    def ps_processor_config(self):
+        """
+        Configuration for propensity score processing (clipping, calibration, etc.).
+        """
+        return self._ps_processor_config
 
     @property
     def effects(self):
@@ -473,6 +490,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
             "normalize_ipw": self.normalize_ipw,
             "double_sample_splitting": self.double_sample_splitting,
             "draw_sample_splitting": False,
+            "ps_processor_config": self._ps_processor_config,
         }
         counter_kwargs = {
             "dml_data": self._dml_data,
@@ -486,6 +504,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
             "normalize_ipw": self.normalize_ipw,
             "double_sample_splitting": self.double_sample_splitting,
             "draw_sample_splitting": False,
+            "ps_processor_config": self._ps_processor_config,
         }
 
         for score, (outcome, treatment) in zip(self.models_ids, self._id_pairs):
