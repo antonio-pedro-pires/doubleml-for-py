@@ -30,7 +30,6 @@ def meds_kwargs(dml_data, learners, double_sample_splitting):
         "n_folds_inner": 5,
         "score": "efficient-alt",
         "normalize_ipw": False,
-        "trimming_threshold": 1e-2,
         "draw_sample_splitting": True,
         "double_sample_splitting": double_sample_splitting,
         **learners,
@@ -66,7 +65,6 @@ def individual_med_objs(meds_obj, learners, med_factory, double_sample_splitting
         "n_rep": meds_obj.n_rep,
         "n_folds_inner": meds_obj.n_folds_inner,
         "normalize_ipw": meds_obj.normalize_ipw,
-        "trimming_threshold": meds_obj.trimming_threshold,
         "draw_sample_splitting": False,
         "double_sample_splitting": double_sample_splitting,
     }
