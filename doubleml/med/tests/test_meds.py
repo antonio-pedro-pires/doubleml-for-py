@@ -3,6 +3,7 @@ from random import seed
 import numpy as np
 import pytest
 
+from doubleml import DoubleMLMED
 from doubleml.double_ml_framework import concat
 from doubleml.med import DoubleMLMEDS
 
@@ -11,68 +12,43 @@ pytestmark = pytest.mark.filterwarnings("ignore: l1_ratio parameter is only used
 
 
 @pytest.fixture(scope="module")
-def meds_kwargs(dml_data, learner_linear, double_sample_splitting, ps_processor_config):
-    return {
-        "dml_data": dml_data,
-        "n_folds": 5,
-        "n_rep": 1,
-        "n_folds_inner": 5,
-        "score": "efficient-alt",
-        "normalize_ipw": False,
-        "draw_sample_splitting": True,
-        "double_sample_splitting": double_sample_splitting,
-        "ps_processor_config": ps_processor_config,
+def meds_obj(dml_data, learner_linear, double_sample_splitting, ps_processor_config):
+    return DoubleMLMEDS(
+        dml_data=dml_data,
+        n_folds=5,
+        n_rep=1,
+        n_folds_inner=5,
+        score="efficient-alt",
+        normalize_ipw=False,
+        draw_sample_splitting=True,
+        double_sample_splitting=double_sample_splitting,
+        ps_processor_config=ps_processor_config,
         **learner_linear,
-    }
-
-
-@pytest.fixture(scope="module")
-def meds_obj(meds_kwargs):
-    meds_obj = DoubleMLMEDS(**meds_kwargs)
-    return meds_obj
-
-
-@pytest.fixture(scope="module")
-def smpls_inner_outer(meds_obj):
-    return meds_obj.smpls, meds_obj.smpls_inner
-
-
-@pytest.fixture(scope="module")
-def treatment_mediation(meds_obj):
-    return meds_obj.treatment_mediation_levels
-
-
-@pytest.fixture(scope="module", params=[True, False])
-def double_sample_splitting(request):
-    return request.param
+    )
 
 
 @pytest.fixture(scope="module")
 def individual_med_objs(meds_obj, learner_linear, med_factory, double_sample_splitting):
-    kwargs = {
-        "score": "efficient-alt",
-        "n_folds": meds_obj.n_folds,
-        "n_rep": meds_obj.n_rep,
-        "n_folds_inner": meds_obj.n_folds_inner,
-        "normalize_ipw": meds_obj.normalize_ipw,
-        "draw_sample_splitting": False,
-        "double_sample_splitting": double_sample_splitting,
-        "ps_processor_config": meds_obj.ps_processor_config,
-    }
     smpls_inner = None if not meds_obj.double_sample_splitting else meds_obj.smpls_inner
     smpls = meds_obj._smpls
 
     individual_modeldict = {}
     for model_id, model in meds_obj.modeldict.items():
-        if model.outcome == "potential":
-            ind_model = med_factory(
-                outcome=model.outcome, treatment_level=model.treatment_level, learners=learner_linear, **kwargs
-            )
-            ind_model._smpls = meds_obj._smpls
-        elif model.outcome == "counterfactual":
-            ind_model = med_factory(
-                outcome=model.outcome, treatment_level=model.treatment_level, learners=learner_linear, **kwargs
-            )
+        ind_model = DoubleMLMED(
+            dml_data=meds_obj._dml_data,
+            treatment_level=model.treatment_level,
+            outcome=model.outcome,
+            n_folds=meds_obj.n_folds,
+            n_rep=meds_obj.n_rep,
+            n_folds_inner=meds_obj.n_folds_inner,
+            score=meds_obj.score,
+            ps_processor_config=meds_obj.ps_processor_config,
+            normalize_ipw=meds_obj.normalize_ipw,
+            double_sample_splitting=meds_obj.double_sample_splitting,
+            draw_sample_splitting=False,
+            **learner_linear,
+        )
+
         individual_modeldict[model_id] = ind_model
         ind_model.set_sample_splitting(smpls=smpls, smpls_inner=smpls_inner)
     return individual_modeldict
