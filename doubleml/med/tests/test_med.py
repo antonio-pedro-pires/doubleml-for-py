@@ -37,11 +37,6 @@ def normalize_ipw(request):
     return request.param
 
 
-@pytest.fixture(scope="module", params=[0.15, 0.2], ids=["trimming_threshold=0.15", "trimming_threshold=0.2"])
-def trimming_threshold(request):
-    return request.param
-
-
 @pytest.fixture(
     scope="module",
     params=[
@@ -64,7 +59,6 @@ def med_objs(
     binary_outcomes,
     binary_scores,
     normalize_ipw,
-    trimming_threshold,
     binary_treats,
     n_folds,
     med_factory,
@@ -79,7 +73,6 @@ def med_objs(
         "score": "efficient-alt",
         "n_folds": n_folds,
         "normalize_ipw": normalize_ipw,
-        "trimming_threshold": trimming_threshold,
         "double_sample_splitting": double_sample_splitting,
         "n_rep": n_rep,
     }

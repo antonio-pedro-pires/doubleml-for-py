@@ -68,14 +68,6 @@ class DoubleMLMEDS(SampleSplittingMixin):
             Indicates whether the inverse probability weights are normalized.
             Default is ``True``.
 
-        trimming_rule : str
-            A str (``'truncate'`` is the only choice) specifying the trimming approach.
-            Default is ``'truncate'``.
-
-        trimming_threshold : float
-            The threshold used for trimming.
-            Default is ``1e-2``.
-
         draw_sample_splitting : bool
             Indicates whether the sample splitting should be drawn during initialization of the object.
             Default is ``True``.
@@ -116,12 +108,11 @@ class DoubleMLMEDS(SampleSplittingMixin):
         n_folds_inner=5,
         score="efficient-alt",
         normalize_ipw=True,
-        trimming_threshold=1e-2,
         draw_sample_splitting=True,
         double_sample_splitting=True,
     ):
 
-        self._check_data(dml_data, trimming_threshold)
+        self._check_data(dml_data)
         self._dml_data = dml_data
         self._is_cluster_data = self._dml_data.is_cluster_data
 
@@ -130,7 +121,6 @@ class DoubleMLMEDS(SampleSplittingMixin):
         valid_scores = ["efficient-alt"]
         _check_score(self._score, valid_scores, allow_callable=False)
 
-        self._trimming_threshold = trimming_threshold
         self._normalize_ipw = normalize_ipw
         self._double_sample_splitting = double_sample_splitting
         # _check_resampling_specifications(n_folds, n_rep)
@@ -222,21 +212,6 @@ class DoubleMLMEDS(SampleSplittingMixin):
         Indicates whether the inverse probability weights are normalised.
         """
         return self._normalize_ipw
-
-    # TODO: Replace trimming-type properties by psprocessor ones.
-    @property
-    def trimming_rule(self):
-        """
-        Specifies the trimming rule used.
-        """
-        return self._trimming_rule
-
-    @property
-    def trimming_threshold(self):
-        """
-        Specifies the trimming threshold.
-        """
-        return self._trimming_threshold
 
     @property
     def models_ids(self):
@@ -471,7 +446,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
             "INDIR_CONTROL": indir_control,
         }
 
-    def _check_data(self, meds_data, threshold):
+    def _check_data(self, meds_data):
         if not isinstance(meds_data, DoubleMLMEDData):
             raise TypeError(
                 f"The data must be of DoubleMLMediationData type. {str(meds_data)} of type {str(type(meds_data))} was passed."
@@ -495,7 +470,6 @@ class DoubleMLMEDS(SampleSplittingMixin):
             "n_folds": self.n_folds,
             "n_rep": self.n_rep,
             "n_folds_inner": self.n_folds_inner,
-            "trimming_threshold": self.trimming_threshold,
             "normalize_ipw": self.normalize_ipw,
             "double_sample_splitting": self.double_sample_splitting,
             "draw_sample_splitting": False,
@@ -509,7 +483,6 @@ class DoubleMLMEDS(SampleSplittingMixin):
             "n_folds": self.n_folds,
             "n_rep": self.n_rep,
             "n_folds_inner": self.n_folds_inner,
-            "trimming_threshold": self.trimming_threshold,
             "normalize_ipw": self.normalize_ipw,
             "double_sample_splitting": self.double_sample_splitting,
             "draw_sample_splitting": False,

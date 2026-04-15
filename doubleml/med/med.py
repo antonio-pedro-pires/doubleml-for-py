@@ -17,7 +17,7 @@ from doubleml.utils._estimation import (
     _get_cond_smpls,
 )
 from doubleml.utils._tune_optuna import _dml_tune_optuna
-from doubleml.utils.propensity_score_processing import PSProcessorConfig, init_ps_processor
+from doubleml.utils.propensity_score_processing import PSProcessor, PSProcessorConfig
 
 
 class DoubleMLMED(LinearScoreMixin, DoubleML):
@@ -75,14 +75,6 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         Indicates whether the inverse probability weights are normalized.
         Default is ``True``.
 
-    trimming_rule : str
-        A str (``'truncate'`` is the only choice) specifying the trimming approach.
-        Default is ``'truncate'``.
-
-    trimming_threshold : float
-        The threshold used for trimming.
-        Default is ``1e-2``.
-
     draw_sample_splitting : bool
         Indicates whether the sample splitting should be drawn during initialization of the object.
         Default is ``True``.
@@ -90,6 +82,11 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
     double_sample_splitting : bool
         Indicates whether the data is resampled for the estimation of the nested parameter.
         Default is ``True``.
+
+    ps_processor_config : PSProcessorConfig
+        configuration file for the propensity score processor (PSProcessor) object.
+        When None, the PSProcessor is initialized with its default values.
+        Default is ``None``
     """
 
     def __init__(
@@ -107,8 +104,6 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         n_rep=1,
         n_folds_inner=5,
         normalize_ipw=True,
-        trimming_rule="truncate",
-        trimming_threshold=1e-2,
         draw_sample_splitting=True,
         double_sample_splitting=True,
         ps_processor_config: Optional[PSProcessorConfig] = None,
@@ -136,14 +131,15 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         self._check_learners(ml_g=ml_g, ml_m=ml_m, ml_G=ml_G, ml_M=ml_M, ml_nested_g=ml_nested_g)
 
         self._normalize_ipw = normalize_ipw
-        self._trimming_rule = trimming_rule
-        self._trimming_threshold = trimming_threshold
         self._external_predictions_implemented = True
         self._sensitivity_implemented = False
 
-        self._ps_processor_config, self._ps_processor = init_ps_processor(
-            ps_processor_config, trimming_rule, trimming_threshold
-        )
+        if ps_processor_config is not None:
+            self._ps_processor = PSProcessor.from_config(ps_processor_config)
+        else:
+            warnings.warn("ps_processor_config not specified. Using default configuration.")
+            self._ps_processor_config = PSProcessorConfig()
+            self._ps_processor = PSProcessor.from_config(self._ps_processor_config)
 
     @property
     def outcome(self):
@@ -158,20 +154,6 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         indicates whether the  inverse probability weights are normalized
         """
         return self._normalize_ipw
-
-    @property
-    def trimming_rule(self):
-        """
-        Specifies the used trimming rule.
-        """
-        return self._trimming_rule
-
-    @property
-    def trimming_threshold(self):
-        """
-        Indicates the trimming threshold.
-        """
-        return self._trimming_threshold
 
     @property
     def treatment_level(self):
