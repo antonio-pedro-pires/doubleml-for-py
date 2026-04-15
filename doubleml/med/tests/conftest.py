@@ -13,9 +13,29 @@ from doubleml.tests._utils_tune_optuna import (
 )
 
 
+@pytest.fixture(scope="module", params=[True, False])
+def double_sample_splitting(request):
+    return request.param
+
+
+@pytest.fixture(scope="module", params=[False, True], ids=["normalize_ipw=False", "normalize_ipw=True"])
+def normalize_ipw(request):
+    return request.param
+
+
 @pytest.fixture(scope="session")
 def dml_data():
     return make_med_data()
+
+
+@pytest.fixture(scope="module", params=[1, 2])
+def n_rep(request):
+    return request.param
+
+
+@pytest.fixture(scope="module")
+def n_rep_boot():
+    return 499
 
 
 @pytest.fixture(scope="session")
@@ -27,6 +47,11 @@ def learner_linear():
         "ml_M": LogisticRegression(solver="saga", l1_ratio=1, max_iter=250, random_state=42),
         "ml_nested_g": LinearRegression(),
     }
+
+
+@pytest.fixture(scope="module", params=[2, 3], ids=["n_folds=1", "n_folds=2"])
+def n_folds(request):
+    return request.param
 
 
 @pytest.fixture(scope="session")

@@ -9,14 +9,8 @@ from doubleml.med import DoubleMLMEDS
 pytestmark = pytest.mark.filterwarnings("ignore: l1_ratio parameter is only used when penalty ")
 
 
-# TODO: Will need to test with data with multiple m columns
 @pytest.fixture(scope="module")
-def learners(learner_linear):
-    return learner_linear
-
-
-@pytest.fixture(scope="module")
-def meds_kwargs(dml_data, learners, double_sample_splitting):
+def meds_kwargs(dml_data, learner_linear, double_sample_splitting):
     return {
         "dml_data": dml_data,
         "n_folds": 5,
@@ -26,7 +20,7 @@ def meds_kwargs(dml_data, learners, double_sample_splitting):
         "normalize_ipw": False,
         "draw_sample_splitting": True,
         "double_sample_splitting": double_sample_splitting,
-        **learners,
+        **learner_linear,
     }
 
 

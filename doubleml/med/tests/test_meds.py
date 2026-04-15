@@ -10,19 +10,8 @@ from doubleml.med import DoubleMLMEDS
 pytestmark = pytest.mark.filterwarnings("ignore: l1_ratio parameter is only used when penalty ")
 
 
-# TODO: Will need to test with data with multiple m columns
 @pytest.fixture(scope="module")
-def learners(learner_linear):
-    return learner_linear
-
-
-@pytest.fixture(scope="module", params=[1, 2])
-def n_rep(request):
-    return request.param
-
-
-@pytest.fixture(scope="module")
-def meds_kwargs(dml_data, learners, double_sample_splitting):
+def meds_kwargs(dml_data, learner_linear, double_sample_splitting):
     return {
         "dml_data": dml_data,
         "n_folds": 5,
@@ -32,7 +21,7 @@ def meds_kwargs(dml_data, learners, double_sample_splitting):
         "normalize_ipw": False,
         "draw_sample_splitting": True,
         "double_sample_splitting": double_sample_splitting,
-        **learners,
+        **learner_linear,
     }
 
 
@@ -58,7 +47,7 @@ def double_sample_splitting(request):
 
 
 @pytest.fixture(scope="module")
-def individual_med_objs(meds_obj, learners, med_factory, double_sample_splitting):
+def individual_med_objs(meds_obj, learner_linear, med_factory, double_sample_splitting):
     kwargs = {
         "score": "efficient-alt",
         "n_folds": meds_obj.n_folds,
@@ -74,10 +63,14 @@ def individual_med_objs(meds_obj, learners, med_factory, double_sample_splitting
     individual_modeldict = {}
     for model_id, model in meds_obj.modeldict.items():
         if model.outcome == "potential":
-            ind_model = med_factory(outcome=model.outcome, treatment_level=model.treatment_level, learners=learners, **kwargs)
+            ind_model = med_factory(
+                outcome=model.outcome, treatment_level=model.treatment_level, learners=learner_linear, **kwargs
+            )
             ind_model._smpls = meds_obj._smpls
         elif model.outcome == "counterfactual":
-            ind_model = med_factory(outcome=model.outcome, treatment_level=model.treatment_level, learners=learners, **kwargs)
+            ind_model = med_factory(
+                outcome=model.outcome, treatment_level=model.treatment_level, learners=learner_linear, **kwargs
+            )
         individual_modeldict[model_id] = ind_model
         ind_model.set_sample_splitting(smpls=smpls, smpls_inner=smpls_inner)
     return individual_modeldict

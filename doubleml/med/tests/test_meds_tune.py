@@ -8,14 +8,9 @@ from doubleml.med import DoubleMLMEDS
 
 
 @pytest.fixture(scope="module")
-def learners(learner_tree):
-    return learner_tree
+def med_objs(dml_data, learner_tree, med_factory):
 
-
-@pytest.fixture(scope="module")
-def med_objs(dml_data, learners, med_factory):
-
-    meds_obj = DoubleMLMEDS(dml_data, **learners)
+    meds_obj = DoubleMLMEDS(dml_data, **learner_tree)
     id_pairs = list(itertools.product(["potential", "counterfactual"], [0, 1]))
 
     individual_med_objs = {}
@@ -23,7 +18,7 @@ def med_objs(dml_data, learners, med_factory):
     smpls = meds_obj._smpls
     smpls_inner = None if not meds_obj.double_sample_splitting else meds_obj.smpls_inner
     for outcome, treatment in id_pairs:
-        model = med_factory(outcome, treatment, learners)
+        model = med_factory(outcome, treatment, learner_tree)
         model.set_sample_splitting(smpls=smpls, smpls_inner=smpls_inner)
 
         individual_med_objs[f"{outcome}_{treatment}"] = model
