@@ -106,7 +106,7 @@ def test_med_data_check(check_med_data_fixture, binary_treats, learner_linear, p
 
 
 @pytest.mark.ci
-def test_med_outcome_check(dml_data, med_factory, binary_treats, check_med_outcomes_fixture, learner_linear):
+def test_med_outcome_check(dml_data, binary_treats, check_med_outcomes_fixture, learner_linear):
     potential_t, counterfactual_t, value_error_t, type_error_t = check_med_outcomes_fixture
 
     learners = {"ml_g": learner_linear["ml_g"], "ml_m": learner_linear["ml_m"]}
@@ -122,7 +122,7 @@ def test_med_outcome_check(dml_data, med_factory, binary_treats, check_med_outco
 
 
 @pytest.mark.ci
-def test_med_levels_check(dml_data, learner_linear, med_factory, check_med_levels_fixture, ps_processor_config):
+def test_med_levels_check(dml_data, learner_linear, check_med_levels_fixture, ps_processor_config):
 
     good_levels, treat_not_int_levels, med_not_number_levels, not_01_treat_levels = check_med_levels_fixture
     outcome = "potential"
@@ -160,7 +160,7 @@ def test_med_levels_check(dml_data, learner_linear, med_factory, check_med_level
 
 @pytest.mark.ci
 def test_med_learners_check(
-    dml_data, binary_treats, binary_outcomes, check_med_learners_fixture, learner_linear, med_factory, ps_processor_config
+    dml_data, binary_treats, binary_outcomes, check_med_learners_fixture, learner_linear, ps_processor_config
 ):
     good_learners, missing_g_learner, missing_G_learner = check_med_learners_fixture
     DoubleMLMED(
