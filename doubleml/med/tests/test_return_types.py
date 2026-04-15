@@ -23,11 +23,6 @@ dml_args = {
 pytestmark = pytest.mark.filterwarnings("ignore: l1_ratio parameter is only used when penalty ")
 
 
-@pytest.fixture(scope="module", params=["potential", "counterfactual"])
-def outcome(request):
-    return request.param
-
-
 @pytest.fixture(scope="module")
 def dml_med_fixture(binary_outcomes, binary_treats, dml_data, med_factory, learner_linear):
     # dml_args["binary_outcomes"] = outcome # Removed to avoid duplication

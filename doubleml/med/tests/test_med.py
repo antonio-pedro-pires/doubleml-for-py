@@ -9,48 +9,12 @@ import pytest
 pytestmark = pytest.mark.filterwarnings("ignore: l1_ratio parameter is only used when penalty ")
 
 
-@pytest.fixture(scope="module", params=[2, 3], ids=["n_folds=1", "n_folds=2"])
-def n_folds(request):
-    return request.param
-
-
-@pytest.fixture(scope="module", params=[1, 2], ids=["n_folds=1", "n_folds=2"])
-def n_rep(request):
-    return request.param
-
-
-@pytest.fixture(scope="module")
-def n_rep_boot():
-    return 499
-
-
 @pytest.fixture(
     scope="module",
     params=["learner_linear", "learner_forest"],
 )
 def learners(request):
     return request.getfixturevalue(request.param)
-
-
-@pytest.fixture(scope="module", params=[False, True], ids=["normalize_ipw=False", "normalize_ipw=True"])
-def normalize_ipw(request):
-    return request.param
-
-
-@pytest.fixture(
-    scope="module",
-    params=[
-        [0, 1],
-        [1, 0],
-    ],
-)
-def treatment_mediation_level_counterfactual(request):
-    return request.param
-
-
-@pytest.fixture(scope="module", params=[True, False])
-def double_sample_splitting(request):
-    return request.param
 
 
 @pytest.fixture(scope="module")

@@ -10,26 +10,16 @@ from doubleml.tests._utils_tune_optuna import (
 )
 
 
-@pytest.fixture(scope="module")
-def learners(learner_tree):
-    return learner_tree
-
-
-@pytest.fixture(scope="module", params=["potential", "counterfactual"])
-def outcome(request):
-    yield request.param
-
-
 @pytest.fixture(
     scope="module",
 )
-def untuned_tuned_scores(dml_data, binary_outcomes, binary_treats, learners, optuna_params, optuna_settings):
+def untuned_tuned_scores(dml_data, binary_outcomes, binary_treats, learner_tree, optuna_params, optuna_settings):
 
     if binary_outcomes == "potential":
         model = DoubleMLMED(
             dml_data=dml_data,
-            ml_g=learners["ml_g"],
-            ml_m=learners["ml_m"],
+            ml_g=learner_tree["ml_g"],
+            ml_m=learner_tree["ml_m"],
             outcome=binary_outcomes,
             treatment_level=binary_treats,
         )
@@ -38,11 +28,11 @@ def untuned_tuned_scores(dml_data, binary_outcomes, binary_treats, learners, opt
             dml_data=dml_data,
             outcome=binary_outcomes,
             treatment_level=binary_treats,
-            ml_g=learners["ml_g"],
-            ml_m=learners["ml_m"],
-            ml_G=learners["ml_G"],
-            ml_M=learners["ml_M"],
-            ml_nested_g=learners["ml_nested_g"],
+            ml_g=learner_tree["ml_g"],
+            ml_m=learner_tree["ml_m"],
+            ml_G=learner_tree["ml_G"],
+            ml_M=learner_tree["ml_M"],
+            ml_nested_g=learner_tree["ml_nested_g"],
         )
 
     med_obj = copy.deepcopy(model)

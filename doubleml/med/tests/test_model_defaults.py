@@ -6,11 +6,6 @@ from doubleml.utils._check_defaults import _check_basic_defaults_after_fit, _che
 pytestmark = pytest.mark.filterwarnings("ignore: l1_ratio parameter is only used when penalty ")
 
 
-@pytest.fixture(scope="module", params=["potential", "counterfactual"])
-def outcome(request):
-    return request.param
-
-
 @pytest.fixture(scope="module")
 def dml_med_fixture(binary_outcomes, dml_data, med_factory, learner_linear):
     if binary_outcomes == "potential":
