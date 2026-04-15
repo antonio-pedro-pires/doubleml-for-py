@@ -5,49 +5,41 @@ import re
 import numpy as np
 import pytest
 
+from doubleml import DoubleMLMED
+
 # TODO: Remove warning filter once sklearn gets to version 1.10
 pytestmark = pytest.mark.filterwarnings("ignore: l1_ratio parameter is only used when penalty ")
 
 
-@pytest.fixture(
-    scope="module",
-    params=["learner_linear", "learner_forest"],
-)
-def learners(request):
-    return request.getfixturevalue(request.param)
-
-
 @pytest.fixture(scope="module")
 def med_objs(
-    learners,
+    dml_data,
+    learner_linear,
     binary_outcomes,
     binary_scores,
     normalize_ipw,
     binary_treats,
     n_folds,
-    med_factory,
     double_sample_splitting,
     n_rep,
     ps_processor_config,
 ):
 
     kwargs = {
+        "dml_data": dml_data,
         "outcome": binary_outcomes,
         "treatment_level": binary_treats,
-        "learners": learners,
         "score": "efficient-alt",
-        "n_folds": n_folds,
         "normalize_ipw": normalize_ipw,
         "double_sample_splitting": double_sample_splitting,
-        "n_rep": n_rep,
         "ps_processor_config": ps_processor_config,
+        **learner_linear,
     }
 
     np.random.seed(3141)
-    med_obj = med_factory(**kwargs)
-
+    med_obj = DoubleMLMED(**kwargs)
     np.random.seed(3141)
-    med_obj_ext = med_factory(**kwargs)
+    med_obj_ext = DoubleMLMED(**kwargs)
     return med_obj, med_obj_ext
 
 
@@ -105,9 +97,13 @@ def test_dml_med_boot(dml_med_fixture):
 
 
 @pytest.fixture(scope="module")
-def external_predictions_exceptions_fixture(med_factory, learner_linear, ps_processor_config):
-    med_obj = med_factory(
-        outcome="counterfactual", treatment_level=1, learners=learner_linear, ps_processor_config=ps_processor_config
+def external_predictions_exceptions_fixture(dml_data, learner_linear, ps_processor_config):
+    med_obj = DoubleMLMED(
+        dml_data,
+        outcome="counterfactual",
+        treatment_level=1,
+        ps_processor_config=ps_processor_config,
+        **learner_linear,
     )
 
     med_obj_ext = copy.deepcopy(med_obj)
@@ -132,23 +128,24 @@ def test_external_predictions_exceptions(external_predictions_exceptions_fixture
 
 
 @pytest.fixture(scope="module")
-def set_smpls_sampling_fixture(
-    med_factory, learner_linear, binary_outcomes, binary_treats, double_sample_splitting, ps_processor_config
-):
-    med_obj = med_factory(
+def set_smpls_sampling_fixture(dml_data, learner_linear, binary_outcomes, double_sample_splitting, ps_processor_config):
+    treatment_level = 1  # Fixed treatment_level since the treatment level has no effect on set_smpls_sampling.
+    med_obj = DoubleMLMED(
+        dml_data=dml_data,
         outcome=binary_outcomes,
-        treatment_level=binary_treats,
-        learners=learner_linear,
+        treatment_level=treatment_level,
         double_sample_splitting=double_sample_splitting,
         ps_processor_config=ps_processor_config,
+        **learner_linear,
     )
-    med_obj_ext = med_factory(
+    med_obj_ext = DoubleMLMED(
+        dml_data=dml_data,
         outcome=binary_outcomes,
-        treatment_level=binary_treats,
-        learners=learner_linear,
+        treatment_level=treatment_level,
         double_sample_splitting=double_sample_splitting,
         draw_sample_splitting=False,
         ps_processor_config=ps_processor_config,
+        **learner_linear,
     )
     return med_obj, med_obj_ext
 
