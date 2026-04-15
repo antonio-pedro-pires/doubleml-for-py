@@ -13,7 +13,9 @@ from doubleml.tests._utils_tune_optuna import (
 @pytest.fixture(
     scope="module",
 )
-def untuned_tuned_scores(dml_data, binary_outcomes, binary_treats, learner_tree, optuna_params, optuna_settings):
+def untuned_tuned_scores(
+    dml_data, binary_outcomes, binary_treats, learner_tree, optuna_params, optuna_settings, ps_processor_config
+):
 
     if binary_outcomes == "potential":
         model = DoubleMLMED(
@@ -22,6 +24,7 @@ def untuned_tuned_scores(dml_data, binary_outcomes, binary_treats, learner_tree,
             ml_m=learner_tree["ml_m"],
             outcome=binary_outcomes,
             treatment_level=binary_treats,
+            ps_processor_config=ps_processor_config,
         )
     else:
         model = DoubleMLMED(
@@ -33,6 +36,7 @@ def untuned_tuned_scores(dml_data, binary_outcomes, binary_treats, learner_tree,
             ml_G=learner_tree["ml_G"],
             ml_M=learner_tree["ml_M"],
             ml_nested_g=learner_tree["ml_nested_g"],
+            ps_processor_config=ps_processor_config,
         )
 
     med_obj = copy.deepcopy(model)

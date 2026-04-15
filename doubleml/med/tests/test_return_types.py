@@ -24,9 +24,9 @@ pytestmark = pytest.mark.filterwarnings("ignore: l1_ratio parameter is only used
 
 
 @pytest.fixture(scope="module")
-def dml_med_fixture(binary_outcomes, binary_treats, dml_data, med_factory, learner_linear):
+def dml_med_fixture(binary_outcomes, binary_treats, dml_data, med_factory, learner_linear, ps_processor_config):
     # dml_args["binary_outcomes"] = outcome # Removed to avoid duplication
-
+    dml_args["ps_processor_config"] = ps_processor_config
     dml_med_obj = med_factory(binary_outcomes, binary_treats, learner_linear, **dml_args)
 
     dml_objs = (dml_med_obj, DoubleMLMED)

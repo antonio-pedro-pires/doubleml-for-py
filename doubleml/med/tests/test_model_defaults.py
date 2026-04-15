@@ -7,11 +7,11 @@ pytestmark = pytest.mark.filterwarnings("ignore: l1_ratio parameter is only used
 
 
 @pytest.fixture(scope="module")
-def dml_med_fixture(binary_outcomes, dml_data, med_factory, learner_linear):
+def dml_med_fixture(binary_outcomes, dml_data, med_factory, learner_linear, ps_processor_config):
     if binary_outcomes == "potential":
-        med_obj = med_factory(binary_outcomes, 1, learner_linear)
+        med_obj = med_factory(binary_outcomes, 1, learner_linear, ps_processor_config=ps_processor_config)
     if binary_outcomes == "counterfactual":
-        med_obj = med_factory(binary_outcomes, 1, learner_linear)
+        med_obj = med_factory(binary_outcomes, 1, learner_linear, ps_processor_config=ps_processor_config)
     return med_obj
 
 
