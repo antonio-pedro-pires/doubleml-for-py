@@ -1,75 +1,29 @@
-import itertools
-from copy import deepcopy
-from random import seed
-
 import pytest
 
 from doubleml.med import DoubleMLMEDS
 
 
-@pytest.fixture(scope="module")
-def med_objs(dml_data, learner_tree, med_factory, ps_processor_config):
-
-    meds_obj = DoubleMLMEDS(dml_data, ps_processor_config=ps_processor_config, **learner_tree)
-    id_pairs = list(itertools.product(["potential", "counterfactual"], [0, 1]))
-
-    individual_med_objs = {}
-
-    smpls = meds_obj._smpls
-    smpls_inner = None if not meds_obj.double_sample_splitting else meds_obj.smpls_inner
-    for outcome, treatment in id_pairs:
-        model = med_factory(outcome, treatment, learner_tree, ps_processor_config=ps_processor_config)
-        model.set_sample_splitting(smpls=smpls, smpls_inner=smpls_inner)
-
-        individual_med_objs[f"{outcome}_{treatment}"] = model
-
-    return meds_obj, individual_med_objs
+@pytest.fixture
+def dml_meds_obj(dml_data, learner_tree, ps_processor_config):
+    return DoubleMLMEDS(dml_data, ps_processor_config=ps_processor_config, double_sample_splitting=True, **learner_tree)
 
 
-def _get_param_space_for_outcome(outcome, optuna_params):
-    if outcome == "potential":
-        return {k: v for k, v in optuna_params.items() if k in ["ml_g", "ml_m"]}
-    elif outcome == "counterfactual":
-        return {k: v for k, v in optuna_params.items() if k in ["ml_m", "ml_G", "ml_M", "ml_nested_g"]}
-
-
-@pytest.fixture(
-    scope="module",
-)
-def tune_res(med_objs, optuna_params, optuna_settings):
-    meds_obj, individual_med_objs = med_objs
-    seed(123)
-
-    # Deepcopy settings to ensure independent sampler states
-    optuna_settings_meds = deepcopy(optuna_settings)
-    tune_meds_res = meds_obj.tune_ml_models(
-        ml_param_space=optuna_params, optuna_settings=optuna_settings_meds, return_tune_res=True
-    )
-    seed(123)
-    tune_ind_med_res = {}
-
-    # same idea as above
-    optuna_settings_ind = deepcopy(optuna_settings)
-    for key, model in individual_med_objs.items():
-        ml_param_space = _get_param_space_for_outcome(model.outcome, optuna_params)
-        tune_ind_med_res[key] = model.tune_ml_models(
-            ml_param_space=ml_param_space, optuna_settings=optuna_settings_ind, return_tune_res=True
-        )
-    return tune_meds_res, tune_ind_med_res
+@pytest.fixture
+def tuned_models(dml_meds_obj, optuna_params, optuna_settings):
+    return dml_meds_obj.tune_ml_models(ml_param_space=optuna_params, optuna_settings=optuna_settings, return_tune_res=True)
 
 
 @pytest.mark.ci
-def test_tune_meds(med_objs, tune_res):
-    # Test that the tuned models in the DoubleMLMEDS object are identical to their individually tuned counterpart.
-    meds_obj, _ = med_objs
-    meds_scores, ind_med_scores = tune_res
-    for score, ind_score in zip(meds_scores, ind_med_scores):
-        assert score == ind_score
-        meds_res = meds_scores[score][0]
-        ind_res = ind_med_scores[ind_score][0]
-        for learner_meds, learner_ind in zip(meds_res, ind_res):
-            assert learner_meds == learner_ind
-            assert meds_res[learner_meds].best_params == ind_res[learner_ind].best_params
-            assert meds_res[learner_meds].best_score == ind_res[learner_ind].best_score
-            assert meds_res[learner_meds].tuned == ind_res[learner_ind].tuned
-            assert meds_res[learner_meds].params_name == ind_res[learner_ind].params_name
+def test_tune_meds(tuned_models, dml_meds_obj):
+    # doubleml/med/tests/test_med_tune.py already checks that a tuned model is better than an untuned one.
+    # DoubleMLMEDS tuning works by calling the tune method on each DoubleMLMED model it instantiates.
+    # Therefore, since test_med_tune.py is already responsible for checking that tuned models perform better than
+    # untuned ones, test_meds_tune.py's sole responsibility is to check that each DoubleMLMED instance tuning method
+    # is correctly called. The tuning of a DoubleMLMEDS is correct when for each given "outcome" and "treatment" parameters,
+    # the DoubleMLMED instance tunes the correct learners.
+
+    for (model_id, model), (tuned_id, tuned) in zip(dml_meds_obj.modeldict.items(), tuned_models.items()):
+        assert model_id == tuned_id
+        model_learners = model.learner_names
+        tuned_learners = tuned[0].keys()
+        assert set(tuned_learners) == set(model_learners)
