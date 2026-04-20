@@ -29,7 +29,7 @@ def dml_data():
     return make_med_data()
 
 
-@pytest.fixture(scope="module", params=[1, 2])
+@pytest.fixture(scope="module", params=[1, 2], ids=["n_rep=1", "n_rep=2"])
 def n_rep(request):
     return request.param
 
@@ -52,6 +52,11 @@ def learner_linear():
 
 @pytest.fixture(scope="module", params=[2, 3], ids=["n_folds=1", "n_folds=2"])
 def n_folds(request):
+    return request.param
+
+
+@pytest.fixture(scope="module", params=[2, 3], ids=["n_folds_inner=1", "n_folds_inner=2"])
+def n_folds_inner(request):
     return request.param
 
 
