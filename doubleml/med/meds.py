@@ -480,44 +480,35 @@ class DoubleMLMEDS(SampleSplittingMixin):
     def _initialize_models(self):
         modeldict = {score: None for score in self.models_ids}
 
-        pot_kwargs = {
-            "dml_data": self._dml_data,
+        pot_learners = {
             "ml_m": self._learner["ml_m"],
             "ml_g": self._learner["ml_g"],
-            "n_folds": self.n_folds,
-            "n_rep": self.n_rep,
-            "n_folds_inner": self.n_folds_inner,
-            "normalize_ipw": self.normalize_ipw,
-            "double_sample_splitting": self.double_sample_splitting,
-            "draw_sample_splitting": False,
-            "ps_processor_config": self._ps_processor_config,
         }
-        counter_kwargs = {
-            "dml_data": self._dml_data,
+        counter_learners = {
             "ml_m": self._learner["ml_m"],
             "ml_G": self._learner["ml_G"],
             "ml_M": self._learner["ml_M"],
             "ml_nested_g": self._learner["ml_nested_g"],
-            "n_folds": self.n_folds,
-            "n_rep": self.n_rep,
-            "n_folds_inner": self.n_folds_inner,
-            "normalize_ipw": self.normalize_ipw,
-            "double_sample_splitting": self.double_sample_splitting,
-            "draw_sample_splitting": False,
-            "ps_processor_config": self._ps_processor_config,
         }
 
         for score, (outcome, treatment) in zip(self.models_ids, self._id_pairs):
             assert f"{outcome}_{treatment}" == score
-            if outcome == "potential":
-                model = DoubleMLMED(outcome=outcome, treatment_level=treatment, **pot_kwargs)
-                model.set_sample_splitting(smpls=self.smpls)
+            learners = pot_learners if outcome == "potential" else counter_learners
 
-            elif outcome == "counterfactual":
+            model = DoubleMLMED(
+                dml_data=self._dml_data,
+                outcome=outcome,
+                treatment_level=treatment,
+                n_rep=self._n_rep,
+                n_folds=self._n_folds,
+                normalize_ipw=self._normalize_ipw,
+                double_sample_splitting=self._double_sample_splitting,
+                draw_sample_splitting=False,
+                ps_processor_config=self._ps_processor_config,
+                **learners,
+            )
 
-                model = DoubleMLMED(outcome="counterfactual", treatment_level=treatment, **counter_kwargs)
-                smpls_inner = None if not self._double_sample_splitting else self._smpls_inner
-                model.set_sample_splitting(smpls=self._smpls, smpls_inner=smpls_inner)
+            model.set_sample_splitting(smpls=self._smpls, smpls_inner=self.smpls_inner)
 
             modeldict[f"{outcome}_{treatment}"] = model
 
