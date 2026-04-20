@@ -110,9 +110,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
     ):
         self._dml_data = self._check_dml_data(dml_data)
 
-        self._double_sample_splitting = (
-            double_sample_splitting if double_sample_splitting and outcome == "counterfactual" else False
-        )
+        self._double_sample_splitting = double_sample_splitting
         self.n_folds_inner = n_folds_inner
 
         super().__init__(
