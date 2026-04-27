@@ -1,7 +1,9 @@
+import numpy as np
+import pandas as pd
 import pytest
 from sklearn.base import clone
 
-from doubleml import DoubleMLMED
+from doubleml import DoubleMLMED, DoubleMLMEDS
 from doubleml.utils._check_return_types import (
     check_basic_predictions_and_targets,
     check_basic_property_types_and_shapes,
@@ -60,3 +62,45 @@ def fitted_dml_obj(request, dml_med_fixture):
 def test_property_types_and_shapes(fitted_dml_obj):
     check_basic_property_types_and_shapes(fitted_dml_obj, N_OBS, N_TREAT, N_REP, N_FOLDS, N_REP_BOOT)
     check_basic_predictions_and_targets(fitted_dml_obj, N_OBS, N_TREAT, N_REP)
+
+
+@pytest.fixture(scope="module")
+def fitted_meds_obj(dml_data, learner_linear, ps_processor_config):
+    meds_obj = DoubleMLMEDS(
+        dml_data=dml_data,
+        n_folds=2,
+        n_rep=1,
+        ps_processor_config=ps_processor_config,
+        **learner_linear,
+    )
+    meds_obj.fit()
+    return meds_obj
+
+
+@pytest.mark.ci
+def test_meds_return_types(fitted_meds_obj):
+
+    # Basic return types
+    assert isinstance(fitted_meds_obj.__str__(), str)
+    assert isinstance(fitted_meds_obj.summary, pd.DataFrame)
+    assert isinstance(fitted_meds_obj.effects_summary, pd.DataFrame)
+
+    # Framework and coefficients
+    from doubleml.double_ml_framework import DoubleMLFramework
+
+    assert isinstance(fitted_meds_obj.framework, DoubleMLFramework)
+    assert isinstance(fitted_meds_obj.coef, np.ndarray)
+    assert isinstance(fitted_meds_obj.se, np.ndarray)
+
+    # DoubleMLMEDS has 4 internal models for binary treatment
+    n_models = 4
+    assert fitted_meds_obj.coef.shape == (n_models,)
+    assert fitted_meds_obj.se.shape == (n_models,)
+    assert fitted_meds_obj.all_coef.shape == (n_models, 1)
+    assert fitted_meds_obj.all_se.shape == (n_models, 1)
+
+    # Effects
+    fitted_meds_obj.evaluate_effects()
+    assert isinstance(fitted_meds_obj.effects, dict)
+    for effect_name, effect_obj in fitted_meds_obj.effects.items():
+        assert isinstance(effect_obj, DoubleMLFramework)
