@@ -228,3 +228,20 @@ def test_med_learners_check(
             ml_m=missmatched_learner["ml_m"],
             ml_g=missmatched_learner["ml_g"],
         )
+
+    # Test ml_nested_g must be a regressor
+    missmatched_learner = copy.deepcopy(missing_G_learner)
+    missmatched_learner["ml_G"] = LogisticRegression()  # classifier
+    missmatched_learner["ml_nested_g"] = LogisticRegression()  # classifier (invalid)
+
+    msg = "The learner ml_nested_g must be a regressor because its target is a continuous probability."
+    with pytest.raises(ValueError, match=msg):
+        DoubleMLMED(
+            dml_data=binary_y_data,
+            treatment_level=binary_treats,
+            outcome="counterfactual",
+            ml_m=missmatched_learner["ml_m"],
+            ml_M=missmatched_learner["ml_m"],
+            ml_G=missmatched_learner["ml_G"],
+            ml_nested_g=missmatched_learner["ml_nested_g"],
+        )
