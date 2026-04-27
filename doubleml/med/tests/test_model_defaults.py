@@ -8,12 +8,12 @@ pytestmark = pytest.mark.filterwarnings("ignore: l1_ratio parameter is only used
 
 
 @pytest.fixture(scope="module")
-def dml_med_fixture(binary_outcomes, dml_data, learner_linear, ps_processor_config):
+def dml_med_fixture(binary_outcomes, binary_treats, dml_data, learner_linear, ps_processor_config):
     if binary_outcomes == "potential":
         med_obj = DoubleMLMED(
             dml_data=dml_data,
             outcome=binary_outcomes,
-            treatment_level=1,
+            treatment_level=binary_treats,
             ml_g=learner_linear["ml_g"],
             ml_m=learner_linear["ml_m"],
             ps_processor_config=ps_processor_config,
@@ -22,7 +22,7 @@ def dml_med_fixture(binary_outcomes, dml_data, learner_linear, ps_processor_conf
         med_obj = DoubleMLMED(
             dml_data=dml_data,
             outcome=binary_outcomes,
-            treatment_level=1,
+            treatment_level=binary_treats,
             ml_m=learner_linear["ml_m"],
             ml_G=learner_linear["ml_G"],
             ml_M=learner_linear["ml_M"],
