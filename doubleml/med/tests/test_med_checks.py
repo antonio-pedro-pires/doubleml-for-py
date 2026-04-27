@@ -159,6 +159,8 @@ def test_med_levels_check(dml_data, learner_linear, check_med_levels_fixture, ps
 
 
 @pytest.mark.ci
+@pytest.mark.filterwarnings("ignore:Learner provided for ml_m is probably invalid:UserWarning")
+@pytest.mark.filterwarnings("ignore:Learner provided for ml_M is probably invalid:UserWarning")
 def test_med_learners_check(
     dml_data, binary_treats, binary_outcomes, check_med_learners_fixture, learner_linear, ps_processor_config
 ):

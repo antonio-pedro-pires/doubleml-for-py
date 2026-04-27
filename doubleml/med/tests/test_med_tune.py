@@ -8,6 +8,8 @@ from doubleml.tests._utils_tune_optuna import (
     _assert_tree_params,
 )
 
+pytestmark = pytest.mark.filterwarnings("ignore:Propensity predictions.*are close to zero or one:UserWarning")
+
 
 @pytest.fixture(
     scope="module",
