@@ -21,6 +21,7 @@ from .irm.pq import DoubleMLPQ
 from .irm.qte import DoubleMLQTE
 from .irm.ssm import DoubleMLSSM
 from .med.med import DoubleMLMED
+from .med.meds import DoubleMLMEDS
 from .plm.lplr import DoubleMLLPLR
 from .plm.pliv import DoubleMLPLIV
 from .plm.plpr import DoubleMLPLPR
@@ -57,6 +58,7 @@ __all__ = [
     "DoubleMLLPLR",
     "DoubleMLPLPR",
     "DoubleMLMED",
+    "DoubleMLMEDS",
 ]
 
 try:
