@@ -18,7 +18,7 @@ def dml_med_fixture(binary_outcomes, dml_data, learner_linear, ps_processor_conf
             ml_m=learner_linear["ml_m"],
             ps_processor_config=ps_processor_config,
         )
-    if binary_outcomes == "counterfactual":
+    else:
         med_obj = DoubleMLMED(
             dml_data=dml_data,
             outcome=binary_outcomes,
