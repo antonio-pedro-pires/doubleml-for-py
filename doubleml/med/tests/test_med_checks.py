@@ -245,3 +245,28 @@ def test_med_learners_check(
             ml_G=missmatched_learner["ml_G"],
             ml_nested_g=missmatched_learner["ml_nested_g"],
         )
+
+    # Test ml_m must be a classifier
+    msg = r"Invalid learner provided for ml_m: .* has no method .predict_proba\(\)."
+    with pytest.raises(TypeError, match=msg):
+        DoubleMLMED(
+            dml_data=dml_data,
+            treatment_level=binary_treats,
+            outcome="potential",
+            ml_m=LinearRegression(),
+            ml_g=LinearRegression(),
+        )
+
+    # Test ml_M must be a classifier
+    msg = r"Invalid learner provided for ml_M: .* has no method .predict_proba\(\)."
+    with pytest.raises(TypeError, match=msg):
+        DoubleMLMED(
+            dml_data=dml_data,
+            treatment_level=binary_treats,
+            outcome="counterfactual",
+            ml_m=LogisticRegression(),
+            ml_M=LinearRegression(),
+            ml_g=LinearRegression(),
+            ml_G=LinearRegression(),
+            ml_nested_g=LinearRegression(),
+        )
