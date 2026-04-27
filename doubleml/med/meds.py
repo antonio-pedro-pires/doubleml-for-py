@@ -501,6 +501,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
                 treatment_level=treatment,
                 n_rep=self._n_rep,
                 n_folds=self._n_folds,
+                n_folds_inner=self._n_folds_inner,
                 normalize_ipw=self._normalize_ipw,
                 double_sample_splitting=self._double_sample_splitting,
                 draw_sample_splitting=False,
