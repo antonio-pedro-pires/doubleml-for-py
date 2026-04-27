@@ -1,10 +1,8 @@
 import pytest
-from sklearn.base import clone
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 
-from doubleml import DoubleMLMED
 from doubleml.med.datasets import make_med_data
 from doubleml.tests._utils_tune_optuna import (
     _SAMPLER_CASES,
@@ -117,16 +115,3 @@ def optuna_settings(request):
 @pytest.fixture(scope="session", params=[PSProcessorConfig()])
 def ps_processor_config(request):
     return request.param
-
-
-@pytest.fixture(scope="session")
-def med_factory(dml_data):
-    def _factory(outcome, treatment_level, learners, **kwargs):
-        if outcome == "potential":
-            active_learners = {k: clone(v) for k, v in learners.items() if k in ["ml_g", "ml_m"]}
-        elif outcome == "counterfactual":
-            active_learners = {k: clone(v) for k, v in learners.items() if k in ["ml_m", "ml_G", "ml_M", "ml_nested_g"]}
-
-        return DoubleMLMED(dml_data=dml_data, outcome=outcome, treatment_level=treatment_level, **active_learners, **kwargs)
-
-    return _factory
