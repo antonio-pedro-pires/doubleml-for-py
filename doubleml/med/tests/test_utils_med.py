@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 
+from doubleml import DoubleMLMED
 from doubleml.med.utils._med_utils import (
     _check_fold_smpls_inner,
     _check_inner_sample_splitting,
@@ -12,11 +13,15 @@ from doubleml.med.utils._med_utils import (
 @pytest.fixture(
     scope="module",
 )
-def med_obj(med_factory, learner_linear, ps_processor_config):
-    return med_factory(
-        "counterfactual",
-        1,
-        learner_linear,
+def med_obj(dml_data, learner_linear, ps_processor_config):
+    return DoubleMLMED(
+        dml_data=dml_data,
+        outcome="counterfactual",
+        treatment_level=1,
+        ml_m=learner_linear["ml_m"],
+        ml_G=learner_linear["ml_G"],
+        ml_M=learner_linear["ml_M"],
+        ml_nested_g=learner_linear["ml_nested_g"],
         double_sample_splitting=True,
         n_rep=3,
         n_folds=4,
@@ -32,14 +37,18 @@ def valid_smpls_structure(med_obj):
 
 @pytest.fixture
 def valid_smpls_different_n_inner_folds(
-    med_factory,
+    dml_data,
     learner_linear,
     ps_processor_config,
 ):
-    alt_med_obj = med_factory(
-        "counterfactual",
-        1,
-        learner_linear,
+    alt_med_obj = DoubleMLMED(
+        dml_data=dml_data,
+        outcome="counterfactual",
+        treatment_level=1,
+        ml_m=learner_linear["ml_m"],
+        ml_G=learner_linear["ml_G"],
+        ml_M=learner_linear["ml_M"],
+        ml_nested_g=learner_linear["ml_nested_g"],
         double_sample_splitting=True,
         n_rep=3,
         n_folds=3,
@@ -51,14 +60,18 @@ def valid_smpls_different_n_inner_folds(
 
 @pytest.fixture
 def valid_smpls_different_n_folds(
-    med_factory,
+    dml_data,
     learner_linear,
     ps_processor_config,
 ):
-    alt_med_obj = med_factory(
-        "counterfactual",
-        1,
-        learner_linear,
+    alt_med_obj = DoubleMLMED(
+        dml_data=dml_data,
+        outcome="counterfactual",
+        treatment_level=1,
+        ml_m=learner_linear["ml_m"],
+        ml_G=learner_linear["ml_G"],
+        ml_M=learner_linear["ml_M"],
+        ml_nested_g=learner_linear["ml_nested_g"],
         double_sample_splitting=True,
         n_rep=3,
         n_folds=3,

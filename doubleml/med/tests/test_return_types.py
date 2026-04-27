@@ -1,4 +1,5 @@
 import pytest
+from sklearn.base import clone
 
 from doubleml import DoubleMLMED
 from doubleml.utils._check_return_types import (
@@ -24,10 +25,15 @@ pytestmark = pytest.mark.filterwarnings("ignore: l1_ratio parameter is only used
 
 
 @pytest.fixture(scope="module")
-def dml_med_fixture(binary_outcomes, binary_treats, dml_data, med_factory, learner_linear, ps_processor_config):
-    # dml_args["binary_outcomes"] = outcome # Removed to avoid duplication
+def dml_med_fixture(binary_outcomes, binary_treats, dml_data, learner_linear, ps_processor_config):
     dml_args["ps_processor_config"] = ps_processor_config
-    dml_med_obj = med_factory(binary_outcomes, binary_treats, learner_linear, **dml_args)
+    if binary_outcomes == "potential":
+        active_learners = {k: clone(v) for k, v in learner_linear.items() if k in ["ml_g", "ml_m"]}
+    else:
+        active_learners = {k: clone(v) for k, v in learner_linear.items() if k in ["ml_m", "ml_G", "ml_M", "ml_nested_g"]}
+    dml_med_obj = DoubleMLMED(
+        dml_data=dml_data, outcome=binary_outcomes, treatment_level=binary_treats, **active_learners, **dml_args
+    )
 
     dml_objs = (dml_med_obj, DoubleMLMED)
     return dml_objs

@@ -1,4 +1,3 @@
-import copy
 import random
 import re
 
@@ -18,20 +17,19 @@ def untuned_tuned_scores(
 ):
 
     if binary_outcomes == "potential":
-        model = DoubleMLMED(
+        med_obj = DoubleMLMED(
             dml_data=dml_data,
-            ml_g=learner_tree["ml_g"],
-            ml_m=learner_tree["ml_m"],
             outcome=binary_outcomes,
             treatment_level=binary_treats,
+            ml_g=learner_tree["ml_g"],
+            ml_m=learner_tree["ml_m"],
             ps_processor_config=ps_processor_config,
         )
     else:
-        model = DoubleMLMED(
+        med_obj = DoubleMLMED(
             dml_data=dml_data,
             outcome=binary_outcomes,
             treatment_level=binary_treats,
-            ml_g=learner_tree["ml_g"],
             ml_m=learner_tree["ml_m"],
             ml_G=learner_tree["ml_G"],
             ml_M=learner_tree["ml_M"],
@@ -39,7 +37,6 @@ def untuned_tuned_scores(
             ps_processor_config=ps_processor_config,
         )
 
-    med_obj = copy.deepcopy(model)
     if binary_outcomes == "potential":
         ml_param_space = {
             "ml_g": optuna_params["ml_g"],
