@@ -641,6 +641,13 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
                     raise ValueError(
                         f"The learner {learner_name} must be a classifier. " f"{learner_name} identified as a regressor."
                     )
+            elif learner_name == "ml_nested_g":
+                is_classifier_ = self._check_learner(learner, learner_name, regressor=True, classifier=True)
+                if is_classifier_:
+                    raise ValueError(
+                        f"The learner {learner_name} must be a regressor because its target is a continuous probability."
+                    )
+                self._predict_method[learner_name] = "predict"
             else:
                 is_classifier_ = self._check_learner(learner, learner_name, regressor=True, classifier=True)
                 if self._dml_data.binary_outcome and not is_classifier_:
