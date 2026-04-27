@@ -39,7 +39,7 @@ def classifier_learners(request):
 
 
 @pytest.fixture(scope="module")
-def med_classifier_obj(binary_y_data, classifier_learners, binary_outcomes, binary_treats):
+def med_classifier_obj(binary_y_data, classifier_learners, binary_outcomes, binary_treats, ps_processor_config):
     med_obj = DoubleMLMED(
         binary_y_data,
         outcome=binary_outcomes,
@@ -48,6 +48,7 @@ def med_classifier_obj(binary_y_data, classifier_learners, binary_outcomes, bina
         n_rep=1,
         n_folds=2,
         n_folds_inner=2,
+        ps_processor_config=ps_processor_config,
         **classifier_learners,
     )
     med_obj.fit()
