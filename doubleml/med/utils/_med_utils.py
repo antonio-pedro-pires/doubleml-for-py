@@ -1,5 +1,7 @@
 import numpy as np
 
+from doubleml import DoubleMLMEDData
+
 
 def _normalize_propensity_med(
     normalize_ipw,
@@ -173,3 +175,16 @@ def _check_is_inner_partition(fold, train_smpls):
 
     if not test_set == set(train_smpls[0]):
         raise ValueError("Some of the smpls_inner_fold do not partition the training samples")
+
+
+def _check_med_data(dml_data):
+    if not isinstance(dml_data, DoubleMLMEDData):
+        raise TypeError(
+            "Mediation analysis requires data of type DoubleMLMediationData."
+            f" Data of type {str(type(dml_data))} was provided instead."
+        )
+    if not all(dml_data.binary_treats):
+        raise ValueError("Treatment variables for mediation analysis must be binary and take values 1 or 0.")
+    if dml_data.z_cols is not None:
+        raise NotImplementedError("instrumental variables for mediation analysis is not yet implemented.")
+    return dml_data

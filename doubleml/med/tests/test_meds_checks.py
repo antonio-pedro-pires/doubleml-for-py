@@ -41,8 +41,7 @@ def test_evaluate_effects_exception(meds_obj):
 @pytest.mark.ci
 def test_meds_data_type_exception(learners, bad_data):
     not_med_data, _, _ = bad_data
-    msg = f"The data must be of DoubleMLMediationData type. {str(not_med_data)} of type {str(type(not_med_data))} was passed."
-    with pytest.raises(TypeError, match=re.escape(msg)):
+    with pytest.raises(TypeError, match="Mediation analysis requires data"):
         DoubleMLMEDS(dml_data=not_med_data, **learners)
 
 
@@ -57,8 +56,7 @@ def test_meds_non_binary_treatment_exception(learners, bad_data):
 @pytest.mark.ci
 def test_meds_instrumental_variables_exception(learners, bad_data):
     _, med_data_iv, _ = bad_data
-    msg = "instrumental variables for mediation analysis is not yet implemented."
-    with pytest.raises(NotImplementedError, match=re.escape(msg)):
+    with pytest.raises(NotImplementedError, match="instrumental variables for mediation analysis is not yet implemented."):
         DoubleMLMEDS(dml_data=med_data_iv, **learners)
 
 

@@ -6,10 +6,10 @@ import pandas as pd
 from joblib import Parallel, delayed
 from sklearn import clone
 
-from doubleml import DoubleMLMEDData
 from doubleml.double_ml_framework import concat
 from doubleml.double_ml_sampling_mixins import SampleSplittingMixin
 from doubleml.med.med import DoubleMLMED
+from doubleml.med.utils._med_utils import _check_med_data
 from doubleml.med.utils._meds_utils import generate_effects_summary
 from doubleml.utils import PSProcessorConfig
 from doubleml.utils._checks import _check_score
@@ -120,8 +120,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
         ps_processor_config: Optional[PSProcessorConfig] = None,
     ):
 
-        self._check_data(dml_data)
-        self._dml_data = dml_data
+        self._dml_data = _check_med_data(dml_data)
         self._is_cluster_data = self._dml_data.is_cluster_data
 
         # Check score
@@ -462,16 +461,6 @@ class DoubleMLMEDS(SampleSplittingMixin):
             "INDIR_TREAT": indir_treat,
             "INDIR_CONTROL": indir_control,
         }
-
-    def _check_data(self, meds_data):
-        if not isinstance(meds_data, DoubleMLMEDData):
-            raise TypeError(
-                f"The data must be of DoubleMLMediationData type. {str(meds_data)} of type {str(type(meds_data))} was passed."
-            )
-        if not all(meds_data.binary_treats):
-            raise ValueError("Treatment variables for mediation analysis must be binary and take values 1 or 0.")
-        if meds_data.z_cols is not None:
-            raise NotImplementedError("instrumental variables for mediation analysis is not yet implemented.")
 
     def _initialize_dml_model(self):
         self._modeldict = self._initialize_models()
