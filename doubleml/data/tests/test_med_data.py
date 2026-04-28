@@ -206,7 +206,7 @@ def test_data_summary_str():
     med_str = str(med_data)
 
     # Check that all important sections are present in the string
-    assert "================== DoubleMLMediationData Object ==================" in med_str
+    assert f"================== {med_data.__class__.__name__} Object ==================" in med_str
     assert "------------------ Data summary      ------------------" in med_str
     assert "------------------ DataFrame info    ------------------" in med_str
 
