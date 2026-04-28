@@ -338,3 +338,26 @@ def test_duplicates():
         _ = DoubleMLMEDData(
             pd.DataFrame(np.zeros((100, 5)), columns=["y", "d", "X3", "X2", "y"]), y_col="y", d_cols=["d"], m_cols=["X2"]
         )
+
+
+@pytest.mark.ci
+def test_force_all_m_finite_setter():
+    n = 10
+    df = pd.DataFrame(
+        {"y": np.random.randn(n), "d": np.random.randint(0, 2, n), "m1": np.random.randint(0, 2, n), "x1": np.random.randn(n)}
+    )
+    med_data = DoubleMLMEDData(df, "y", "d", ["m1"], "x1")
+
+    # Check that valid values are set correctly.
+    med_data.force_all_m_finite = False
+    assert not med_data.force_all_m_finite
+    med_data.force_all_m_finite = True
+    assert med_data.force_all_m_finite
+    med_data.force_all_m_finite = "allow-nan"
+    assert med_data.force_all_m_finite == "allow-nan"
+
+    # Check that invalid values raise appropriate errors.
+    with pytest.raises(TypeError, match="Invalid force_all_m_finite."):
+        med_data.force_all_m_finite = 123
+    with pytest.raises(ValueError, match="Invalid force_all_m_finite:"):
+        med_data.force_all_m_finite = "string"
