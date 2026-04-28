@@ -198,7 +198,6 @@ def test_m_cols_setter():
 
 @pytest.mark.ci
 def test_data_summary_str():
-    # TODO: Add dataset with instrumental variables and test the summary_str() with it.
     np.random.seed(3141)
     med_data = make_med_data()
 
@@ -217,6 +216,11 @@ def test_data_summary_str():
     assert "Instrument variable(s): None" in med_str
     assert "Covariates: " in med_str
     assert "No. Observations:" in med_str
+
+    # Test summary string with instrumental variables
+    df = pd.DataFrame(np.random.randn(100, 6), columns=["y", "d", "m", "x1", "z1", "x2"])
+    med_data_with_iv = DoubleMLMEDData(df, "y", "d", "m", ["x1", "x2"], "z1")
+    assert "Instrument variable(s): ['z1']" in str(med_data_with_iv)
 
 
 @pytest.mark.ci
