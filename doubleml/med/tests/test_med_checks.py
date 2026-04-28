@@ -1,7 +1,5 @@
 import copy
-import re
 
-import numpy as np
 import pytest
 from sklearn.linear_model import LinearRegression, LogisticRegression
 
@@ -76,11 +74,7 @@ def test_med_data_check(check_med_data_fixture, binary_treats, learner_linear, p
             ps_processor_config=ps_processor_config,
         )
 
-    msg = (
-        f"Treatment data {med_data_not_binary_treats.d} must be a binary variable with values either 0 or 1."
-        + f" Treatment data contains levels {np.unique(med_data_not_binary_treats.d)}."
-    )
-    with pytest.raises(ValueError, match=re.escape(msg)):
+    with pytest.raises(ValueError, match=r"Treatment variables for mediation analysis must be binary and take values 1 or 0."):
         DoubleMLMED(
             dml_data=med_data_not_binary_treats,
             outcome="potential",
@@ -90,11 +84,7 @@ def test_med_data_check(check_med_data_fixture, binary_treats, learner_linear, p
             ps_processor_config=ps_processor_config,
         )
 
-    msg = (
-        "The current framework for causal mediation analysis does not perform analysis with instrumental variables."
-        + " The results will not take into account the instrumental variables."
-    )
-    with pytest.warns(UserWarning, match=msg):
+    with pytest.raises(NotImplementedError, match="instrumental variables for mediation analysis is not yet implemented."):
         DoubleMLMED(
             dml_data=med_data_instrumental,
             outcome="potential",
