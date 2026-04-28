@@ -133,7 +133,8 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         self._sensitivity_implemented = False
 
         if ps_processor_config is not None:
-            self._ps_processor = PSProcessor.from_config(ps_processor_config)
+            self._ps_processor_config = ps_processor_config
+            self._ps_processor = PSProcessor.from_config(self._ps_processor_config)
         else:
             warnings.warn("ps_processor_config not specified. Using default configuration.")
             self._ps_processor_config = PSProcessorConfig()
