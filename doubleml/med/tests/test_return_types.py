@@ -104,3 +104,6 @@ def test_meds_return_types(fitted_meds_obj):
     assert isinstance(fitted_meds_obj.effects, dict)
     for effect_name, effect_obj in fitted_meds_obj.effects.items():
         assert isinstance(effect_obj, DoubleMLFramework)
+
+    assert isinstance(fitted_meds_obj.effects_summary, pd.DataFrame)
+    assert fitted_meds_obj.effects_summary.shape == (5, 6)
