@@ -5,10 +5,9 @@ import numpy as np
 from sklearn.model_selection import cross_val_predict
 from sklearn.utils import check_X_y
 
-from doubleml import DoubleMLMEDData
 from doubleml.double_ml import DoubleML
 from doubleml.double_ml_score_mixins import LinearScoreMixin
-from doubleml.med.utils._med_utils import _check_inner_sample_splitting, _normalize_propensity_med
+from doubleml.med.utils._med_utils import _check_inner_sample_splitting, _check_med_data, _normalize_propensity_med
 from doubleml.utils._checks import _check_finite_predictions, _check_sample_splitting, _check_score
 from doubleml.utils._estimation import (
     _cond_targets,
@@ -108,7 +107,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         double_sample_splitting=True,
         ps_processor_config: Optional[PSProcessorConfig] = None,
     ):
-        self._dml_data = self._check_dml_data(dml_data)
+        self._dml_data = _check_med_data(dml_data)
 
         self._double_sample_splitting = double_sample_splitting
         self.n_folds_inner = n_folds_inner
@@ -689,24 +688,6 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
                     else:
                         self._predict_method[learner_name] = "predict"
         self._initialize_ml_nuisance_params()
-
-    def _check_dml_data(self, dml_data):
-        if not isinstance(dml_data, DoubleMLMEDData):
-            raise TypeError(
-                "Mediation analysis requires data of type DoubleMLMediationData."
-                + f" Data of type {str(type(dml_data))} was provided instead."
-            )
-        if not all(dml_data.binary_treats):
-            raise ValueError(
-                f"Treatment data {dml_data.d} must be a binary variable with values either 0 or 1."
-                + f" Treatment data contains levels {np.unique(dml_data.d)}."
-            )
-        if dml_data.z_cols is not None:
-            warnings.warn(
-                "The current framework for causal mediation analysis does not perform analysis with instrumental variables."
-                + " The results will not take into account the instrumental variables."
-            )
-        return dml_data
 
     def _check_outcome(self, outcome):
         if not isinstance(outcome, str):
