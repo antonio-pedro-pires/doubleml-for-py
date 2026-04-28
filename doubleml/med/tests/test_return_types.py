@@ -107,3 +107,18 @@ def test_meds_return_types(fitted_meds_obj):
 
     assert isinstance(fitted_meds_obj.effects_summary, pd.DataFrame)
     assert fitted_meds_obj.effects_summary.shape == (5, 6)
+
+
+@pytest.mark.ci
+def test_med_tune_not_implemented(dml_med_fixture):
+    dml_obj, _ = dml_med_fixture
+
+    param_grids = {k: {"dummy": [1]} for k in dml_obj.learner_names}
+    with pytest.raises(NotImplementedError, match="Nuisance tuning using the 'tune' method is not implemented"):
+        with pytest.warns(FutureWarning, match="The 'tune' method using grid search or randomized search"):
+            dml_obj.tune(param_grids=param_grids)
+
+
+@pytest.mark.ci
+def test_meds_boot_t_stat(fitted_meds_obj):
+    assert fitted_meds_obj.boot_t_stat is None
