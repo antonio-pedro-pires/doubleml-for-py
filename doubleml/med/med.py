@@ -209,255 +209,277 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         smpls,
         n_jobs_cv,
         external_predictions,
+        return_models,
+    ):
+        if self._outcome == "potential":
+            return self._nuisance_est_potential(smpls, n_jobs_cv, external_predictions, return_models)
+        else:
+            return self._nuisance_est_counterfactual(smpls, n_jobs_cv, external_predictions, return_models)
+
+    def _nuisance_est_potential(
+        self,
+        smpls,
+        n_jobs_cv,
+        external_predictions,
+        return_models,
+    ):
+        x, y = check_X_y(self._dml_data.x, self._dml_data.y, ensure_all_finite=True)
+        x, d = check_X_y(x, self._dml_data.d, ensure_all_finite=True)
+
+        # Check whether there are external predictions for each parameter.
+        m_external = external_predictions["ml_m"] is not None
+        g_external = external_predictions["ml_g"] is not None
+
+        # Prepare the samples
+        _, smpls_d1 = _get_cond_smpls(smpls, self.treated)
+
+        if m_external:
+            m_hat = {"preds": external_predictions["ml_m"], "targets": None, "models": None}
+        else:
+            m_hat = _dml_cv_predict(
+                self._learner["ml_m"],
+                x,
+                self.treated,
+                smpls=smpls,
+                n_jobs=n_jobs_cv,
+                est_params=self._get_params("ml_m"),
+                method=self._predict_method["ml_m"],
+                return_models=return_models,
+            )
+        m_hat["preds"] = self._ps_processor.adjust_ps(m_hat["preds"], self.treated)
+
+        if g_external:
+            g_hat = {
+                "preds": external_predictions["ml_g"],
+                "targets": _cond_targets(y, cond_sample=(self.treated == 1)),
+                "models": None,
+            }
+        else:
+            g_hat = _dml_cv_predict(
+                self._learner["ml_g"],
+                x,
+                y,
+                smpls=smpls_d1,
+                n_jobs=n_jobs_cv,
+                est_params=self._get_params("ml_g"),
+                method=self._predict_method["ml_g"],
+                return_models=return_models,
+            )
+        _check_finite_predictions(g_hat["preds"], self._learner["ml_g"], "ml_g", smpls)
+        # adjust target values to consider only compatible subsamples
+        g_hat["targets"] = _cond_targets(g_hat["targets"], cond_sample=(self.treated == 1))
+
+        preds = {
+            "predictions": {
+                "ml_m": m_hat["preds"],
+                "ml_g": g_hat["preds"],
+            },
+            "targets": {
+                "ml_m": m_hat["targets"],
+                "ml_g": g_hat["targets"],
+            },
+            "models": {
+                "ml_m": m_hat["models"],
+                "ml_g": g_hat["models"],
+            },
+        }
+
+        psi_a, psi_b = self._score_elements(y, m_hat_preds=m_hat["preds"], g_hat_preds=g_hat["preds"])
+        psi_elements = {"psi_a": psi_a, "psi_b": psi_b}
+
+        return psi_elements, preds
+
+    def _nuisance_est_counterfactual(
+        self,
+        smpls,
+        n_jobs_cv,
+        external_predictions,
         return_models=False,
     ):
         x, y = check_X_y(self._dml_data.x, self._dml_data.y, ensure_all_finite=True)
         x, d = check_X_y(x, self._dml_data.d, ensure_all_finite=True)
 
-        if self._outcome == "potential":
-            # Check whether there are external predictions for each parameter.
-            m_external = external_predictions["ml_m"] is not None
-            g_external = external_predictions["ml_g"] is not None
+        x, m = check_X_y(x, self._dml_data.m, ensure_all_finite=True, multi_output=True)
+        xm = np.column_stack((x, m))
 
-            # Prepare the samples
-            _, smpls_d1 = _get_cond_smpls(smpls, self.treated)
+        # Check whether there are external predictions for each parameter.
+        m_external = external_predictions["ml_m"] is not None
+        M_external = external_predictions["ml_M"] is not None
+        G_external = external_predictions["ml_G"] is not None
+        nested_g_external = external_predictions["ml_nested_g"] is not None
 
-            if m_external:
-                m_hat = {"preds": external_predictions["ml_m"], "targets": None, "models": None}
-            else:
-                m_hat = _dml_cv_predict(
-                    self._learner["ml_m"],
-                    x,
-                    self.treated,
-                    smpls=smpls,
-                    n_jobs=n_jobs_cv,
-                    est_params=self._get_params("ml_m"),
-                    method=self._predict_method["ml_m"],
-                    return_models=return_models,
-                )
-            m_hat["preds"] = self._ps_processor.adjust_ps(m_hat["preds"], self.treated)
+        # Get samples conditional on treatment:
+        smpls_d0, smpls_d1 = _get_cond_smpls(smpls, self.treated)
 
-            if g_external:
-                g_hat = {
-                    "preds": external_predictions["ml_g"],
-                    "targets": _cond_targets(y, cond_sample=(self.treated == 1)),
+        # Estimate the probability of treatment conditional on the covariates.
+        if m_external:
+            m_hat = {"preds": external_predictions["ml_m"], "targets": None, "models": None}
+        else:
+            m_hat = _dml_cv_predict(
+                self._learner["ml_m"],
+                x,
+                d,
+                smpls=smpls,
+                n_jobs=n_jobs_cv,
+                est_params=self._get_params("ml_m"),
+                method=self._predict_method["ml_m"],
+                return_models=return_models,
+            )
+        m_hat["preds"] = self._ps_processor.adjust_ps(m_hat["preds"], self.treated)
+
+        # Estimate the probability of treatment conditional on the mediator and covariates.
+        if M_external:
+            M_hat = {"preds": external_predictions["ml_M"], "targets": None, "models": None}
+        else:
+            M_hat = _dml_cv_predict(
+                self._learner["ml_M"],
+                xm,
+                d,
+                smpls=smpls,
+                n_jobs=n_jobs_cv,
+                est_params=self._get_params("ml_M"),
+                method=self._predict_method["ml_M"],
+                return_models=return_models,
+            )
+        M_hat["preds"] = self._ps_processor.adjust_ps(M_hat["preds"], self.treated)
+
+        inner_predictions = {}
+        inner_targets = {}
+        if self.double_sample_splitting:
+            # Get inner samples conditional on treatment:
+            smpls_inner_d1 = []
+            for fold in self._smpls_inner[self._i_rep]:
+                _, inner_smpls_d1 = _get_cond_smpls(fold, self.treated)
+                smpls_inner_d1.append(inner_smpls_d1)
+
+            if G_external:
+                # expect per-inner-fold keys ml_G_inner_i
+                missing = [
+                    i
+                    for i in range(self.n_folds)
+                    if (f"ml_G_inner_{i}") not in external_predictions.keys()
+                    or external_predictions[f"ml_G_inner_{i}"] is None
+                ]
+                if len(missing) > 0:
+                    raise ValueError(
+                        "When providing external predictions for ml_G, also inner predictions for all inner folds "
+                        f"have to be provided (missing: {', '.join([str(i) for i in missing])})."
+                    )
+                G_hat_inner = [external_predictions[f"ml_G_inner_{i}"] for i in range(self.n_folds)]
+                G_hat = {
+                    "preds": external_predictions["ml_G"],
+                    "preds_inner": G_hat_inner,
+                    "targets": self._dml_data.y,
                     "models": None,
                 }
             else:
-                g_hat = _dml_cv_predict(
-                    self._learner["ml_g"],
-                    x,
-                    y,
+
+                G_hat = _double_dml_cv_predict(
+                    estimator=self._learner["ml_G"],
+                    estimator_name=self._learner["ml_G"],
+                    x=xm,
+                    y=y,
+                    smpls=smpls_d1,
+                    smpls_inner=smpls_inner_d1,
+                    n_jobs=n_jobs_cv,
+                    est_params=self._get_params("ml_G"),
+                    method=self._predict_method["ml_G"],
+                )
+
+            if nested_g_external:
+                nested_g_hat = {"preds": external_predictions["ml_nested_g"], "targets": None, "models": None}
+            else:
+
+                # _dml_cv_predict perceives the fitting of the nested estimator as a case where there are multiple
+                # fold specific targets because of the shape of G_hat["preds"]. The method throws a
+                # 'ValueError: shape mismatch' when setting xx[train_index]=y[idx]
+                # (line 120 in doubleml/utils/_estimation.py). In order to avoid this error, it's necessary to
+                # feed the method a 'y' parameter whose subarrays match the 'smpls' parameter's subarrays shapes,
+                # which is exactly what the following line does.
+                G_hat_inner_preds = [G_hat_preds[train] for (train, _), G_hat_preds in zip(smpls_d0, G_hat["preds_inner"])]
+
+                nested_g_hat = _dml_cv_predict(
+                    self._learner["ml_nested_g"],
+                    xm,
+                    G_hat_inner_preds,
+                    smpls=smpls_d0,
+                    n_jobs=n_jobs_cv,
+                    est_params=self._get_params("ml_nested_g"),
+                    method=self._predict_method["ml_nested_g"],
+                    return_models=return_models,
+                )
+            # store inner predictions as separate keys per inner fold
+            inner_predictions = {f"ml_G_inner_{i}": G_hat["preds_inner"][i] for i in range(len(G_hat["preds_inner"]))}
+            inner_targets = {
+                f"ml_G_inner_{i}": (
+                    G_hat.get("targets_inner")[i]
+                    if G_hat.get("targets_inner") is not None and i < len(G_hat["targets_inner"])
+                    else None
+                )
+                for i in range(len(G_hat.get("preds_inner", [])))
+            }
+
+        else:
+            if G_external:
+                G_hat = {
+                    "preds": external_predictions["ml_G"],
+                    "targets": None,
+                    "models": None,
+                }
+            else:
+                G_hat = _dml_cv_predict(
+                    self.learner["ml_G"],
+                    x=xm,
+                    y=y,
                     smpls=smpls_d1,
                     n_jobs=n_jobs_cv,
-                    est_params=self._get_params("ml_g"),
-                    method=self._predict_method["ml_g"],
-                    return_models=return_models,
+                    est_params=self._get_params("ml_G"),
+                    method=self._predict_method["ml_G"],
                 )
-            _check_finite_predictions(g_hat["preds"], self._learner["ml_g"], "ml_g", smpls)
-            # adjust target values to consider only compatible subsamples
-            g_hat["targets"] = _cond_targets(g_hat["targets"], cond_sample=(self.treated == 1))
-
-            preds = {
-                "predictions": {
-                    "ml_m": m_hat["preds"],
-                    "ml_g": g_hat["preds"],
-                },
-                "targets": {
-                    "ml_m": m_hat["targets"],
-                    "ml_g": g_hat["targets"],
-                },
-                "models": {
-                    "ml_m": m_hat["models"],
-                    "ml_g": g_hat["models"],
-                },
-            }
-
-            psi_a, psi_b = self._score_elements(y, m_hat_preds=m_hat["preds"], g_hat_preds=g_hat["preds"])
-            psi_elements = {"psi_a": psi_a, "psi_b": psi_b}
-
-        else:  # outcome == "counterfactual"
-            x, m = check_X_y(x, self._dml_data.m, ensure_all_finite=True, multi_output=True)
-            xm = np.column_stack((x, m))
-
-            # Check whether there are external predictions for each parameter.
-            m_external = external_predictions["ml_m"] is not None
-            M_external = external_predictions["ml_M"] is not None
-            G_external = external_predictions["ml_G"] is not None
-            nested_g_external = external_predictions["ml_nested_g"] is not None
-
-            # Get samples conditional on treatment:
-            smpls_d0, smpls_d1 = _get_cond_smpls(smpls, self.treated)
-
-            # Estimate the probability of treatment conditional on the covariates.
-            if m_external:
-                m_hat = {"preds": external_predictions["ml_m"], "targets": None, "models": None}
+            if nested_g_external:
+                nested_g_hat = {"preds": external_predictions["ml_nested_g"], "targets": None, "models": None}
             else:
-                m_hat = _dml_cv_predict(
-                    self._learner["ml_m"],
-                    x,
-                    d,
-                    smpls=smpls,
+                nested_g_hat = _dml_cv_predict(
+                    self.learner["ml_nested_g"],
+                    x=xm,
+                    y=G_hat["preds"],
+                    smpls=smpls_d0,
                     n_jobs=n_jobs_cv,
-                    est_params=self._get_params("ml_m"),
-                    method=self._predict_method["ml_m"],
+                    est_params=self._get_params("ml_nested_g"),
+                    method=self._predict_method["ml_nested_g"],
                     return_models=return_models,
                 )
-            m_hat["preds"] = self._ps_processor.adjust_ps(m_hat["preds"], self.treated)
+        preds = {
+            "predictions": {
+                "ml_m": m_hat["preds"],
+                "ml_M": M_hat["preds"],
+                "ml_G": G_hat["preds"],
+                "ml_nested_g": nested_g_hat["preds"],
+                **inner_predictions,
+            },
+            "targets": {
+                "ml_m": m_hat["targets"],
+                "ml_M": M_hat["targets"],
+                "ml_G": G_hat["targets"],
+                "ml_nested_g": nested_g_hat["targets"],
+                **inner_targets,
+            },
+            "models": {
+                "ml_m": m_hat["models"],
+                "ml_M": M_hat["models"],
+                "ml_G": G_hat["models"],
+                "ml_nested_g": nested_g_hat["models"],
+            },
+        }
 
-            # Estimate the probability of treatment conditional on the mediator and covariates.
-            if M_external:
-                M_hat = {"preds": external_predictions["ml_M"], "targets": None, "models": None}
-            else:
-                M_hat = _dml_cv_predict(
-                    self._learner["ml_M"],
-                    xm,
-                    d,
-                    smpls=smpls,
-                    n_jobs=n_jobs_cv,
-                    est_params=self._get_params("ml_M"),
-                    method=self._predict_method["ml_M"],
-                    return_models=return_models,
-                )
-            M_hat["preds"] = self._ps_processor.adjust_ps(M_hat["preds"], self.treated)
-
-            inner_predictions = {}
-            inner_targets = {}
-            if self.double_sample_splitting:
-                # Get inner samples conditional on treatment:
-                smpls_inner_d1 = []
-                for fold in self._smpls_inner[self._i_rep]:
-                    _, inner_smpls_d1 = _get_cond_smpls(fold, self.treated)
-                    smpls_inner_d1.append(inner_smpls_d1)
-
-                if G_external:
-                    # expect per-inner-fold keys ml_G_inner_i
-                    missing = [
-                        i
-                        for i in range(self.n_folds)
-                        if (f"ml_G_inner_{i}") not in external_predictions.keys()
-                        or external_predictions[f"ml_G_inner_{i}"] is None
-                    ]
-                    if len(missing) > 0:
-                        raise ValueError(
-                            "When providing external predictions for ml_G, also inner predictions for all inner folds "
-                            f"have to be provided (missing: {', '.join([str(i) for i in missing])})."
-                        )
-                    G_hat_inner = [external_predictions[f"ml_G_inner_{i}"] for i in range(self.n_folds)]
-                    G_hat = {
-                        "preds": external_predictions["ml_G"],
-                        "preds_inner": G_hat_inner,
-                        "targets": self._dml_data.y,
-                        "models": None,
-                    }
-                else:
-
-                    G_hat = _double_dml_cv_predict(
-                        estimator=self._learner["ml_G"],
-                        estimator_name=self._learner["ml_G"],
-                        x=xm,
-                        y=y,
-                        smpls=smpls_d1,
-                        smpls_inner=smpls_inner_d1,
-                        n_jobs=n_jobs_cv,
-                        est_params=self._get_params("ml_G"),
-                        method=self._predict_method["ml_G"],
-                    )
-
-                if nested_g_external:
-                    nested_g_hat = {"preds": external_predictions["ml_nested_g"], "targets": None, "models": None}
-                else:
-
-                    # _dml_cv_predict perceives the fitting of the nested estimator as a case where there are multiple
-                    # fold specific targets because of the shape of G_hat["preds"]. The method throws a
-                    # 'ValueError: shape mismatch' when setting xx[train_index]=y[idx]
-                    # (line 120 in doubleml/utils/_estimation.py). In order to avoid this error, it's necessary to
-                    # feed the method a 'y' parameter whose subarrays match the 'smpls' parameter's subarrays shapes,
-                    # which is exactly what the following line does.
-                    G_hat_inner_preds = [G_hat_preds[train] for (train, _), G_hat_preds in zip(smpls_d0, G_hat["preds_inner"])]
-
-                    nested_g_hat = _dml_cv_predict(
-                        self._learner["ml_nested_g"],
-                        xm,
-                        G_hat_inner_preds,
-                        smpls=smpls_d0,
-                        n_jobs=n_jobs_cv,
-                        est_params=self._get_params("ml_nested_g"),
-                        method=self._predict_method["ml_nested_g"],
-                        return_models=return_models,
-                    )
-                # store inner predictions as separate keys per inner fold
-                inner_predictions = {f"ml_G_inner_{i}": G_hat["preds_inner"][i] for i in range(len(G_hat["preds_inner"]))}
-                inner_targets = {
-                    f"ml_G_inner_{i}": (
-                        G_hat.get("targets_inner")[i]
-                        if G_hat.get("targets_inner") is not None and i < len(G_hat["targets_inner"])
-                        else None
-                    )
-                    for i in range(len(G_hat.get("preds_inner", [])))
-                }
-
-            else:
-                if G_external:
-                    G_hat = {
-                        "preds": external_predictions["ml_G"],
-                        "targets": None,
-                        "models": None,
-                    }
-                else:
-                    G_hat = _dml_cv_predict(
-                        self.learner["ml_G"],
-                        x=xm,
-                        y=y,
-                        smpls=smpls_d1,
-                        n_jobs=n_jobs_cv,
-                        est_params=self._get_params("ml_G"),
-                        method=self._predict_method["ml_G"],
-                    )
-                if nested_g_external:
-                    nested_g_hat = {"preds": external_predictions["ml_nested_g"], "targets": None, "models": None}
-                else:
-                    nested_g_hat = _dml_cv_predict(
-                        self.learner["ml_nested_g"],
-                        x=xm,
-                        y=G_hat["preds"],
-                        smpls=smpls_d0,
-                        n_jobs=n_jobs_cv,
-                        est_params=self._get_params("ml_nested_g"),
-                        method=self._predict_method["ml_nested_g"],
-                        return_models=return_models,
-                    )
-            preds = {
-                "predictions": {
-                    "ml_m": m_hat["preds"],
-                    "ml_M": M_hat["preds"],
-                    "ml_G": G_hat["preds"],
-                    "ml_nested_g": nested_g_hat["preds"],
-                    **inner_predictions,
-                },
-                "targets": {
-                    "ml_m": m_hat["targets"],
-                    "ml_M": M_hat["targets"],
-                    "ml_G": G_hat["targets"],
-                    "ml_nested_g": nested_g_hat["targets"],
-                    **inner_targets,
-                },
-                "models": {
-                    "ml_m": m_hat["models"],
-                    "ml_M": M_hat["models"],
-                    "ml_G": G_hat["models"],
-                    "ml_nested_g": nested_g_hat["models"],
-                },
-            }
-
-            psi_a, psi_b = self._score_elements(
-                y,
-                m_hat_preds=m_hat["preds"],
-                M_hat_preds=M_hat["preds"],
-                G_hat_preds=G_hat["preds"],
-                nested_g_hat_preds=nested_g_hat["preds"],
-            )
-            psi_elements = {"psi_a": psi_a, "psi_b": psi_b}
+        psi_a, psi_b = self._score_elements(
+            y,
+            m_hat_preds=m_hat["preds"],
+            M_hat_preds=M_hat["preds"],
+            G_hat_preds=G_hat["preds"],
+            nested_g_hat_preds=nested_g_hat["preds"],
+        )
+        psi_elements = {"psi_a": psi_a, "psi_b": psi_b}
 
         return psi_elements, preds
 
