@@ -24,27 +24,32 @@ def test_obj_vs_from_arrays():
 
 @pytest.mark.ci
 def test_from_arrays():
-    # create dataset of type DoubleMLMediationData, with force_all_m_finite=True
+    # create dataset of type DoubleMLMediationData
     med_data = make_med_data()
 
-    # test force_all_m_finite=False
-    _ = DoubleMLMEDData.from_arrays(
-        med_data.data[med_data.x_cols],
-        med_data.data[med_data.y_col],
-        med_data.data[med_data.d_cols],
-        med_data.data[med_data.m_cols],
-        force_all_m_finite=False,
-    )
-
-    # test force_all_m_finite="allow_nan"
-    _ = DoubleMLMEDData.from_arrays(
-        med_data.data[med_data.x_cols],
-        med_data.data[med_data.y_col],
-        med_data.data[med_data.d_cols],
-        med_data.data[med_data.m_cols],
+    # test custom configuration to check that DoubleMLData's
+    # parameters are passed correctly to DoubleMLMEDData.
+    data_from_array = DoubleMLMEDData.from_arrays(
+        x=med_data.data[med_data.x_cols],
+        y=med_data.data[med_data.y_col],
+        d=med_data.data[med_data.d_cols],
+        m=med_data.data[med_data.m_cols],
+        z=med_data.data[med_data.x_cols[0]],  # Use one covariate as instrument for testing
+        use_other_treat_as_covariate=True,
+        force_all_x_finite=False,
+        force_all_d_finite=False,
         force_all_m_finite="allow-nan",
     )
 
+    assert data_from_array.z_cols == ["z"]
+    assert data_from_array.use_other_treat_as_covariate is True
+    assert data_from_array.force_all_x_finite is False
+    assert data_from_array.force_all_d_finite is False
+    assert data_from_array.force_all_m_finite == "allow-nan"
+
+    # --- Negative tests for invalid inputs ---
+    # Only testing force_all_m_finite as it is specific to DoubleMLMEDData.
+    # The other parameters are tested in the test_double_ml_data.py.
     msg = r"Invalid force_all_m_finite " r"nope" r". " r"force_all_m_finite must be True, False or 'allow-nan'."
     with pytest.raises(ValueError, match=msg):
         _ = DoubleMLMEDData.from_arrays(
@@ -73,7 +78,30 @@ def test_from_arrays():
 @pytest.mark.ci
 def test_check_disjoint_sets():
     np.random.seed(3141)
-    df = pd.DataFrame(np.tile(np.arange(6), (4, 1)), columns=["yy", "dd1", "xx1", "xx2", "mm1", "zz1",])
+    df = pd.DataFrame(
+        np.tile(np.arange(6), (4, 1)),
+        columns=[
+            "yy",
+            "dd1",
+            "xx1",
+            "xx2",
+            "mm1",
+            "zz1",
+        ],
+    )
+
+    # Verify that base class checks (e.g., y vs d) are still active in mediation objects
+    df_base = pd.DataFrame(np.tile(np.arange(6), (4, 1)), columns=["yy", "dd1", "xx1", "xx2", "mm1", "zz"])
+    msg = r"yy cannot be set as outcome variable ``y_col`` and treatment variable in ``d_cols``."
+    with pytest.raises(ValueError, match=msg):
+        _ = DoubleMLMEDData(
+            df_base,
+            y_col="yy",
+            d_cols="yy",  # Overlap with y_col
+            x_cols=["xx1", "xx2"],
+            m_cols=["mm1"],
+            z_cols="zz",
+        )
 
     msg = (
         r"At least one variable/column is set as outcome variable \(``y_col``\) "
@@ -112,7 +140,6 @@ def test_check_disjoint_sets():
             x_cols=["xx1", "xx2"],
             m_cols=["xx1"],
             z_cols="zz1",
-
         )
 
     msg = (
@@ -127,7 +154,6 @@ def test_check_disjoint_sets():
             x_cols=["xx1", "xx2"],
             m_cols=["zz1"],
             z_cols="zz1",
-
         )
 
 
@@ -180,7 +206,7 @@ def test_data_summary_str():
     med_str = str(med_data)
 
     # Check that all important sections are present in the string
-    assert "================== DoubleMLMediationData Object ==================" in med_str
+    assert f"================== {med_data.__class__.__name__} Object ==================" in med_str
     assert "------------------ Data summary      ------------------" in med_str
     assert "------------------ DataFrame info    ------------------" in med_str
 
@@ -191,6 +217,7 @@ def test_data_summary_str():
     assert "Instrument variable(s): None" in med_str
     assert "Covariates: " in med_str
     assert "No. Observations:" in med_str
+
 
 @pytest.mark.ci
 def test_get_optional_col_sets():

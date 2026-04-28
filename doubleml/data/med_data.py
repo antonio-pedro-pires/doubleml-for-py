@@ -51,7 +51,6 @@ class DoubleMLMEDData(DoubleMLData):
             force_all_x_finite,
             force_all_d_finite,
         )
-
         self._check_disjoint_sets_m_cols()
         self._binary_meds = self._check_binary_mediators()
 
@@ -110,7 +109,16 @@ class DoubleMLMEDData(DoubleMLData):
                 + f"{str(force_all_m_finite)} of type {str(type(force_all_m_finite))} was passed."
             )
 
-        dml_data = DoubleMLData.from_arrays(x, y, d, z, None, use_other_treat_as_covariate, force_all_x_finite)
+        dml_data = DoubleMLData.from_arrays(
+            x=x,
+            y=y,
+            d=d,
+            z=z,
+            cluster_vars=None,
+            use_other_treat_as_covariate=use_other_treat_as_covariate,
+            force_all_x_finite=force_all_x_finite,
+            force_all_d_finite=force_all_d_finite,
+        )
         m = check_array(m, ensure_2d=False, allow_nd=False, ensure_all_finite=force_all_m_finite)
         m = _assure_2d_array(m)
 
@@ -122,14 +130,16 @@ class DoubleMLMEDData(DoubleMLData):
         data = pd.concat([dml_data.data, (pd.DataFrame(m, columns=m_cols))], axis=1)
 
         return cls(
-            data,
-            dml_data.y_col,
-            dml_data.d_cols,
-            m_cols,
-            dml_data.x_cols,
-            dml_data.z_cols,
-            dml_data.use_other_treat_as_covariate,
-            dml_data.force_all_x_finite,
+            data=data,
+            y_col=dml_data.y_col,
+            d_cols=dml_data.d_cols,
+            m_cols=m_cols,
+            x_cols=dml_data.x_cols,
+            z_cols=dml_data.z_cols,
+            use_other_treat_as_covariate=dml_data.use_other_treat_as_covariate,
+            force_all_x_finite=dml_data.force_all_x_finite,
+            force_all_d_finite=dml_data.force_all_d_finite,
+            force_all_m_finite=force_all_m_finite,
         )
 
     @property
@@ -225,12 +235,6 @@ class DoubleMLMEDData(DoubleMLData):
         self._check_disjoint_sets_m_cols()
 
     def _check_disjoint_sets_m_cols(self):
-        # TODO: Is this truly necessary, since the _check_disjoint_sets()
-        #  already calls its super which calls for checks it itself?
-
-        # apply the standard checks from the DoubleMLData class
-        super(DoubleMLMEDData, self)._check_disjoint_sets()
-
         # Disjointedness check for mediator variables.
         m_cols_set = set(self.m_cols)
         y_col_set = {self.y_col}
