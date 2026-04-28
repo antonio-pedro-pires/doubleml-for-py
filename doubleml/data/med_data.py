@@ -188,10 +188,10 @@ class DoubleMLMEDData(DoubleMLData):
         if isinstance(value, str):
             if value != "allow-nan":
                 raise ValueError(
-                    "Invalid force_all_m_finite " + value + ". " + "force_all_m_finite must be True, False or 'allow-nan'."
+                    f"Invalid force_all_m_finite: {str(value)}. force_all_m_finite must be True, False or 'allow-nan'."
                 )
         elif not isinstance(value, bool):
-            raise TypeError("Invalid force_all_m_finite. " + "force_all_m_finite must be True, False or 'allow-nan'.")
+            raise TypeError("Invalid force_all_m_finite. force_all_m_finite must be True, False or 'allow-nan'.")
         self._force_all_m_finite = value
         if reset_value:
             self._set_m()
