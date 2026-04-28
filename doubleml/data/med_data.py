@@ -232,12 +232,6 @@ class DoubleMLMEDData(DoubleMLData):
         self._check_disjoint_sets_m_cols()
 
     def _check_disjoint_sets_m_cols(self):
-        # TODO: Is this truly necessary, since the _check_disjoint_sets()
-        #  already calls its super which calls for checks it itself?
-
-        # apply the standard checks from the DoubleMLData class
-        super(DoubleMLMEDData, self)._check_disjoint_sets()
-
         # Disjointedness check for mediator variables.
         m_cols_set = set(self.m_cols)
         y_col_set = {self.y_col}
