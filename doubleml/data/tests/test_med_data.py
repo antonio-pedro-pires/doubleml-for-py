@@ -90,6 +90,19 @@ def test_check_disjoint_sets():
         ],
     )
 
+    # Verify that base class checks (e.g., y vs d) are still active in mediation objects
+    df_base = pd.DataFrame(np.tile(np.arange(6), (4, 1)), columns=["yy", "dd1", "xx1", "xx2", "mm1", "zz"])
+    msg = r"yy cannot be set as outcome variable ``y_col`` and treatment variable in ``d_cols``."
+    with pytest.raises(ValueError, match=msg):
+        _ = DoubleMLMEDData(
+            df_base,
+            y_col="yy",
+            d_cols="yy",  # Overlap with y_col
+            x_cols=["xx1", "xx2"],
+            m_cols=["mm1"],
+            z_cols="zz",
+        )
+
     msg = (
         r"At least one variable/column is set as outcome variable \(``y_col``\) "
         r"and mediation variable\(s\) \(``m_cols``\)."
