@@ -54,14 +54,31 @@ def test_med_defaults(dml_med_fixture):
 
 @pytest.mark.ci
 def test_meds_defaults(dml_meds_fixture):
-    # check defaults before fit
     assert dml_meds_fixture.n_folds == 5
     assert dml_meds_fixture.n_rep == 1
     assert dml_meds_fixture.framework is None
+    assert dml_meds_fixture.coef is None
+    assert dml_meds_fixture.se is None
+    assert dml_meds_fixture.all_coef is None
+    assert dml_meds_fixture.all_se is None
+    assert dml_meds_fixture.boot_t_stat is None
     pd.testing.assert_frame_equal(dml_meds_fixture.summary, pd.DataFrame(columns=["coef", "std err", "t", "P>|t|"]))
 
     dml_meds_fixture.fit()
 
-    # check defaults after fit
     assert dml_meds_fixture.framework is not None
     assert isinstance(dml_meds_fixture.summary, pd.DataFrame)
+
+
+@pytest.mark.ci
+def test_med_default_ps_config(dml_data, learner_linear):
+    with pytest.warns(UserWarning, match="ps_processor_config not specified"):
+        obj = DoubleMLMED(
+            dml_data=dml_data,
+            outcome="potential",
+            treatment_level=0,
+            ml_g=learner_linear["ml_g"],
+            ml_m=learner_linear["ml_m"],
+        )
+    assert obj.ps_processor_config is not None
+    assert obj.ps_processor is not None
