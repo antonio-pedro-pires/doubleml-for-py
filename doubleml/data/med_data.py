@@ -57,7 +57,7 @@ class DoubleMLMEDData(DoubleMLData):
         self.data.info(verbose=False, buf=buf)
         df_info = buf.getvalue()
         res = (
-            "================== DoubleMLMediationData Object ==================\n"
+            f"================== {self.__class__.__name__} Object ==================\n"
             + "\n------------------ Data summary      ------------------\n"
             + data_summary
             + "\n------------------ DataFrame info    ------------------\n"
