@@ -10,9 +10,47 @@ from doubleml.utils._estimation import _assure_2d_array
 
 
 class DoubleMLMEDData(DoubleMLData):
+    """
+    Data-container for causal mediation analysis.
 
-    # TODO: Check if we can use other treatments as covariates during mediation analysis
-    #  and if the same is true for mediators.
+    :class:`DoubleMLMEDData` objects can be initialized from a
+    :class:`pandas.DataFrame` via :meth:`DoubleMLMEDData.__init__` or from
+    :class:`numpy.ndarray` via the class method :meth:`DoubleMLMEDData.from_arrays`.
+
+    Parameters
+    ----------
+    data : :class:`pandas.DataFrame`
+        The data.
+    y_col : str
+        The name of the outcome variable :math:`Y`.
+    d_cols : str or list
+        The name of the treatment variable :math:`D`.
+    m_cols : str or list
+        The name of the mediator variable(s) :math:`M`.
+    x_cols : str or list, optional
+        The names of the covariates :math:`X`.
+        Default is ``None``.
+    z_cols : str or list, optional
+        The names of the instrumental variables :math:`Z`.
+        Default is ``None``.
+    use_other_treat_as_covariate : bool, optional
+        Indicates whether in the case of multiple treatment variables the other
+        treatment variables should be added as covariates.
+        Default is ``True``.
+    force_all_x_finite : bool, optional
+        Indicates whether to force there are missing or infinite
+        values in the covariates :math:`X`.
+        Default is ``True``.
+    force_all_d_finite : bool, optional
+        Indicates whether to raise an error if there are missing or infinite
+        values in the treatment variable :math:`D`.
+        Default is ``True``.
+    force_all_m_finite : bool, optional
+        Indicates whether to raise an error if there are missing or infinite
+        values in the mediators :math:`M`.
+        Default is ``True``.
+    """
+
     def __init__(
         self,
         data,
@@ -90,6 +128,44 @@ class DoubleMLMEDData(DoubleMLData):
         force_all_d_finite=True,
         force_all_m_finite=True,
     ):
+        """
+        Initialize :class:`DoubleMLMEDData` from :class:`numpy.ndarray` objects.
+
+        Parameters
+        ----------
+        x : :class:`numpy.ndarray`
+            The covariates :math:`X`.
+        y : :class:`numpy.ndarray`
+            The outcome variable :math:`Y`.
+        d : :class:`numpy.ndarray`
+            The treatment variable :math:`D`.
+        m : :class:`numpy.ndarray`
+            The mediator variable(s) :math:`M`.
+        z : :class:`numpy.ndarray`, optional
+            The instrumental variables :math:`Z`.
+            Default is ``None``.
+        use_other_treat_as_covariate : bool, optional
+            Indicates whether in the case of multiple treatment variables the
+            other treatment variables should be added as covariates.
+            Default is ``False``.
+        force_all_x_finite : bool, optional
+            Indicates whether to raise an error if there are missing or
+            infinite values in the covariates :math:`X`.
+            Default is ``True``.
+        force_all_d_finite : bool, optional
+            Indicates whether to raise an error if there are missing or
+            infinite values in the treatment variable :math:`D`.
+            Default is ``True``.
+        force_all_m_finite : bool, optional
+            Indicates whether to raise an error if there are missing or
+            infinite values in the mediators :math:`M`.
+            Default is ``True``.
+
+        Returns
+        -------
+        obj : :class:`DoubleMLMEDData`
+            The initialized :class:`DoubleMLMEDData` object.
+        """
 
         if isinstance(force_all_m_finite, str):
             if force_all_m_finite != "allow-nan":
