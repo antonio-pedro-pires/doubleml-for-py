@@ -59,7 +59,7 @@ def med_classifier_obj(binary_y_data, classifier_learners, binary_outcomes, bina
 # The three following tests verify that DoubleMLMED doesn't break when passed
 # mostly classifiers (all learners except for ml_nested_g).
 # This is why the assertions check if the returned values are finite,
-# not if they are equal to the expected values.
+# not if they are equal to specific values.
 @pytest.mark.ci
 def test_med_classifier_coef(med_classifier_obj):
     assert np.all(np.isfinite(med_classifier_obj.coef))

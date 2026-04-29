@@ -14,7 +14,7 @@ from doubleml.med.utils._meds_utils import generate_effects_summary
 from doubleml.utils import PSProcessorConfig
 from doubleml.utils._checks import _check_score
 from doubleml.utils._descriptive import generate_summary
-
+from doubleml.utils._tune_optuna import TUNE_ML_MODELS_DOC
 
 # TODO Checklist:
 # Add possibility to not perform nested sampling
@@ -23,8 +23,12 @@ from doubleml.utils._descriptive import generate_summary
 # Add confint
 # Check bootstrap logic
 # Add sensitivity analysis
+
+
 class DoubleMLMEDS(SampleSplittingMixin):
     """Double machine learning for causal mediation analysis with binary treatment.
+        Computes the average treatment effect (ATE), direct effects
+        and indirects effect.
 
         Parameters
         ----------
@@ -394,6 +398,27 @@ class DoubleMLMEDS(SampleSplittingMixin):
         return df_effects_summary
 
     def fit(self, n_jobs_models=None, n_jobs_cv=None, store_predictions=True, store_models=False, external_predictions=None):
+        """
+        Estimates DoubleMLMEDS objects.
+
+        Parameters
+        ----------
+        n_jobs_models : int, optional
+            Number of jobs to run in parallel for the models.
+            Default is ``None``.
+        n_jobs_cv : int, optional
+            Number of jobs to run in parallel for the cross-fitting.
+            Default is ``None``.
+        store_predictions : bool, optional
+            Whether to store the predictions.
+            Default is ``True``.
+        store_models : bool, optional
+            Whether to store the models.
+            Default is ``False``.
+        external_predictions : dict, optional
+            External predictions to use for the estimation.
+            Default is ``None``.
+        """
         if external_predictions is not None:
             self._check_external_predictions(external_predictions)
             ext_pred_dict = external_predictions
@@ -439,6 +464,24 @@ class DoubleMLMEDS(SampleSplittingMixin):
         return model
 
     def confint(self, joint=False, level=0.95):
+        """
+        Confidence intervals for DoubleMLMEDS objects.
+
+        Parameters
+        ----------
+        joint : bool
+            Indicates whether joint confidence intervals are computed.
+            Default is ``False``
+
+        level : float
+            The confidence level.
+            Default is ``0.95``.
+
+        Returns
+        -------
+        df_ci : pd.DataFrame
+            A data frame with the confidence interval(s).
+        """
         if self.framework is None:
             raise ValueError("Apply fit() before confint().")
         df_ci = self.framework.confint(joint=joint, level=level)
@@ -446,6 +489,20 @@ class DoubleMLMEDS(SampleSplittingMixin):
         return df_ci
 
     def evaluate_effects(self):
+        """
+        Evaluate the effects of the DoubleMLMEDS object after calling :meth:`fit`.
+
+        The following effects are evaluated:
+        - Average Treatment Effect (ATE)
+        - Direct treatment effect (DIR_TREAT)
+        - Direct control effect (DIR_CONTROL)
+        - Indirect treatment effect (INDIR_TREAT)
+        - Indirect control effect (INDIR_CONTROL)
+
+        Returns
+        -------
+        self : object
+        """
         if self.framework is None:
             raise ValueError("Apply fit() before calling evaluate_effects()")
         ate = self._modeldict["potential_1"].framework - self._modeldict["potential_0"].framework
@@ -559,7 +616,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
         return_tune_res=False,
         optuna_settings=None,
     ):
-
+        """Hyperparameter-tuning for DoubleML models using Optuna."""
         tuning_kwargs = {
             "scoring_methods": scoring_methods,
             "cv": cv,
@@ -592,3 +649,5 @@ class DoubleMLMEDS(SampleSplittingMixin):
             if return_tune_res:
                 tune_res[key] = res
         return tune_res if return_tune_res else None
+
+    tune_ml_models.__doc__ = TUNE_ML_MODELS_DOC

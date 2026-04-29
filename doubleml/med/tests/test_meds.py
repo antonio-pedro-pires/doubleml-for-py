@@ -10,6 +10,12 @@ from doubleml.med import DoubleMLMEDS
 # TODO: Remove warning filter once sklearn gets to version 1.10
 pytestmark = pytest.mark.filterwarnings("ignore: l1_ratio parameter is only used when penalty ")
 
+# The DoubleMLMEDS object initializes multiple DoubleMLMED objects and computes the causal effects through them.
+# The tests in this file compare a DoubleMLMEDS object with a collection of DoubleMLMED objects initialized
+# with the same parameters. The tests pass if the collection of DoubleMLMED objects has the same qualities as
+# the collection of objects initialized by DoubleMLMEDS and if the values computed through the collection of DoubleMLMED
+# objects is identical to the values computed by DoubleMLMEDS.
+
 
 @pytest.fixture(scope="module")
 def meds_obj(dml_data, learner_linear, double_sample_splitting, ps_processor_config):

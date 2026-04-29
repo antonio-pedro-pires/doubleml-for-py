@@ -86,6 +86,23 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         configuration file for the propensity score processor (PSProcessor) object.
         When None, the PSProcessor is initialized with its default values.
         Default is ``None``
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> import doubleml as dml
+    >>> from doubleml.med.datasets import make_med_data
+    >>> from sklearn.linear_model import Lasso, LogisticRegression
+    >>> from sklearn.base import clone
+    >>> np.random.seed(3141)
+    >>> ml_g = Lasso()
+    >>> ml_G = Lasso()
+    >>> ml_nested_g = Lasso()
+    >>> ml_m = LogisticRegression(l1_ratio=1, solver="liblinear", max_iter=1000)
+    >>> ml_M = LogisticRegression(l1_ratio=1, solver="liblinear", max_iter=1000)
+    >>> obj_dml_data = make_med_data()
+    >>> dml_med_obj = dml.DoubleMLMED(obj_dml_data, 1, "counterfactual", ml_m, ml_g, ml_G, ml_M, ml_nested_g) # doctest: +SKIP
+    >>> dml_med_obj.fit().summary  # doctest: +SKIP
     """
 
     def __init__(
