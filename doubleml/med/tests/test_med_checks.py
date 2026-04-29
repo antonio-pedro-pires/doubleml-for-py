@@ -1,5 +1,6 @@
 import copy
 
+import numpy as np
 import pytest
 from sklearn.linear_model import LinearRegression, LogisticRegression
 
@@ -151,114 +152,204 @@ def test_med_levels_check(dml_data, learner_linear, check_med_levels_fixture, ps
 @pytest.mark.ci
 @pytest.mark.filterwarnings("ignore:Learner provided for ml_m is probably invalid:UserWarning")
 @pytest.mark.filterwarnings("ignore:Learner provided for ml_M is probably invalid:UserWarning")
-def test_med_learners_check(
-    dml_data, binary_treats, binary_outcomes, check_med_learners_fixture, learner_linear, ps_processor_config
-):
+def test_med_learners_check_potential(dml_data, binary_treats, check_med_learners_fixture, ps_processor_config):
     good_learners, missing_g_learner, missing_G_learner = check_med_learners_fixture
+    outcome = "potential"
     DoubleMLMED(
         dml_data=dml_data,
-        outcome="potential",
-        treatment_level=binary_treats,
-        ps_processor_config=ps_processor_config,
-        **good_learners,
-    )
-    DoubleMLMED(
-        dml_data=dml_data,
-        outcome="counterfactual",
+        outcome=outcome,
         treatment_level=binary_treats,
         ps_processor_config=ps_processor_config,
         **good_learners,
     )
 
+    # Prepare data with binary outcome for tests with classifiers.
+    x = dml_data.x
+    d = dml_data.d
+    m = dml_data.m
+
+    binary_y = np.random.randint(0, 2, dml_data.n_obs)
+    binary_y_data = DoubleMLMEDData.from_arrays(y=binary_y, x=x, m=m, d=d)
+    assert binary_y_data.binary_outcome
+
+    # ---  Test mismatch between provided learners and the type of outcome.
     msg = "Learner ml_g is required when the outcome is potential."
     with pytest.raises(ValueError, match=msg):
         DoubleMLMED(
             dml_data=dml_data,
-            outcome="potential",
+            outcome=outcome,
             treatment_level=binary_treats,
             ps_processor_config=ps_processor_config,
             **missing_g_learner,
         )
+    # --- End tests for missing learners ---
 
+    # Test for fixed classifier: ml_m must be a classifier regardless of outcome type
+    # With binary y:
+    with pytest.raises(ValueError, match=r"Learner 'ml_m' must be a classifier"):
+        DoubleMLMED(
+            dml_data=binary_y_data,
+            treatment_level=binary_treats,
+            outcome=outcome,
+            ml_m=LinearRegression(),
+            ml_g=LogisticRegression(),
+        )
+
+    # With continuous y:
+    with pytest.raises(ValueError, match=r"Learner 'ml_m' must be a classifier"):
+        DoubleMLMED(
+            dml_data=dml_data, outcome=outcome, treatment_level=binary_treats, ml_m=LinearRegression(), ml_g=LinearRegression()
+        )
+    # Test for not-fixed learners: ml_g depends on the type of outcome.
+    # ml_g is a regressor if y is continuous, and a classifier if y is binary.
+    msg = "Learner 'ml_g' must be a classifier."
+    with pytest.raises(ValueError, match=msg):
+        DoubleMLMED(binary_y_data, binary_treats, outcome, ml_m=LogisticRegression(), ml_g=LinearRegression())
+
+    msg = "Learner 'ml_g' must be a regressor."
+    with pytest.raises(ValueError, match=msg):
+        DoubleMLMED(dml_data, binary_treats, outcome, ml_m=LogisticRegression(), ml_g=LogisticRegression())
+
+
+@pytest.mark.ci
+@pytest.mark.filterwarnings("ignore:Learner provided for ml_m is probably invalid:UserWarning")
+@pytest.mark.filterwarnings("ignore:Learner provided for ml_M is probably invalid:UserWarning")
+def test_med_learners_check_counterfactual(
+    dml_data, binary_treats, check_med_learners_fixture, learner_linear, ps_processor_config
+):
+    good_learners, missing_g_learner, missing_G_learner = check_med_learners_fixture
+    outcome = "counterfactual"
+    DoubleMLMED(
+        dml_data=dml_data,
+        outcome=outcome,
+        treatment_level=binary_treats,
+        ps_processor_config=ps_processor_config,
+        **good_learners,
+    )
+
+    # Prepare data with binary outcome for tests with classifiers.
+    x = dml_data.x
+    d = dml_data.d
+    m = dml_data.m
+    binary_y = np.random.randint(0, 2, dml_data.n_obs)
+    binary_y_data = DoubleMLMEDData.from_arrays(y=binary_y, x=x, m=m, d=d)
+    assert binary_y_data.binary_outcome
+
+    # Test for missing learners
     msg = "Learner ml_G is required when the outcome is counterfactual."
     with pytest.raises(ValueError, match=msg):
         DoubleMLMED(
             dml_data=dml_data,
-            outcome="counterfactual",
+            outcome=outcome,
             treatment_level=binary_treats,
             ps_processor_config=ps_processor_config,
-            **missing_G_learner,
-        )
-
-    missmatched_learner = copy.deepcopy(missing_g_learner)
-    missmatched_learner["ml_g"] = LogisticRegression()
-    msg = "The learner ml_g was identified as a classifier " + "but the outcome variable is not binary with values 0 and 1."
-    with pytest.raises(ValueError, match=msg):
-        DoubleMLMED(
-            dml_data=dml_data,
-            outcome="potential",
-            treatment_level=binary_treats,
-            ps_processor_config=ps_processor_config,
-            **missmatched_learner,
-        )
-
-    x = dml_data.x
-    m = dml_data.m
-    d = dml_data.d
-
-    binary_y = copy.deepcopy(d)
-    binary_y_data = DoubleMLMEDData.from_arrays(y=binary_y, x=x, m=m, d=d)
-    assert binary_y_data.binary_outcome
-
-    missmatched_learner["ml_g"] = LinearRegression()
-    msg = "The learner ml_g must be a classifier" + "since the outcome variable is binary with values 0 and 1."
-    with pytest.raises(ValueError, match=msg):
-        DoubleMLMED(
-            dml_data=binary_y_data,
-            treatment_level=binary_treats,
-            outcome="potential",
-            ml_m=missmatched_learner["ml_m"],
-            ml_g=missmatched_learner["ml_g"],
-        )
-
-    # Test ml_nested_g must be a regressor
-    missmatched_learner = copy.deepcopy(missing_G_learner)
-    missmatched_learner["ml_G"] = LogisticRegression()  # classifier
-    missmatched_learner["ml_nested_g"] = LogisticRegression()  # classifier (invalid)
-
-    msg = "The learner ml_nested_g must be a regressor because its target is a continuous probability."
-    with pytest.raises(ValueError, match=msg):
-        DoubleMLMED(
-            dml_data=binary_y_data,
-            treatment_level=binary_treats,
-            outcome="counterfactual",
-            ml_m=missmatched_learner["ml_m"],
-            ml_M=missmatched_learner["ml_m"],
-            ml_G=missmatched_learner["ml_G"],
-            ml_nested_g=missmatched_learner["ml_nested_g"],
-        )
-
-    # Test ml_m must be a classifier
-    msg = r"Invalid learner provided for ml_m: .* has no method .predict_proba\(\)."
-    with pytest.raises(TypeError, match=msg):
-        DoubleMLMED(
-            dml_data=dml_data,
-            treatment_level=binary_treats,
-            outcome="potential",
-            ml_m=LinearRegression(),
-            ml_g=LinearRegression(),
-        )
-
-    # Test ml_M must be a classifier
-    msg = r"Invalid learner provided for ml_M: .* has no method .predict_proba\(\)."
-    with pytest.raises(TypeError, match=msg):
-        DoubleMLMED(
-            dml_data=dml_data,
-            treatment_level=binary_treats,
-            outcome="counterfactual",
             ml_m=LogisticRegression(),
-            ml_M=LinearRegression(),
-            ml_g=LinearRegression(),
+            ml_M=LogisticRegression(),
+            ml_nested_g=LinearRegression(),
+        )
+
+    msg = "Learner ml_nested_g is required when the outcome is counterfactual."
+    with pytest.raises(ValueError, match=msg):
+        DoubleMLMED(
+            dml_data=dml_data,
+            outcome=outcome,
+            treatment_level=binary_treats,
+            ml_m=LogisticRegression(),
             ml_G=LinearRegression(),
+            ml_M=LogisticRegression(),
+            ps_processor_config=ps_processor_config,
+        )
+
+    msg = "Learner ml_M is required when the outcome is counterfactual."
+    with pytest.raises(ValueError, match=msg):
+        DoubleMLMED(
+            dml_data=dml_data,
+            outcome=outcome,
+            treatment_level=binary_treats,
+            ml_m=LogisticRegression(),
+            ml_G=LinearRegression(),
+            ml_nested_g=LinearRegression(),
+            ps_processor_config=ps_processor_config,
+        )
+    # --- End tests for missing learners ---
+
+    # --- Test mismatch between provided learners and required task (classification/regression)
+    # Test Fixed Regressor: ml_nested_g must be a regressor regardless of outcome type
+    msg = "Learner 'ml_nested_g' must be a regressor."
+
+    # With binary outcomes:
+    with pytest.raises(ValueError, match=msg):
+        DoubleMLMED(
+            dml_data=binary_y_data,
+            treatment_level=binary_treats,
+            outcome=outcome,
+            ml_m=LogisticRegression(),
+            ml_M=LogisticRegression(),
+            ml_G=LogisticRegression(),
+            ml_nested_g=LogisticRegression(),  # Invalid
+        )
+
+    # With continuous outcomes:
+    with pytest.raises(ValueError, match=msg):
+        DoubleMLMED(
+            dml_data=dml_data,
+            outcome=outcome,
+            treatment_level=binary_treats,
+            ml_m=LogisticRegression(),
+            ml_M=LogisticRegression(),
+            ml_G=LinearRegression(),
+            ml_nested_g=LogisticRegression(),
+        )
+
+    # Test for fixed classifier: ml_m, ml_M must be classifiers regardless of outcome type
+    msg = "Learner 'ml_m' must be a classifier."
+
+    # With binary y:
+    with pytest.raises(ValueError, match=msg):
+        DoubleMLMED(
+            dml_data=binary_y_data,
+            treatment_level=binary_treats,
+            outcome=outcome,
+            ml_m=LinearRegression(),
+            ml_M=LogisticRegression(),
+            ml_G=LogisticRegression(),
+            ml_nested_g=LinearRegression(),
+        )
+
+    # With continuous y:
+    with pytest.raises(ValueError, match=msg):
+        DoubleMLMED(
+            dml_data=dml_data,
+            outcome=outcome,
+            treatment_level=binary_treats,
+            ml_m=LinearRegression(),
+            ml_M=LogisticRegression(),
+            ml_G=LogisticRegression(),
+            ml_nested_g=LinearRegression(),
+        )
+
+    # Test for not-fixed learners: ml_G depends on the type of outcome.
+    # ml_G is a regressor if y is continuous, and a classifier if y is binary.
+    msg = "Learner 'ml_G' must be a classifier."
+    with pytest.raises(ValueError, match=msg):
+        DoubleMLMED(
+            dml_data=binary_y_data,
+            treatment_level=binary_treats,
+            outcome=outcome,
+            ml_m=LogisticRegression(),
+            ml_M=LogisticRegression(),
+            ml_G=LinearRegression(),
+            ml_nested_g=LinearRegression(),
+        )
+
+    msg = "Learner 'ml_G' must be a regressor."
+    with pytest.raises(ValueError, match=msg):
+        DoubleMLMED(
+            dml_data,
+            binary_treats,
+            outcome=outcome,
+            ml_m=LogisticRegression(),
+            ml_M=LogisticRegression(),
+            ml_G=LogisticRegression(),
             ml_nested_g=LinearRegression(),
         )
