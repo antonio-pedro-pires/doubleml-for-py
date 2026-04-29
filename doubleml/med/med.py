@@ -651,42 +651,34 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         else:
             self._learner = {"ml_m": ml_m, "ml_G": ml_G, "ml_M": ml_M, "ml_nested_g": ml_nested_g}
 
+        # Standard requirements mapping
+        # (name): (must_be_classifier, must_be_regressor)
+        # None means it depends on data.binary_outcome
+        learner_requirements = {
+            "ml_m": (True, False),
+            "ml_M": (True, False),
+            "ml_nested_g": (False, True),
+            "ml_g": (None, None),
+            "ml_G": (None, None),
+        }
+
         for learner_name, learner in self._learner.items():
-            if self._learner[learner_name] is None:
+            if learner is None:
                 raise ValueError(f"Learner {learner_name} is required when the outcome is {self._outcome}.")
 
-            if learner_name in ["ml_m", "ml_M"]:
-                is_classifier_ = self._check_learner(learner, learner_name, regressor=False, classifier=True)
-                if is_classifier_:
-                    self._predict_method[learner_name] = "predict_proba"
-                else:
-                    raise ValueError(
-                        f"The learner {learner_name} must be a classifier. " f"{learner_name} identified as a regressor."
-                    )
-            elif learner_name == "ml_nested_g":
-                is_classifier_ = self._check_learner(learner, learner_name, regressor=True, classifier=True)
-                if is_classifier_:
-                    raise ValueError(
-                        f"The learner {learner_name} must be a regressor because its target is a continuous probability."
-                    )
-                self._predict_method[learner_name] = "predict"
-            else:
-                is_classifier_ = self._check_learner(learner, learner_name, regressor=True, classifier=True)
-                if self._dml_data.binary_outcome and not is_classifier_:
-                    raise ValueError(
-                        f"The learner {learner_name} must be a classifier"
-                        + "since the outcome variable is binary with values 0 and 1."
-                    )
-                elif not self._dml_data.binary_outcome and is_classifier_:
-                    raise ValueError(
-                        f"The learner {learner_name} was identified as a classifier "
-                        + "but the outcome variable is not binary with values 0 and 1."
-                    )
-                else:
-                    if is_classifier_:
-                        self._predict_method[learner_name] = "predict_proba"
-                    else:
-                        self._predict_method[learner_name] = "predict"
+            req_class, req_reg = learner_requirements[learner_name]
+            if req_class is None:  # Type of learning task is data dependent
+                req_class = self._dml_data.binary_outcome
+                req_reg = not self._dml_data.binary_outcome
+
+            is_classifier = self._check_learner(learner, learner_name, regressor=True, classifier=True)
+
+            if req_class and not is_classifier:
+                raise ValueError(f"Learner '{learner_name}' must be a classifier.")
+            if req_reg and is_classifier:
+                raise ValueError(f"Learner '{learner_name}' must be a regressor.")
+
+            self._predict_method[learner_name] = "predict_proba" if is_classifier else "predict"
         self._initialize_ml_nuisance_params()
 
     def _check_outcome(self, outcome):
