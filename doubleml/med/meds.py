@@ -102,7 +102,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
     >>> ml_m = LogisticRegression(l1_ratio=1, solver="liblinear", max_iter=1000)
     >>> ml_M = LogisticRegression(l1_ratio=1, solver="liblinear", max_iter=1000)
     >>> obj_dml_data = make_med_data()
-    >>> dml_med_obj = dml.DoubleMLMED(obj_dml_data, ml_m, ml_g, ml_G, ml_M, ml_nested_g)
+    >>> dml_med_obj = dml.DoubleMLMEDS(obj_dml_data, ml_m, ml_g, ml_G, ml_M, ml_nested_g)
     >>> dml_med_obj.fit().summary  # doctest: +SKIP
     """
 
