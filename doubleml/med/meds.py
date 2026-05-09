@@ -350,7 +350,28 @@ class DoubleMLMEDS(SampleSplittingMixin):
         """
         return self._framework
 
-    # TODO: Add bootstrap or remove it
+    @property
+    def n_rep_boot(self):
+        """
+        The number of bootstrap replications.
+        """
+        if self._framework is None:
+            n_rep_boot = None
+        else:
+            n_rep_boot = self._framework.n_rep_boot
+        return n_rep_boot
+
+    @property
+    def boot_method(self):
+        """
+        The method to construct the bootstrap replications.
+        """
+        if self._framework is None:
+            method = None
+        else:
+            method = self._framework.boot_method
+        return method
+
     @property
     def boot_t_stat(self):
         """
@@ -651,3 +672,26 @@ class DoubleMLMEDS(SampleSplittingMixin):
         return tune_res if return_tune_res else None
 
     tune_ml_models.__doc__ = TUNE_ML_MODELS_DOC
+
+    def bootstrap(self, method="normal", n_rep_boot=500):
+        """
+        Multiplier bootstrap for DoubleML models.
+
+        Parameters
+        ----------
+        method : str
+            A str (``'Bayes'``, ``'normal'`` or ``'wild'``) specifying the multiplier bootstrap method.
+            Default is ``'normal'``
+
+        n_rep_boot : int
+            The number of bootstrap replications.
+
+        Returns
+        -------
+        self : object
+        """
+        if self._framework is None:
+            raise ValueError("Apply fit() before bootstrap().")
+        self._framework.bootstrap(method=method, n_rep_boot=n_rep_boot)
+
+        return self
