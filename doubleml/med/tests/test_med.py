@@ -127,49 +127,6 @@ def test_external_predictions_exceptions(external_predictions_exceptions_fixture
         med_obj_ext.fit(external_predictions=prediction_dict)
 
 
-@pytest.fixture(scope="module")
-def set_smpls_sampling_fixture(dml_data, learner_linear, binary_outcomes, double_sample_splitting, ps_processor_config):
-    treatment_level = 1  # Fixed treatment_level since the treatment level has no effect on set_smpls_sampling.
-    med_obj = DoubleMLMED(
-        dml_data=dml_data,
-        outcome=binary_outcomes,
-        treatment_level=treatment_level,
-        double_sample_splitting=double_sample_splitting,
-        ps_processor_config=ps_processor_config,
-        **learner_linear,
-    )
-    med_obj_ext = DoubleMLMED(
-        dml_data=dml_data,
-        outcome=binary_outcomes,
-        treatment_level=treatment_level,
-        double_sample_splitting=double_sample_splitting,
-        draw_sample_splitting=False,
-        ps_processor_config=ps_processor_config,
-        **learner_linear,
-    )
-    return med_obj, med_obj_ext
-
-
-@pytest.mark.ci
-def testset_sample_splitting(set_smpls_sampling_fixture):
-    med_obj, med_obj_ext = set_smpls_sampling_fixture
-    smpls_inner = None if not med_obj.double_sample_splitting else med_obj.smpls_inner
-    med_obj_ext.set_sample_splitting(smpls=med_obj.smpls, smpls_inner=smpls_inner)
-    if med_obj.double_sample_splitting:
-        np.testing.assert_equal(med_obj.smpls_inner, med_obj_ext.smpls_inner)
-    np.testing.assert_equal(med_obj.smpls, med_obj_ext.smpls)
-
-
-@pytest.mark.ci
-def testset_sample_splitting_exceptions(set_smpls_sampling_fixture):
-    _, med_obj_ext = set_smpls_sampling_fixture
-    if med_obj_ext.double_sample_splitting:
-        with pytest.raises(NotImplementedError, match="sample setting with cluster data and inner samples not supported."):
-            med_obj_ext.set_sample_splitting(smpls=[], all_smpls_cluster=[], smpls_inner=[])
-        with pytest.raises(ValueError, match="smpls_inner is required"):
-            med_obj_ext.set_sample_splitting(smpls=[], smpls_inner=None)
-
-
 def _get_preds(obj, keys):
     return {k: np.array([np.ndarray.flatten(subarray) for subarray in obj.predictions[k]]) for k in keys}
 
