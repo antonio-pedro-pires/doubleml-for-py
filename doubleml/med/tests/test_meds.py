@@ -1,5 +1,3 @@
-from random import seed
-
 import numpy as np
 import pytest
 
@@ -83,10 +81,10 @@ def test_set_smpls(meds_obj, individual_med_objs):
 
 @pytest.fixture(scope="module")
 def fit_objs(meds_obj, individual_med_objs):
-    seed(123)
+    np.random.seed(123)
     meds_obj.fit()
 
-    seed(123)
+    np.random.seed(123)
     framework_list = [None] * len(individual_med_objs)
     for idx, model in enumerate(individual_med_objs.values()):
         framework_list[idx] = model.fit().framework

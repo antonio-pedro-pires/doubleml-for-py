@@ -1,6 +1,6 @@
-import random
 import re
 
+import numpy as np
 import pytest
 
 from doubleml import DoubleMLMED
@@ -52,21 +52,21 @@ def untuned_tuned_scores(
             "ml_nested_g": optuna_params["ml_nested_g"],
         }
 
-    random.seed(0)
+    np.random.seed(0)
     med_obj.fit()
     untuned_score = med_obj.evaluate_learners()
 
-    random.seed(0)
+    np.random.seed(0)
     tune_res = med_obj.tune_ml_models(
         ml_param_space=ml_param_space,
         optuna_settings=optuna_settings,
         return_tune_res=True,
     )
 
-    random.seed(0)
+    np.random.seed(0)
     med_obj.fit()
 
-    random.seed(0)
+    np.random.seed(0)
     tuned_score = med_obj.evaluate_learners()
     return {
         "med_obj": med_obj,
