@@ -70,7 +70,6 @@ def test_meds_modeldict(meds_obj):
 @pytest.mark.ci
 def test_set_smpls(meds_obj, individual_med_objs):
     # Test that smpls and smpls_inner are correctly set for every model.
-    # TODO: Add failing tests
     reference_smpls = meds_obj.smpls
     reference_smpls_inner = meds_obj.smpls_inner
 
