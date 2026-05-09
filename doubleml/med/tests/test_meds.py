@@ -135,3 +135,13 @@ def test_effects_binary_treats(fit_objs, individual_med_objs):
         assert meds_obj._effects[effects].all_thetas == individual_effects[effects].all_thetas
         assert meds_obj._effects[effects].all_ses == individual_effects[effects].all_ses
         assert meds_obj._effects[effects].all_pvals == individual_effects[effects].all_pvals
+
+
+def test_bootstrap(fit_objs):
+    meds_obj, individual_med_objs = fit_objs
+    np.random.seed(123)
+    meds_obj.bootstrap()
+    np.random.seed(123)
+    individual_med_objs.bootstrap()
+
+    assert np.allclose(meds_obj.boot_t_stat, individual_med_objs.boot_t_stat)
