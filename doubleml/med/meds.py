@@ -526,11 +526,11 @@ class DoubleMLMEDS(SampleSplittingMixin):
         """
         if self.framework is None:
             raise ValueError("Apply fit() before calling evaluate_effects()")
-        ate = self._modeldict["potential_1"].framework - self._modeldict["potential_0"].framework
-        dir_treat = self._modeldict["potential_1"].framework - self._modeldict["counterfactual_0"].framework
-        dir_control = self._modeldict["counterfactual_1"].framework - self._modeldict["potential_0"].framework
-        indir_treat = self._modeldict["potential_1"].framework - self._modeldict["counterfactual_1"].framework
-        indir_control = self._modeldict["counterfactual_0"].framework - self._modeldict["potential_0"].framework
+        ate = self._modeldict["factual_1"].framework - self._modeldict["factual_0"].framework
+        dir_treat = self._modeldict["factual_1"].framework - self._modeldict["counterfactual_0"].framework
+        dir_control = self._modeldict["counterfactual_1"].framework - self._modeldict["factual_0"].framework
+        indir_treat = self._modeldict["factual_1"].framework - self._modeldict["counterfactual_1"].framework
+        indir_control = self._modeldict["counterfactual_0"].framework - self._modeldict["factual_0"].framework
 
         self._effects = {
             "ATE": ate,
@@ -560,7 +560,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
 
         for score, (outcome, treatment) in zip(self.models_ids, self._id_pairs):
             assert f"{outcome}_{treatment}" == score
-            learners = pot_learners if outcome == "potential" else counter_learners
+            learners = pot_learners if outcome == "factual" else counter_learners
 
             model = DoubleMLMED(
                 dml_data=self._dml_data,
@@ -588,7 +588,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
     def _valid_id_pairs(self):
         if all(self._dml_data.binary_treats):
             treatment_levels = self.treatments
-            self.valid_outcomes = ["potential", "counterfactual"]
+            self.valid_outcomes = ["factual", "counterfactual"]
             valid_id_pairs = list(itertools.product(self.valid_outcomes, map(int, treatment_levels)))
         return valid_id_pairs
 
@@ -648,7 +648,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
         tune_res = {} if return_tune_res else None
 
         for key, model in self.modeldict.items():
-            if model.outcome == "potential":
+            if model.outcome == "factual":
                 res = model.tune_ml_models(
                     ml_param_space={
                         "ml_g": ml_param_space["ml_g"],

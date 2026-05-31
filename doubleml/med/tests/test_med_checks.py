@@ -29,7 +29,7 @@ def check_med_data_fixture():
 
 @pytest.fixture(scope="module")
 def check_med_outcomes_fixture():
-    return ["potential", "counterfactual", "other", 2]
+    return ["factual", "counterfactual", "other", 2]
 
 
 @pytest.fixture(scope="module")
@@ -54,7 +54,7 @@ def test_med_data_check(check_med_data_fixture, binary_treats, learner_linear, p
     ml_g = learner_linear["ml_g"]
     DoubleMLMED(
         dml_data=good_data,
-        outcome="potential",
+        outcome="factual",
         treatment_level=binary_treats,
         ml_m=ml_m,
         ml_g=ml_g,
@@ -68,7 +68,7 @@ def test_med_data_check(check_med_data_fixture, binary_treats, learner_linear, p
     with pytest.raises(TypeError, match=msg):
         DoubleMLMED(
             dml_data=not_med_data,
-            outcome="potential",
+            outcome="factual",
             treatment_level=binary_treats,
             ml_m=ml_m,
             ml_g=ml_g,
@@ -78,7 +78,7 @@ def test_med_data_check(check_med_data_fixture, binary_treats, learner_linear, p
     with pytest.raises(ValueError, match=r"Treatment variables for mediation analysis must be binary and take values 1 or 0."):
         DoubleMLMED(
             dml_data=med_data_not_binary_treats,
-            outcome="potential",
+            outcome="factual",
             treatment_level=binary_treats,
             ml_m=ml_m,
             ml_g=ml_g,
@@ -88,7 +88,7 @@ def test_med_data_check(check_med_data_fixture, binary_treats, learner_linear, p
     with pytest.raises(NotImplementedError, match="instrumental variables for mediation analysis is not yet implemented."):
         DoubleMLMED(
             dml_data=med_data_instrumental,
-            outcome="potential",
+            outcome="factual",
             treatment_level=binary_treats,
             ml_m=ml_m,
             ml_g=ml_g,
@@ -98,7 +98,7 @@ def test_med_data_check(check_med_data_fixture, binary_treats, learner_linear, p
 
 @pytest.mark.ci
 def test_med_outcome_check(dml_data, binary_treats, check_med_outcomes_fixture, learner_linear):
-    potential_t, counterfactual_t, value_error_t, type_error_t = check_med_outcomes_fixture
+    factual_t, counterfactual_t, value_error_t, type_error_t = check_med_outcomes_fixture
 
     learners = {"ml_g": learner_linear["ml_g"], "ml_m": learner_linear["ml_m"]}
 
@@ -106,7 +106,7 @@ def test_med_outcome_check(dml_data, binary_treats, check_med_outcomes_fixture, 
     with pytest.raises(TypeError, match=msg):
         DoubleMLMED(dml_data=dml_data, outcome=type_error_t, treatment_level=binary_treats, **learners)
 
-    valid_outcomes = ["potential", "counterfactual"]
+    valid_outcomes = ["factual", "counterfactual"]
     msg = f"Invalid outcome {value_error_t}. " + "Valid outcomes " + " or ".join(valid_outcomes) + "."
     with pytest.raises(ValueError, match=msg):
         DoubleMLMED(dml_data=dml_data, outcome=value_error_t, treatment_level=binary_treats, **learners)
@@ -116,7 +116,7 @@ def test_med_outcome_check(dml_data, binary_treats, check_med_outcomes_fixture, 
 def test_med_levels_check(dml_data, learner_linear, check_med_levels_fixture, ps_processor_config):
 
     good_levels, treat_not_int_levels, med_not_number_levels, not_01_treat_levels = check_med_levels_fixture
-    outcome = "potential"
+    outcome = "factual"
     DoubleMLMED(
         dml_data=dml_data,
         outcome=outcome,
@@ -152,9 +152,9 @@ def test_med_levels_check(dml_data, learner_linear, check_med_levels_fixture, ps
 @pytest.mark.ci
 @pytest.mark.filterwarnings("ignore:Learner provided for ml_m is probably invalid:UserWarning")
 @pytest.mark.filterwarnings("ignore:Learner provided for ml_M is probably invalid:UserWarning")
-def test_med_learners_check_potential(dml_data, binary_treats, check_med_learners_fixture, ps_processor_config):
+def test_med_learners_check_factual(dml_data, binary_treats, check_med_learners_fixture, ps_processor_config):
     good_learners, missing_g_learner, missing_G_learner = check_med_learners_fixture
-    outcome = "potential"
+    outcome = "factual"
     DoubleMLMED(
         dml_data=dml_data,
         outcome=outcome,
@@ -173,7 +173,7 @@ def test_med_learners_check_potential(dml_data, binary_treats, check_med_learner
     assert binary_y_data.binary_outcome
 
     # ---  Test mismatch between provided learners and the type of outcome.
-    msg = "Learner ml_g is required when the outcome is potential."
+    msg = "Learner ml_g is required when the outcome is factual."
     with pytest.raises(ValueError, match=msg):
         DoubleMLMED(
             dml_data=dml_data,

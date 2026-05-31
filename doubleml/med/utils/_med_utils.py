@@ -12,19 +12,19 @@ def _normalize_propensity_med(
     M_preds=None,
 ):
     """
-    Normalizes propensity scores for causal mediation analysis. Normalizes both potential and counterfactual scores.
+    Normalizes propensity scores for causal mediation analysis. Normalizes both factual and counterfactual scores.
     """
     n_obs = len(d)
-    if outcome == "potential":
-        result = _normalize_potential(normalize_ipw, d, treatment_level, m_preds, n_obs)
+    if outcome == "factual":
+        result = _normalize_factual(normalize_ipw, d, treatment_level, m_preds, n_obs)
     elif outcome == "counterfactual":
         result = _normalize_counterfactual(normalize_ipw, d, treatment_level, m_preds, M_preds, n_obs)
     return result
 
 
-def _normalize_potential(normalize_ipw, d, treatment_level, m_preds, n_obs):
+def _normalize_factual(normalize_ipw, d, treatment_level, m_preds, n_obs):
     """
-    Normalizes potential scores in the context of causal mediation analysis.
+    Normalizes factual scores in the context of causal mediation analysis.
     """
     if normalize_ipw:
         if treatment_level == 0:

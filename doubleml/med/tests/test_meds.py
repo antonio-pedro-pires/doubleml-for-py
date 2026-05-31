@@ -124,11 +124,11 @@ def test_effects_binary_treats(fit_objs, individual_med_objs):
     assert all([names == valid_names for names, valid_names in zip(meds_obj._effects, effects_names)])
 
     individual_effects = {
-        "ATE": individual_med_objs["potential_1"].framework - individual_med_objs["potential_0"].framework,
-        "DIR_TREAT": individual_med_objs["potential_1"].framework - individual_med_objs["counterfactual_0"].framework,
-        "DIR_CONTROL": individual_med_objs["counterfactual_1"].framework - individual_med_objs["potential_0"].framework,
-        "INDIR_TREAT": individual_med_objs["potential_1"].framework - individual_med_objs["counterfactual_1"].framework,
-        "INDIR_CONTROL": individual_med_objs["counterfactual_0"].framework - individual_med_objs["potential_0"].framework,
+        "ATE": individual_med_objs["factual_1"].framework - individual_med_objs["factual_0"].framework,
+        "DIR_TREAT": individual_med_objs["factual_1"].framework - individual_med_objs["counterfactual_0"].framework,
+        "DIR_CONTROL": individual_med_objs["counterfactual_1"].framework - individual_med_objs["factual_0"].framework,
+        "INDIR_TREAT": individual_med_objs["factual_1"].framework - individual_med_objs["counterfactual_1"].framework,
+        "INDIR_CONTROL": individual_med_objs["counterfactual_0"].framework - individual_med_objs["factual_0"].framework,
     }
 
     for effects in effects_names:

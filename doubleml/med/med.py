@@ -51,7 +51,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
 
     outcome : str
         The outcome parameter to estimate.
-        - 'potential': Estimate the potential outcome :math:`E[Y(d, M(d))]`.
+        - 'factual': Estimate the factual outcome :math:`E[Y(d, M(d))]`.
         - 'counterfactual': Estimate the counterfactual outcome :math:`E[Y(d, M(d'))]`.
         where :math:`d' \neq d
 
@@ -210,7 +210,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         return self._ps_processor
 
     def _initialize_ml_nuisance_params(self):
-        if self._outcome == "potential":
+        if self._outcome == "factual":
             learners = ["ml_g", "ml_m"]
         else:
             learners = ["ml_m", "ml_G", "ml_M", "ml_nested_g"]
@@ -227,12 +227,12 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         external_predictions,
         return_models,
     ):
-        if self._outcome == "potential":
-            return self._nuisance_est_potential(smpls, n_jobs_cv, external_predictions, return_models)
+        if self._outcome == "factual":
+            return self._nuisance_est_factual(smpls, n_jobs_cv, external_predictions, return_models)
         else:
             return self._nuisance_est_counterfactual(smpls, n_jobs_cv, external_predictions, return_models)
 
-    def _nuisance_est_potential(
+    def _nuisance_est_factual(
         self,
         smpls,
         n_jobs_cv,
@@ -500,7 +500,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         return psi_elements, preds
 
     def _score_elements(self, y, m_hat_preds, g_hat_preds=None, M_hat_preds=None, G_hat_preds=None, nested_g_hat_preds=None):
-        if self._outcome == "potential":
+        if self._outcome == "factual":
             u_hat = y - g_hat_preds
             propensity_score = _normalize_propensity_med(
                 self.normalize_ipw,
@@ -564,7 +564,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
             params_name="ml_m",
         )
 
-        if self.outcome == "potential":
+        if self.outcome == "factual":
             g_tune_res = _dml_tune_optuna(
                 y=y[treated_mask],
                 x=x[treated_mask],
@@ -663,7 +663,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
             super().set_sample_splitting(all_smpls=smpls, all_smpls_cluster=all_smpls_cluster)
 
     def _check_learners(self, ml_g, ml_m, ml_G, ml_M, ml_nested_g):
-        if self._outcome == "potential":
+        if self._outcome == "factual":
             self._learner = {"ml_g": ml_g, "ml_m": ml_m}
         else:
             self._learner = {"ml_m": ml_m, "ml_G": ml_G, "ml_M": ml_M, "ml_nested_g": ml_nested_g}
@@ -702,7 +702,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         if not isinstance(outcome, str):
             raise TypeError("Outcome must be a string." + f"{str(outcome)} of type {str(type(outcome))} provided instead.")
 
-        valid_outcomes = ["potential", "counterfactual"]
+        valid_outcomes = ["factual", "counterfactual"]
         if outcome not in valid_outcomes:
             raise ValueError(f"Invalid outcome {outcome}. " + "Valid outcomes " + " or ".join(valid_outcomes) + ".")
 

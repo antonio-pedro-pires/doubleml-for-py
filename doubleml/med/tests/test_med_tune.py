@@ -18,7 +18,7 @@ def untuned_tuned_scores(
     dml_data, binary_outcomes, binary_treats, learner_tree, optuna_params, optuna_settings, ps_processor_config
 ):
 
-    if binary_outcomes == "potential":
+    if binary_outcomes == "factual":
         med_obj = DoubleMLMED(
             dml_data=dml_data,
             outcome=binary_outcomes,
@@ -39,7 +39,7 @@ def untuned_tuned_scores(
             ps_processor_config=ps_processor_config,
         )
 
-    if binary_outcomes == "potential":
+    if binary_outcomes == "factual":
         ml_param_space = {
             "ml_g": optuna_params["ml_g"],
             "ml_m": optuna_params["ml_m"],

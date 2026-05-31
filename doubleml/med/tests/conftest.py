@@ -85,7 +85,7 @@ def binary_treats(request):
     return request.param
 
 
-@pytest.fixture(scope="session", params=["potential", "counterfactual"], ids=["outcome=potential", "outcome=counterfactual"])
+@pytest.fixture(scope="session", params=["factual", "counterfactual"], ids=["outcome=factual", "outcome=counterfactual"])
 def binary_outcomes(request):
     return request.param
 
