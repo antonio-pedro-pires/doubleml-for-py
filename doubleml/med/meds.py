@@ -1,3 +1,4 @@
+import copy
 import itertools
 from typing import Optional
 
@@ -648,27 +649,23 @@ class DoubleMLMEDS(SampleSplittingMixin):
         tune_res = {} if return_tune_res else None
 
         for key, model in self.modeldict.items():
-            if model.outcome == "factual":
-                res = model.tune_ml_models(
-                    ml_param_space={
-                        "ml_g": ml_param_space["ml_g"],
-                        "ml_m": ml_param_space["ml_m"],
-                    },
-                    **tuning_kwargs,
-                )
-            elif model.outcome == "counterfactual":
-                res = model.tune_ml_models(
-                    ml_param_space={
-                        "ml_m": ml_param_space["ml_m"],
-                        "ml_G": ml_param_space["ml_G"],
-                        "ml_M": ml_param_space["ml_M"],
-                        "ml_nested_g": ml_param_space["ml_nested_g"],
-                    },
-                    **tuning_kwargs,
-                )
+            valid_keys = model.learner_names
+            model_param_space = {learner: ml_param_space[learner] for learner in valid_keys if learner in ml_param_space}
+            model_tuning_kwargs = copy.deepcopy(tuning_kwargs)
+            if model_tuning_kwargs["scoring_methods"] is not None:
+                model_tuning_kwargs["scoring_methods"] = {
+                    learner: model_tuning_kwargs["scoring_methods"][learner]
+                    for learner in valid_keys
+                    if learner in model_tuning_kwargs["scoring_methods"]
+                }
+            res = model.tune_ml_models(
+                ml_param_space=model_param_space,
+                **model_tuning_kwargs,
+            )
 
             if return_tune_res:
                 tune_res[key] = res
+
         return tune_res if return_tune_res else None
 
     tune_ml_models.__doc__ = TUNE_ML_MODELS_DOC
