@@ -54,7 +54,7 @@ def individual_med_objs(meds_obj, learner_linear, double_sample_splitting):
         )
 
         individual_modeldict[model_id] = ind_model
-        ind_model.set_sample_splitting(smpls=smpls, smpls_inner=smpls_inner)
+        ind_model.set_samples(all_smpls=smpls, all_smpls_inner=smpls_inner)
     return individual_modeldict
 
 

@@ -7,6 +7,7 @@ from doubleml.med.utils._med_utils import (
     _check_inner_sample_splitting,
     _check_is_inner_partition,
     _check_reps_smpls_inner,
+    set_double_sample_splitting,
 )
 
 
@@ -187,3 +188,23 @@ def test_check_is_inner_partition_error(valid_smpls_structure):
             fold_inner.pop()  # Makes it so that a partition is impossible.
             with pytest.raises(ValueError, match="Some of the smpls_inner_fold do not partition the training samples"):
                 _check_is_inner_partition(fold_inner, fold)
+
+
+def test_set_double_sample_splitting(dml_data, binary_outcomes, valid_smpls_structure):
+    np.random.seed(0)
+    smpls, smpls_inner, *_, n_inner_folds = valid_smpls_structure
+    actual_smpls_inner, actual_n_inner_folds = set_double_sample_splitting(smpls, smpls_inner)
+    assert actual_n_inner_folds == n_inner_folds
+    assert actual_smpls_inner == smpls_inner
+
+
+def test_set_double_sample_splitting_exceptions(valid_smpls_structure):
+    smpls, smpls_inner, *_ = valid_smpls_structure
+    with pytest.raises(ValueError, match=r"all_smpls_inner must not be None"):
+        set_double_sample_splitting(smpls, None)
+
+    with pytest.raises(NotImplementedError, match="sample setting with cluster data and inner samples not supported."):
+        set_double_sample_splitting(smpls, smpls_inner, is_cluster_data=True)
+
+    with pytest.raises(NotImplementedError, match="sample setting with cluster data and inner samples not supported."):
+        set_double_sample_splitting(smpls, smpls_inner, all_smpls_cluster=[])

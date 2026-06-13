@@ -53,7 +53,7 @@ def dml_med_fixture(
     med_obj, med_obj_ext = med_objs
 
     smpls_inner = None if not med_obj.double_sample_splitting else med_obj.smpls_inner
-    med_obj_ext.set_sample_splitting(smpls=med_obj.smpls, smpls_inner=smpls_inner)
+    med_obj_ext.set_samples(all_smpls=med_obj.smpls, all_smpls_inner=smpls_inner)
 
     np.random.seed(3141)
     med_obj.fit()

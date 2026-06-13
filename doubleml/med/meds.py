@@ -577,7 +577,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
                 **learners,
             )
 
-            model.set_sample_splitting(smpls=self._smpls, smpls_inner=self.smpls_inner)
+            model.set_samples(all_smpls=self._smpls, all_smpls_inner=self.smpls_inner)
 
             modeldict[f"{outcome}_{treatment}"] = model
 

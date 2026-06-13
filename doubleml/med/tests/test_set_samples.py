@@ -60,20 +60,10 @@ def set_smpls_sampling_fixture(dml_data, learner_linear, binary_outcomes, double
 
 
 @pytest.mark.ci
-def test_set_sample_splitting(set_smpls_sampling_fixture):
+def test_set_samples(set_smpls_sampling_fixture):
     med_obj, med_obj_ext = set_smpls_sampling_fixture
     smpls_inner = None if not med_obj.double_sample_splitting else med_obj.smpls_inner
-    med_obj_ext.set_sample_splitting(smpls=med_obj.smpls, smpls_inner=smpls_inner)
+    med_obj_ext.set_samples(all_smpls=med_obj.smpls, all_smpls_inner=smpls_inner)
     if med_obj.double_sample_splitting:
         np.testing.assert_equal(med_obj.smpls_inner, med_obj_ext.smpls_inner)
     np.testing.assert_equal(med_obj.smpls, med_obj_ext.smpls)
-
-
-@pytest.mark.ci
-def test_set_sample_splitting_exceptions(set_smpls_sampling_fixture):
-    _, med_obj_ext = set_smpls_sampling_fixture
-    if med_obj_ext.double_sample_splitting:
-        with pytest.raises(NotImplementedError, match="sample setting with cluster data and inner samples not supported."):
-            med_obj_ext.set_sample_splitting(smpls=[], all_smpls_cluster=[], smpls_inner=[])
-        with pytest.raises(ValueError, match="smpls_inner is required"):
-            med_obj_ext.set_sample_splitting(smpls=[], smpls_inner=None)

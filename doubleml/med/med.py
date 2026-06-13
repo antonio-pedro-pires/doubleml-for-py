@@ -7,7 +7,11 @@ from sklearn.utils import check_X_y
 
 from doubleml.double_ml import DoubleML
 from doubleml.double_ml_score_mixins import LinearScoreMixin
-from doubleml.med.utils._med_utils import _check_inner_sample_splitting, _check_med_data, _normalize_propensity_med
+from doubleml.med.utils._med_utils import (
+    _check_med_data,
+    _normalize_propensity_med,
+    set_double_sample_splitting,
+)
 from doubleml.utils._checks import _check_finite_predictions, _check_sample_splitting, _check_score
 from doubleml.utils._estimation import (
     _cond_targets,
@@ -642,25 +646,24 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
     def _sensitivity_element_est(self, preds):
         pass
 
-    def set_sample_splitting(self, smpls, all_smpls_cluster=None, is_cluster_data=False, smpls_inner=None):
+    def set_samples(
+        self,
+        all_smpls,
+        all_smpls_inner=None,
+        all_smpls_cluster=None,
+        is_cluster_data=False,
+    ):
+        # Can't call the SampleSplittingMixing set_sample_splitting method because it throws an error when
+        # double_sample_splitting is True. Circumvented this obstacle by copying the functionality from the method.
+        self._smpls, self._smpls_cluster, self._n_rep, self._n_folds = _check_sample_splitting(
+            all_smpls, all_smpls_cluster, self._dml_data, self._is_cluster_data, n_obs=self._n_obs_sample_splitting
+        )
         if self.double_sample_splitting:
-            if smpls_inner is None:
-                raise ValueError("smpls_inner is required")
-            if all_smpls_cluster is not None or is_cluster_data:
-                raise NotImplementedError("sample setting with cluster data and inner samples not supported.")
-            self._smpls, self._smpls_cluster, self._n_rep, self._n_folds = _check_sample_splitting(
-                all_smpls=smpls,
-                all_smpls_cluster=all_smpls_cluster,
-                dml_data=self._dml_data,
-                is_cluster_data=is_cluster_data,
-                n_obs=None,
+            self._smpls_inner, self.n_folds_inner = set_double_sample_splitting(
+                self._smpls, all_smpls_inner, self._smpls_cluster, is_cluster_data
             )
-            self._smpls_inner, self._n_folds_inner = _check_inner_sample_splitting(
-                smpls_inner,
-                self._smpls,
-            )
-        else:
-            super().set_sample_splitting(all_smpls=smpls, all_smpls_cluster=all_smpls_cluster)
+
+        self._initialize_dml_model()
 
     def _check_learners(self, ml_g, ml_m, ml_G, ml_M, ml_nested_g):
         if self._outcome == "factual":
