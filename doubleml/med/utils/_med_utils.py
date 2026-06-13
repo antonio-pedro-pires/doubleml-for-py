@@ -188,3 +188,20 @@ def _check_med_data(dml_data):
     if dml_data.z_cols is not None:
         raise NotImplementedError("instrumental variables for mediation analysis is not yet implemented.")
     return dml_data
+
+
+def set_double_sample_splitting(
+    all_smpls,
+    all_smpls_inner,
+    all_smpls_cluster=None,
+    is_cluster_data=False,
+):
+    if all_smpls_inner is None:
+        raise ValueError("all_smpls_inner must not be None")
+    if all_smpls_cluster is not None or is_cluster_data:
+        raise NotImplementedError("sample setting with cluster data and inner samples not supported.")
+    smpls_inner, _n_folds_inner = _check_inner_sample_splitting(
+        all_smpls_inner,
+        all_smpls,
+    )
+    return smpls_inner, _n_folds_inner
