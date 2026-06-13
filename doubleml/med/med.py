@@ -653,6 +653,75 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         all_smpls_cluster=None,
         is_cluster_data=False,
     ):
+        """
+        Set samples and inner samples for DoubleMLMED models. Inner samples are acquired by splitting the training set
+        for each fold in samples.
+
+        Parameters
+        ----------
+
+        all_smpls : list or tuple
+            If nested list of lists of tuples:
+                The outer list needs to provide an entry per repeated sample splitting (length of list is set as
+                ``n_rep``).
+                The inner list needs to provide a tuple (train_ind, test_ind) per fold (length of list is set as
+                ``n_folds``). test_ind must form a partition for each inner list.
+            If list of tuples:
+                The list needs to provide a tuple (train_ind, test_ind) per fold (length of list is set as
+                ``n_folds``). test_ind must form a partition. ``n_rep=1`` is always set.
+            If tuple:
+                Must be a tuple with two elements train_ind and test_ind. Only viable option is to set
+                train_ind and test_ind to np.arange(n_obs), which corresponds to no sample splitting.
+                ``n_folds=1`` and ``n_rep=1`` is always set.
+
+        all_smpls_cluster : list or None
+            Nested list or ``None``. The first level of nesting corresponds to the number of repetitions. The second level
+            of nesting corresponds to the number of folds. The third level of nesting contains a tuple of training and
+            testing lists. Both training and testing contain an array for each cluster variable, which form a partition of
+            the clusters.
+            Default is ``None``. Currently only None value is allowed.
+        is_cluster_data : bool
+            Indicates whether data clustering is used.
+        all_smpls_inner : list
+            list of lists of shape (n_rep, n_folds, n_folds_inner, 2) where n_rep is the number of times the K-fold
+            procedure is repeated, n_folds is the number of folds containing train/test subsets, n_folds_inner is the
+            number of inner folds created when re-splitting the train subset. The data structure containing the
+            train/test splits must be a tuple.
+
+        Examples
+        --------
+        >>> from sklearn.linear_model import LinearRegression, LogisticRegression
+        >>> from doubleml.med import DoubleMLMED
+        >>> from doubleml.med.datasets import make_med_data
+        >>> import numpy as np
+        >>> np.random.seed(0)
+        >>> med_data = make_med_data(n_obs=10)
+        >>> ml_g = LinearRegression()
+        >>> ml_m = LogisticRegression()
+        >>> # Creating manually set samples of shape (1 x 2 x 2) and inner samples of shape (1 x 2 x 2 x 2)
+        >>> smpls = [[([0, 1, 2, 3, 4,], [5, 6, 7, 8, 9]), ([5, 6, 7, 8, 9], [0, 1, 2, 3,4])]]
+        >>> smpls_inner = [[[([0, 1], [2, 3, 4]), ([2, 3, 4], [0, 1])], [([5, 6], [7, 8, 9]), ([7, 8, 9], [5, 6])]]]
+        >>> med_obj = DoubleMLMED(med_data,
+        ... treatment_level = 1,
+        ... outcome = "factual",
+        ... ml_g=ml_g,
+        ... ml_m=ml_m,
+        ... n_rep=1,
+        ... n_folds=2,
+        ... n_folds_inner=2,
+        ... )
+        >>> print(med_obj.smpls)
+        [[(array([2, 3, 4, 8, 9]), array([0, 1, 5, 6, 7])), (array([0, 1, 5, 6, 7]), array([2, 3, 4, 8, 9]))]]
+        >>> print(med_obj.smpls_inner)
+        [[[(array([8, 9]), array([2, 3, 4])), (array([2, 3, 4]), array([8, 9]))], [(array([1, 5]), array([0, 6, 7])),
+        (array([0, 6, 7]), array([1, 5]))]]]
+        >>> med_obj.set_samples(smpls, smpls_inner) # Replacing automatically generated samples with manually set samples.
+        >>> print(med_obj.smpls)
+        [[(array([0, 1, 2, 3, 4]), array([5, 6, 7, 8, 9])), (array([5, 6, 7, 8, 9]), array([0, 1, 2, 3, 4]))]]
+        >>> print(med_obj.smpls_inner)
+        [[[([0, 1], [2, 3, 4]), ([2, 3, 4], [0, 1])], [([5, 6], [7, 8, 9]), ([7, 8, 9], [5, 6])]]]
+
+        """
         # Can't call the SampleSplittingMixing set_sample_splitting method because it throws an error when
         # double_sample_splitting is True. Circumvented this obstacle by copying the functionality from the method.
         self._smpls, self._smpls_cluster, self._n_rep, self._n_folds = _check_sample_splitting(
