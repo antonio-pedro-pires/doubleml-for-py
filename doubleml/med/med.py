@@ -10,9 +10,9 @@ from doubleml.double_ml_score_mixins import LinearScoreMixin
 from doubleml.med.utils._med_utils import (
     _check_med_data,
     _normalize_propensity_med,
-    set_double_sample_splitting,
+    _set_samples,
 )
-from doubleml.utils._checks import _check_finite_predictions, _check_sample_splitting, _check_score
+from doubleml.utils._checks import _check_finite_predictions, _check_score
 from doubleml.utils._estimation import (
     _cond_targets,
     _dml_cv_predict,
@@ -727,18 +727,14 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         [[(array([0, 1, 2, 3, 4]), array([5, 6, 7, 8, 9])), (array([5, 6, 7, 8, 9]), array([0, 1, 2, 3, 4]))]]
         >>> print(med_obj.smpls_inner)
         [[[([0, 1], [2, 3, 4]), ([2, 3, 4], [0, 1])], [([5, 6], [7, 8, 9]), ([7, 8, 9], [5, 6])]]]
-
         """
-        # Can't call the SampleSplittingMixing set_sample_splitting method because it throws an error when
-        # double_sample_splitting is True. Circumvented this obstacle by copying the functionality from the method.
-        self._smpls, self._smpls_cluster, self._n_rep, self._n_folds = _check_sample_splitting(
-            all_smpls, all_smpls_cluster, self._dml_data, self._is_cluster_data, n_obs=self._n_obs_sample_splitting
+        _set_samples(
+            dml_obj=self,
+            all_smpls=all_smpls,
+            all_smpls_inner=all_smpls_inner,
+            all_smpls_cluster=all_smpls_cluster,
+            is_cluster_data=is_cluster_data,
         )
-        if self.double_sample_splitting:
-            self._smpls_inner, self.n_folds_inner = set_double_sample_splitting(
-                self._smpls, all_smpls_inner, self._smpls_cluster, is_cluster_data
-            )
-
         self._initialize_dml_model()
 
     def _check_learners(self, ml_g, ml_m, ml_G, ml_M, ml_nested_g):

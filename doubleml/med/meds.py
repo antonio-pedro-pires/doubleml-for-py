@@ -10,7 +10,7 @@ from sklearn import clone
 from doubleml.double_ml_framework import concat
 from doubleml.double_ml_sampling_mixins import SampleSplittingMixin
 from doubleml.med.med import DoubleMLMED
-from doubleml.med.utils._med_utils import _check_med_data
+from doubleml.med.utils._med_utils import _check_med_data, _set_samples
 from doubleml.med.utils._meds_utils import generate_effects_summary
 from doubleml.utils import PSProcessorConfig
 from doubleml.utils._checks import _check_score
@@ -694,3 +694,88 @@ class DoubleMLMEDS(SampleSplittingMixin):
         self._framework.bootstrap(method=method, n_rep_boot=n_rep_boot)
 
         return self
+
+    def set_samples(
+        self,
+        all_smpls,
+        all_smpls_inner=None,
+        all_smpls_cluster=None,
+        is_cluster_data=None,
+    ):
+        """
+        Set samples and inner samples for DoubleMLMEDS models. Inner samples are acquired by splitting the training set
+        for each fold in samples.
+
+        Parameters
+        ----------
+
+        all_smpls : list or tuple
+            If nested list of lists of tuples:
+                The outer list needs to provide an entry per repeated sample splitting (length of list is set as
+                ``n_rep``).
+                The inner list needs to provide a tuple (train_ind, test_ind) per fold (length of list is set as
+                ``n_folds``). test_ind must form a partition for each inner list.
+            If list of tuples:
+                The list needs to provide a tuple (train_ind, test_ind) per fold (length of list is set as
+                ``n_folds``). test_ind must form a partition. ``n_rep=1`` is always set.
+            If tuple:
+                Must be a tuple with two elements train_ind and test_ind. Only viable option is to set
+                train_ind and test_ind to np.arange(n_obs), which corresponds to no sample splitting.
+                ``n_folds=1`` and ``n_rep=1`` is always set.
+
+        all_smpls_cluster : list or None
+            Nested list or ``None``. The first level of nesting corresponds to the number of repetitions. The second level
+            of nesting corresponds to the number of folds. The third level of nesting contains a tuple of training and
+            testing lists. Both training and testing contain an array for each cluster variable, which form a partition of
+            the clusters.
+            Default is ``None``. Currently only None value is allowed.
+        is_cluster_data : bool
+            Indicates whether data clustering is used.
+        all_smpls_inner : list
+            list of lists of shape (n_rep, n_folds, n_folds_inner, 2) where n_rep is the number of times the K-fold
+            procedure is repeated, n_folds is the number of folds containing train/test subsets, n_folds_inner is the
+            number of inner folds created when re-splitting the train subset. The data structure containing the
+            train/test splits must be a tuple.
+
+        Examples
+        --------
+        >>> from sklearn.linear_model import LinearRegression, LogisticRegression
+        >>> from doubleml.med import DoubleMLMEDS
+        >>> from doubleml.med.datasets import make_med_data
+        >>> import numpy as np
+        >>> np.random.seed(0)
+        >>> med_data = make_med_data(n_obs=10)
+        >>> ml_g = LinearRegression()
+        >>> ml_G = LinearRegression()
+        >>> ml_nested_g = LinearRegression()
+        >>> ml_m = LogisticRegression()
+        >>> ml_M = LogisticRegression()
+        >>> # Creating manually set samples of shape (1 x 2 x 2) and inner samples of shape (1 x 2 x 2 x 2)
+        >>> med_obj = DoubleMLMEDS(med_data,
+        ... ml_g=ml_g,
+        ... ml_G=ml_G,
+        ... ml_nested_g=ml_g,
+        ... ml_m=ml_m,
+        ... ml_M=ml_M,
+        ... n_rep=1,
+        ... n_folds=2,
+        ... n_folds_inner=2,
+        ... draw_sample_splitting=False
+        ... )
+        >>> smpls = [[([0, 1, 2, 3, 4,], [5, 6, 7, 8, 9]), ([5, 6, 7, 8, 9], [0, 1, 2, 3,4])]]
+        >>> smpls_inner = [[[([0, 1], [2, 3, 4]), ([2, 3, 4], [0, 1])], [([5, 6], [7, 8, 9]), ([7, 8, 9], [5, 6])]]]
+        >>> med_obj.set_samples(smpls, smpls_inner) # Replacing automatically generated samples with manually set samples.
+        >>> print(med_obj.smpls)
+        [[(array([0, 1, 2, 3, 4]), array([5, 6, 7, 8, 9])), (array([5, 6, 7, 8, 9]), array([0, 1, 2, 3, 4]))]]
+        >>> print(med_obj.smpls_inner)
+        [[[([0, 1], [2, 3, 4]), ([2, 3, 4], [0, 1])], [([5, 6], [7, 8, 9]), ([7, 8, 9], [5, 6])]]]
+        """
+        _set_samples(
+            self,
+            all_smpls,
+            all_smpls_inner,
+            all_smpls_cluster,
+            is_cluster_data,
+        )
+
+        self._initialize_dml_model()
