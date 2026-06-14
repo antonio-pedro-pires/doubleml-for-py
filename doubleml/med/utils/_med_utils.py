@@ -1,6 +1,7 @@
 import numpy as np
 
 from doubleml import DoubleMLMEDData
+from doubleml.utils._checks import _check_sample_splitting
 
 
 def _normalize_propensity_med(
@@ -205,3 +206,21 @@ def set_double_sample_splitting(
         all_smpls,
     )
     return smpls_inner, _n_folds_inner
+
+
+def _set_samples(
+    dml_obj,
+    all_smpls,
+    all_smpls_inner,
+    all_smpls_cluster=None,
+    is_cluster_data=False,
+):
+    # Can't call the SampleSplittingMixing set_sample_splitting method because it throws an error when
+    # double_sample_splitting is True. Circumvented this obstacle by copying the functionality from the method.
+    dml_obj._smpls, dml_obj._smpls_cluster, dml_obj._n_rep, dml_obj._n_folds = _check_sample_splitting(
+        all_smpls, all_smpls_cluster, dml_obj._dml_data, dml_obj._is_cluster_data, n_obs=dml_obj._n_obs_sample_splitting
+    )
+    if dml_obj.double_sample_splitting:
+        dml_obj._smpls_inner, dml_obj._n_folds_inner = set_double_sample_splitting(
+            dml_obj._smpls, all_smpls_inner, dml_obj._smpls_cluster, is_cluster_data
+        )

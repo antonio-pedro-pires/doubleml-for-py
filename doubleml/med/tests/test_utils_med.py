@@ -1,12 +1,13 @@
 import numpy as np
 import pytest
 
-from doubleml import DoubleMLMED
+from doubleml import DoubleMLMED, DoubleMLMEDS
 from doubleml.med.utils._med_utils import (
     _check_fold_smpls_inner,
     _check_inner_sample_splitting,
     _check_is_inner_partition,
     _check_reps_smpls_inner,
+    _set_samples,
     set_double_sample_splitting,
 )
 
@@ -28,6 +29,16 @@ def med_obj(dml_data, learner_linear, ps_processor_config):
         n_folds=4,
         n_folds_inner=5,
         ps_processor_config=ps_processor_config,
+    )
+
+
+@pytest.fixture(
+    scope="module",
+)
+def meds_obj(dml_data, learner_linear, ps_processor_config):
+    return DoubleMLMEDS(
+        dml_data=dml_data,
+        **learner_linear,
     )
 
 
@@ -208,3 +219,23 @@ def test_set_double_sample_splitting_exceptions(valid_smpls_structure):
 
     with pytest.raises(NotImplementedError, match="sample setting with cluster data and inner samples not supported."):
         set_double_sample_splitting(smpls, smpls_inner, all_smpls_cluster=[])
+
+
+def test_set_samples(
+    valid_smpls_structure,
+    med_obj,
+):
+    smpls1, smpls_inner1, *_ = valid_smpls_structure
+    med_obj.draw_sample_splitting()
+    smpls2, smpls_inner2 = med_obj.smpls, med_obj.smpls_inner
+    _set_samples(med_obj, smpls2, smpls_inner2)
+    # Somehow, np.array_equal(med_obj.smpls, smpls2) returns false, even when smpls2 = copy.deepcopy(smpls1) but this does.
+    for rep1, rep2 in zip(med_obj.smpls, smpls2):
+        for fold1, fold2 in zip(rep1, rep2):
+            for subset1, subset2 in zip(fold1, fold2):
+                assert np.array_equal(subset1, subset2)
+    for rep1, rep2 in zip(med_obj.smpls_inner, smpls_inner2):
+        for fold1, fold2 in zip(rep1, rep2):
+            for fold_inner1, fold_inner2 in zip(fold1, fold2):
+                for subset1, subset2 in zip(fold_inner1, fold_inner2):
+                    assert np.array_equal(subset1, subset2)
