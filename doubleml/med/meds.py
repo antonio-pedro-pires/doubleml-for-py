@@ -173,6 +173,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
 
         self._ps_processor_config = ps_processor_config if ps_processor_config is not None else PSProcessorConfig()
 
+        self._modeldict = None
         self._draw_sample_splitting = draw_sample_splitting
         if self._draw_sample_splitting:
             self.draw_sample_splitting()
