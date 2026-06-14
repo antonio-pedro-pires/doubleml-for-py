@@ -131,7 +131,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         self._dml_data = _check_med_data(dml_data)
 
         self._double_sample_splitting = double_sample_splitting
-        self.n_folds_inner = n_folds_inner
+        self._n_folds_inner = n_folds_inner
 
         super().__init__(
             dml_data, n_folds, n_rep, score, draw_sample_splitting, double_sample_splitting=self.double_sample_splitting
@@ -212,6 +212,13 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         Propensity score processor.
         """
         return self._ps_processor
+
+    @property
+    def n_folds_inner(self):
+        """
+        Number of inner folds.
+        """
+        return self._n_folds_inner
 
     def _initialize_ml_nuisance_params(self):
         if self._outcome == "factual":
