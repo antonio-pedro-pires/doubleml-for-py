@@ -62,7 +62,8 @@ def test_meds_instrumental_variables_exception(learners, bad_data):
 
 @pytest.mark.ci
 def test_meds_smpls_not_set_exception(dml_data, learners):
-    msg = "Sample splitting not specified. Draw samples via .draw_sample splitting(). External samples not implemented yet."
+    msg = r"Sample splitting not specified. Draw samples via self.draw_sample_splitting() or set external samples "
+
     meds_obj_no_smpls = DoubleMLMEDS(dml_data=dml_data, draw_sample_splitting=False, **learners)
     with pytest.raises(ValueError, match=re.escape(msg)):
         _ = meds_obj_no_smpls.smpls

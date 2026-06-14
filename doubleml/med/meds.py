@@ -340,8 +340,8 @@ class DoubleMLMEDS(SampleSplittingMixin):
         """
         if self._smpls is None:
             err_msg = (
-                "Sample splitting not specified. Draw samples via .draw_sample splitting(). "
-                + "External samples not implemented yet."
+                "Sample splitting not specified. Draw samples via self.draw_sample_splitting() or set external samples "
+                + "via self.set_samples()."
             )
             raise ValueError(err_msg)
         return self._smpls
