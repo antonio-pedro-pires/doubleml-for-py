@@ -416,7 +416,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
 
                 nested_g_hat = _dml_cv_predict(
                     self._learner["ml_nested_g"],
-                    xm,
+                    x,
                     G_hat_inner_preds,
                     smpls=smpls_d0,
                     n_jobs=n_jobs_cv,
@@ -457,7 +457,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
             else:
                 nested_g_hat = _dml_cv_predict(
                     self.learner["ml_nested_g"],
-                    x=xm,
+                    x=x,
                     y=G_hat["preds"],
                     smpls=smpls_d0,
                     n_jobs=n_jobs_cv,
