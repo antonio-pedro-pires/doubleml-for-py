@@ -394,12 +394,14 @@ class DoubleMLMEDS(SampleSplittingMixin):
     @property
     def summary(self):
         """
-        A summary for the estimated causal effect after calling :meth:`fit`.
+        A summary for the estimated potential outcomes after calling :meth:`fit`.
         """
         if self.framework is None:
             col_names = ["coef", "std err", "t", "P>|t|"]
             df_summary = pd.DataFrame(columns=col_names)
         else:
+            if self._effects is None:
+                self.evaluate_effects()
             ci = self.confint()
             df_summary = generate_summary(
                 coef=self.coef, se=self.se, t_stat=self.t_stat, pval=self.pval, ci=ci, index_names=self.models_ids
@@ -409,8 +411,11 @@ class DoubleMLMEDS(SampleSplittingMixin):
     @property
     def effects_summary(self):
         """
-        A summary for the estimated effects after calling :meth:`evaluate_effects`.
+        A summary for the estimated effects. The effects are computed automatically
+        (via :meth:`evaluate_effects`) on first access once :meth:`fit` has been called.
         """
+        if self.framework is not None and self._effects is None:
+            self.evaluate_effects()
         if self._effects is None:
             col_names = ["coef", "std err", "t", "P>|t|"]
             df_effects_summary = pd.DataFrame(columns=col_names)
@@ -539,6 +544,8 @@ class DoubleMLMEDS(SampleSplittingMixin):
             "INDIR_TREAT": indir_treat,
             "INDIR_CONTROL": indir_control,
         }
+
+        return self
 
     def _initialize_dml_model(self):
         self._modeldict = self._initialize_models()
