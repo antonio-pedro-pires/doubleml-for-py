@@ -101,8 +101,10 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
     >>> ml_m = LogisticRegression(l1_ratio=1, solver="liblinear", max_iter=1000)
     >>> ml_M = LogisticRegression(l1_ratio=1, solver="liblinear", max_iter=1000)
     >>> obj_dml_data = make_med_data()
-    >>> dml_med_obj = dml.DoubleMLMED(obj_dml_data, 1, "counterfactual", ml_m, ml_g, ml_G, ml_M, ml_nested_g) # doctest: +SKIP
+    >>> dml_med_obj = dml.DoubleMLMED(obj_dml_data, 1, "counterfactual", ml_m, ml_g, ml_G, ml_M, ml_nested_g)
     >>> dml_med_obj.fit().summary  # doctest: +SKIP
+           coef   std err         t         P>|t|     2.5 %   97.5 %
+    d  0.995196  0.059411  16.75092  5.575699e-63  0.878752  1.11164
     """
 
     def __init__(
