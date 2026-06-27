@@ -1,0 +1,167 @@
+import copy
+import math
+import re
+
+import numpy as np
+import pytest
+
+from doubleml import DoubleMLMED
+
+# TODO: Remove warning filter once sklearn gets to version 1.10
+pytestmark = pytest.mark.filterwarnings("ignore: l1_ratio parameter is only used when penalty ")
+
+
+@pytest.fixture(scope="module")
+def med_objs(
+    dml_data,
+    learner_linear,
+    binary_outcomes,
+    binary_scores,
+    normalize_ipw,
+    binary_treats,
+    n_folds,
+    double_sample_splitting,
+    n_rep,
+    ps_processor_config,
+):
+
+    kwargs = {
+        "dml_data": dml_data,
+        "outcome": binary_outcomes,
+        "treatment_level": binary_treats,
+        "score": "efficient-alt",
+        "normalize_ipw": normalize_ipw,
+        "double_sample_splitting": double_sample_splitting,
+        "ps_processor_config": ps_processor_config,
+        **learner_linear,
+    }
+
+    np.random.seed(3141)
+    med_obj = DoubleMLMED(**kwargs)
+    np.random.seed(3141)
+    med_obj_ext = DoubleMLMED(**kwargs)
+    return med_obj, med_obj_ext
+
+
+@pytest.fixture(scope="module")
+def dml_med_fixture(
+    med_objs,
+    n_rep_boot,
+):
+    boot_methods = ["normal"]
+
+    med_obj, med_obj_ext = med_objs
+
+    smpls_inner = None if not med_obj.double_sample_splitting else med_obj.smpls_inner
+    med_obj_ext.set_sample_splitting(smpls=med_obj.smpls, smpls_inner=smpls_inner)
+
+    np.random.seed(3141)
+    med_obj.fit()
+
+    prediction_dict = {"d": _get_preds(med_obj, med_obj.learner.keys())}
+
+    if med_obj.double_sample_splitting and med_obj.outcome == "counterfactual":
+        for i in range(med_obj.n_folds):
+            prediction_dict["d"][f"ml_G_inner_{i}"] = med_obj.predictions[f"ml_G_inner_{i}"][:, :, 0]
+
+    med_obj_ext.fit(external_predictions=prediction_dict)
+
+    res_dict = _get_res(med_obj, med_obj_ext, boot_methods, n_rep_boot)
+
+    return res_dict
+
+
+@pytest.mark.ci
+def test_dml_med_coef(dml_med_fixture):
+    res_dict = dml_med_fixture
+    assert math.isclose(res_dict["coef"], res_dict["coef_ext"], rel_tol=1e-9, abs_tol=1e-4)
+
+
+@pytest.mark.ci
+def test_dml_med_se(dml_med_fixture):
+    res_dict = dml_med_fixture
+    assert math.isclose(res_dict["se"], res_dict["se_ext"], rel_tol=1e-9, abs_tol=1e-4)
+
+
+@pytest.mark.ci
+def test_dml_med_boot(dml_med_fixture):
+    res_dict = dml_med_fixture
+
+    for bootstrap in res_dict["boot_methods"]:
+        assert np.allclose(
+            res_dict["boot_t_stat" + bootstrap],
+            res_dict["boot_t_stat" + bootstrap + "_ext"],
+            rtol=1e-9,
+            atol=1e-4,
+        )
+
+
+@pytest.fixture(scope="module")
+def external_predictions_exceptions_fixture(dml_data, learner_linear, ps_processor_config):
+    med_obj = DoubleMLMED(
+        dml_data,
+        outcome="counterfactual",
+        treatment_level=1,
+        ps_processor_config=ps_processor_config,
+        **learner_linear,
+    )
+
+    med_obj_ext = copy.deepcopy(med_obj)
+    med_obj.fit()
+
+    prediction_dict = {"d": _get_preds(med_obj, med_obj.learner.keys())}
+
+    return prediction_dict, med_obj_ext
+
+
+@pytest.mark.ci
+def test_external_predictions_exceptions(external_predictions_exceptions_fixture):
+    prediction_dict, med_obj_ext = external_predictions_exceptions_fixture
+    with pytest.raises(
+        ValueError,
+        match=re.escape(
+            "When providing external predictions for ml_G, also inner predictions for all inner folds "
+            + f"have to be provided (missing: {', '.join([str(i) for i in [0, 1, 2, 3, 4]])})."
+        ),
+    ):
+        med_obj_ext.fit(external_predictions=prediction_dict)
+
+
+@pytest.mark.ci
+@pytest.mark.filterwarnings("ignore:ps_processor_config not specified")
+def test_med_sensitivity_not_implemented(dml_data, learner_linear):
+    dml_med_obj = DoubleMLMED(
+        dml_data=dml_data,
+        outcome="factual",
+        treatment_level=1,
+        ml_g=learner_linear["ml_g"],
+        ml_m=learner_linear["ml_m"],
+        n_folds=2,
+    )
+    dml_med_obj.fit()
+
+    msg = "Sensitivity analysis is not implemented for this model."
+    with pytest.raises(NotImplementedError, match=msg):
+        dml_med_obj.sensitivity_analysis()
+
+
+def _get_preds(obj, keys):
+    return {k: np.array([np.ndarray.flatten(subarray) for subarray in obj.predictions[k]]) for k in keys}
+
+
+def _get_res(obj, obj_ext, boot_methods, n_rep_boot):
+    res_dict = {
+        "coef": obj.coef.item(),
+        "coef_ext": obj_ext.coef.item(),
+        "se": obj.se.item(),
+        "se_ext": obj_ext.se.item(),
+        "boot_methods": boot_methods,
+    }
+    for bootstrap in boot_methods:
+        np.random.seed(3141)
+        obj.bootstrap(method=bootstrap, n_rep_boot=n_rep_boot)
+        np.random.seed(3141)
+        obj_ext.bootstrap(method=bootstrap, n_rep_boot=n_rep_boot)
+        res_dict["boot_t_stat" + bootstrap] = obj.boot_t_stat
+        res_dict["boot_t_stat" + bootstrap + "_ext"] = obj_ext.boot_t_stat
+    return res_dict
