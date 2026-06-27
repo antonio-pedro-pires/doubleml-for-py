@@ -1,4 +1,12 @@
-from .data import DoubleMLClusterData, DoubleMLData, DoubleMLDIDData, DoubleMLPanelData, DoubleMLRDDData, DoubleMLSSMData
+from .data import (
+    DoubleMLClusterData,
+    DoubleMLData,
+    DoubleMLDIDData,
+    DoubleMLMEDData,
+    DoubleMLPanelData,
+    DoubleMLRDDData,
+    DoubleMLSSMData,
+)
 from .did.did import DoubleMLDID
 from .did.did_cs import DoubleMLDIDCS
 from .double_ml_framework import DoubleMLCore, DoubleMLFramework, concat
@@ -11,6 +19,8 @@ from .irm.lpq import DoubleMLLPQ
 from .irm.pq import DoubleMLPQ
 from .irm.qte import DoubleMLQTE
 from .irm.ssm import DoubleMLSSM
+from .med.med import DoubleMLMED
+from .med.meds import DoubleMLMEDS
 from .plm.lplr import DoubleMLLPLR
 from .plm.pliv import DoubleMLPLIV
 from .plm.plpr import DoubleMLPLPR
@@ -34,6 +44,7 @@ __all__ = [
     "DoubleMLPanelData",
     "DoubleMLRDDData",
     "DoubleMLSSMData",
+    "DoubleMLMEDData",
     "DoubleMLDID",
     "DoubleMLDIDCS",
     "DoubleMLPQ",
@@ -45,6 +56,8 @@ __all__ = [
     "DoubleMLSSM",
     "DoubleMLLPLR",
     "DoubleMLPLPR",
+    "DoubleMLMED",
+    "DoubleMLMEDS",
 ]
 
 try:
