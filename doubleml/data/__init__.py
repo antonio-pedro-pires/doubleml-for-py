@@ -6,6 +6,7 @@ import warnings
 
 from .base_data import DoubleMLData
 from .did_data import DoubleMLDIDData
+from .med_data import DoubleMLMEDData
 from .panel_data import DoubleMLPanelData
 from .rdd_data import DoubleMLRDDData
 from .ssm_data import DoubleMLSSMData
@@ -77,4 +78,12 @@ class DoubleMLClusterData(DoubleMLData):
         )
 
 
-__all__ = ["DoubleMLData", "DoubleMLClusterData", "DoubleMLDIDData", "DoubleMLPanelData", "DoubleMLRDDData", "DoubleMLSSMData"]
+__all__ = [
+    "DoubleMLData",
+    "DoubleMLClusterData",
+    "DoubleMLDIDData",
+    "DoubleMLPanelData",
+    "DoubleMLRDDData",
+    "DoubleMLSSMData",
+    "DoubleMLMEDData",
+]
