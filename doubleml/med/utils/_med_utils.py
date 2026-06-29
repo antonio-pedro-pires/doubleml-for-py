@@ -1,6 +1,7 @@
 import numpy as np
 
 from doubleml import DoubleMLMEDData
+from doubleml.utils._checks import _check_smpl_split_tpl
 
 
 def _normalize_propensity_med(
@@ -86,12 +87,12 @@ def _normalize_counterfactual(normalize_ipw, d, treatment_level, m_preds, M_pred
     return result
 
 
-def _check_inner_sample_splitting(smpls_inner, smpls):
+def _check_inner_sample_splitting(smpls_inner, smpls, n_obs):
     """
     Check that each repetition is a list of lists of tuples.
-    :param inner_smpls:
+    :param smpls_inner:
     :param smpls:
-    :param n_obs:
+    :param n_obs: total number of observations, used for index-level validation.
     :return:
     """
 
@@ -107,7 +108,7 @@ def _check_inner_sample_splitting(smpls_inner, smpls):
         )
 
     n_inner_folds_per_rep = [
-        _check_reps_smpls_inner(index, rep_inner, rep) for index, (rep_inner, rep) in enumerate(zip(smpls_inner, smpls))
+        _check_reps_smpls_inner(index, rep_inner, rep, n_obs) for index, (rep_inner, rep) in enumerate(zip(smpls_inner, smpls))
     ]
     if len(np.unique(n_inner_folds_per_rep)) != 1:
         raise ValueError("Some reps in smpls_inner contain different amounts of inner_folds.")
@@ -120,10 +121,10 @@ def _check_inner_sample_splitting(smpls_inner, smpls):
     return smpls_inner, n_folds_inner
 
 
-def _check_reps_smpls_inner(index, rep_inner, rep):
+def _check_reps_smpls_inner(index, rep_inner, rep, n_obs):
     if not isinstance(rep_inner, list):
         raise TypeError(
-            "smpls_inner must be a list of lists." + f"At least an element of smpls_inner is of type {str(type(rep))}"
+            "smpls_inner must be a list of lists." + f"At least an element of smpls_inner is of type {str(type(rep_inner))}"
         )
 
     if len(rep_inner) != len(rep):
@@ -137,12 +138,13 @@ def _check_reps_smpls_inner(index, rep_inner, rep):
         raise ValueError("Some of the folds contain different numbers of inner_folds.")
 
     for fold_smpls_inner, fold_smpls in zip(rep_inner, rep):
+        # validate the structure and the individual index arrays before checking the partition
+        _check_fold_smpls_inner(fold_smpls_inner, n_obs)
         _check_is_inner_partition(fold_smpls_inner, fold_smpls)
-        _check_fold_smpls_inner(fold_smpls_inner)
     return n_inner_folds[0]
 
 
-def _check_fold_smpls_inner(fold_smpls_inner):
+def _check_fold_smpls_inner(fold_smpls_inner, n_obs):
     if not isinstance(fold_smpls_inner, list):
         raise TypeError(
             "smpls_inner must be a list of lists of lists."
@@ -150,30 +152,44 @@ def _check_fold_smpls_inner(fold_smpls_inner):
         )
 
     for inner_fold in fold_smpls_inner:
+        if not isinstance(inner_fold, tuple):
+            raise TypeError("smpls_inner inner_folds must be a tuple")
         if len(inner_fold) != 2:
             raise ValueError(
                 "The smpls_inner inner_fold must contain exactly 2 elements."
-                + f"inner_fold with {str(len(fold_smpls_inner))} elements found."
+                + f"inner_fold with {str(len(inner_fold))} elements found."
             )
-        if not isinstance(inner_fold, tuple):
-            raise TypeError("smpls_inner inner_folds must be a tuple")
+        # delegate index-level validation (integer dtype, uniqueness, range, disjoint train/test) to the base validator
+        _check_smpl_split_tpl(inner_fold, n_obs, check_intersect=True)
 
 
 def _check_is_inner_partition(fold, train_smpls):
     """
-    Checks whether the inner smpls are correctly partitioned
-    :param inner_smpls:
-    :param train_smpls:
+    Checks whether the inner smpls form a valid partition of the outer training fold.
+
+    The inner folds are obtained by re-sampling across the training fold, so their
+    indices must be drawn from the outer training fold (``train_smpls[0]``) and the
+    inner test folds must cover it exactly without overlapping.
+    :param fold: list of inner (train, test) index tuples.
+    :param train_smpls: the outer fold (train, test) tuple it is nested in.
     :return:
     """
+    parent_train = set(train_smpls[0])
     test_set = set()
-    for _, test_index in fold:
+    for inner_train, test_index in fold:
+        if not set(inner_train).issubset(parent_train):
+            raise ValueError("Invalid smpls_inner. Inner train indices must be a subset of the outer training fold.")
+        if not set(test_index).issubset(parent_train):
+            raise ValueError("Invalid smpls_inner. Inner test indices must be a subset of the outer training fold.")
+
         temp = set(test_index)
         if not test_set.isdisjoint(temp):
-            return False
+            raise ValueError(
+                "Invalid smpls_inner. Inner test folds must not overlap; they must partition the outer training fold."
+            )
         test_set |= temp
 
-    if not test_set == set(train_smpls[0]):
+    if not test_set == parent_train:
         raise ValueError("Some of the smpls_inner_fold do not partition the training samples")
 
 

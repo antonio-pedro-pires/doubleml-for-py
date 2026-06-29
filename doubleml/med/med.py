@@ -660,6 +660,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
             self._smpls_inner, self._n_folds_inner = _check_inner_sample_splitting(
                 smpls_inner,
                 self._smpls,
+                self._dml_data.n_obs,
             )
         else:
             super().set_sample_splitting(all_smpls=smpls, all_smpls_cluster=all_smpls_cluster)

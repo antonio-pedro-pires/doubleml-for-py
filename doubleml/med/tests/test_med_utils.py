@@ -32,7 +32,14 @@ def med_obj(dml_data, learner_linear, ps_processor_config):
 
 @pytest.fixture
 def valid_smpls_structure(med_obj):
-    return med_obj.smpls, med_obj.smpls_inner, med_obj.n_rep, med_obj.n_folds, med_obj.n_folds_inner
+    return (
+        med_obj.smpls,
+        med_obj.smpls_inner,
+        med_obj.n_rep,
+        med_obj.n_folds,
+        med_obj.n_folds_inner,
+        med_obj._dml_data.n_obs,
+    )
 
 
 @pytest.fixture
@@ -85,9 +92,9 @@ def valid_smpls_different_n_folds(
 def test_check_inner_sample_splitting_valid(
     valid_smpls_structure,
 ):
-    smpls, smpls_inner, n_rep, n_folds, n_folds_inner = valid_smpls_structure
+    smpls, smpls_inner, n_rep, n_folds, n_folds_inner, n_obs = valid_smpls_structure
 
-    res_inner, res_n_inner_folds = _check_inner_sample_splitting(smpls_inner, smpls)
+    res_inner, res_n_inner_folds = _check_inner_sample_splitting(smpls_inner, smpls, n_obs)
     assert res_inner == smpls_inner
     assert res_n_inner_folds == n_folds_inner
 
@@ -97,17 +104,17 @@ def test_check_inner_sample_splitting_exceptions(
     valid_smpls_structure, valid_smpls_different_n_inner_folds, valid_smpls_different_n_folds
 ):
 
-    smpls, smpls_inner, n_rep, n_folds, n_folds_inner = valid_smpls_structure
+    smpls, smpls_inner, n_rep, n_folds, n_folds_inner, n_obs = valid_smpls_structure
     alt_smpls, alt_smpls_inner, alt_n_rep, alt_n_folds, alt_n_folds_inner = valid_smpls_different_n_inner_folds
     alt_smpls2, alt_smpls_inner2, alt_n_rep2, alt_n_folds2, alt_n_folds_inner2 = valid_smpls_different_n_folds
     with pytest.raises(TypeError, match="inner_smpls must be a list."):
-        _check_inner_sample_splitting(tuple(), [])
+        _check_inner_sample_splitting(tuple(), [], n_obs)
 
     with pytest.raises(TypeError, match="smpls must be a list."):
-        _check_inner_sample_splitting([], tuple())
+        _check_inner_sample_splitting([], tuple(), n_obs)
 
     with pytest.raises(ValueError, match="smpls_inner must have the same number of repetitions"):
-        _check_inner_sample_splitting([[]], [[], []])
+        _check_inner_sample_splitting([[]], [[], []], n_obs)
 
     assert n_folds_inner != alt_n_folds_inner
     smpls_inner[0], alt_smpls_inner[0] = (
@@ -117,7 +124,7 @@ def test_check_inner_sample_splitting_exceptions(
     smpls[0], alt_smpls[0] = alt_smpls[0], smpls[0]  # Same reasoning.
     assert len(smpls_inner[0][0]) == alt_n_folds_inner
     with pytest.raises(ValueError, match="Some reps in smpls_inner contain different amounts of inner_folds."):
-        _check_inner_sample_splitting(smpls_inner, smpls)
+        _check_inner_sample_splitting(smpls_inner, smpls, n_obs)
 
     smpls_inner[0], alt_smpls_inner2[0] = (
         alt_smpls_inner2[0],
@@ -125,24 +132,24 @@ def test_check_inner_sample_splitting_exceptions(
     )  # Swap smpls_inner content so that smpls_inner contains different amounts of inner_folds per reps.
     smpls[0], alt_smpls2[0] = alt_smpls2[0], smpls[0]  # Same reasoning.
     with pytest.raises(ValueError, match="Some reps in smpls_inner contain different amounts of folds."):
-        _check_inner_sample_splitting(smpls_inner, smpls)
+        _check_inner_sample_splitting(smpls_inner, smpls, n_obs)
 
 
 @pytest.mark.ci
 def test_check_reps_smpls_inner_valid(valid_smpls_structure):
-    smpls, smpls_inner, *_, n_inner_fold = valid_smpls_structure
+    smpls, smpls_inner, n_rep, n_folds, n_inner_fold, n_obs = valid_smpls_structure
     # Testing a single repetition
-    n_inner = _check_reps_smpls_inner(0, smpls_inner[0], smpls[0])
+    n_inner = _check_reps_smpls_inner(0, smpls_inner[0], smpls[0], n_obs)
     assert n_inner == n_inner_fold
 
 
 @pytest.mark.ci
 def test_check_reps_smpls_inner_mismatch(valid_smpls_structure, valid_smpls_different_n_inner_folds):
-    smpls, smpls_inner, *_ = valid_smpls_structure
+    smpls, smpls_inner, *_, n_obs = valid_smpls_structure
     alt_smpls, alt_smpls_inner, *_ = valid_smpls_different_n_inner_folds
     # Provide a rep_inner with only 1 fold instead of 2
     with pytest.raises(ValueError, match="Each smpls_inner rep must have the same number of folds"):
-        _check_reps_smpls_inner(0, [smpls_inner[0][0]], smpls[0])
+        _check_reps_smpls_inner(0, [smpls_inner[0][0]], smpls[0], n_obs)
 
     smpls_inner[0][0], alt_smpls_inner[0][0] = (
         alt_smpls_inner[0][0],
@@ -150,14 +157,15 @@ def test_check_reps_smpls_inner_mismatch(valid_smpls_structure, valid_smpls_diff
     )  # Swap smpls_inner content so that smpls_inner contains different amounts of inner_folds per reps.
     smpls[0][0], alt_smpls[0][0] = alt_smpls[0][0], smpls[0][0]  # Same reasoning.
     with pytest.raises(ValueError, match="Some of the folds contain different numbers of inner_folds."):
-        _check_reps_smpls_inner(0, smpls_inner[0], smpls[0])
+        _check_reps_smpls_inner(0, smpls_inner[0], smpls[0], n_obs)
 
 
 @pytest.mark.ci
 def test_check_fold_smpls_inner_valid(valid_smpls_structure):
-    smpls, smpls_inner, *_ = valid_smpls_structure
+    smpls, smpls_inner, *_, n_obs = valid_smpls_structure
     _check_fold_smpls_inner(
         smpls_inner[0][0],
+        n_obs,
     )
 
 
@@ -167,27 +175,28 @@ def test_check_fold_smpls_inner_not_tuple():
     with pytest.raises(TypeError, match="smpls_inner inner_folds must be a tuple"):
         _check_fold_smpls_inner(
             bad_fold,
+            10,
         )
 
 
 @pytest.mark.ci
 def test_check_reps_smpls_inner_not_list():
     with pytest.raises(TypeError, match="smpls_inner must be a list of lists."):
-        _check_reps_smpls_inner(0, "not_a_list", [])
+        _check_reps_smpls_inner(0, "not_a_list", [], 10)
 
 
 @pytest.mark.ci
 def test_check_fold_smpls_inner_not_list():
     with pytest.raises(TypeError, match="smpls_inner must be a list of lists of lists."):
-        _check_fold_smpls_inner("not_a_list")
+        _check_fold_smpls_inner("not_a_list", 10)
 
 
 @pytest.mark.ci
 def test_check_fold_smpls_inner_wrong_length():
     # An inner_fold must contain exactly 2 elements (train, test).
-    bad_fold = [[np.array([1])]]
+    bad_fold = [(np.array([1]),)]
     with pytest.raises(ValueError, match="The smpls_inner inner_fold must contain exactly 2 elements."):
-        _check_fold_smpls_inner(bad_fold)
+        _check_fold_smpls_inner(bad_fold, 10)
 
 
 @pytest.mark.ci
@@ -210,10 +219,49 @@ def test_check_is_inner_partition_error(valid_smpls_structure):
 
 
 @pytest.mark.ci
-def test_check_is_inner_partition_overlap_returns_false():
-    # Overlapping test indices across inner folds: not a valid partition, returns False.
+def test_check_is_inner_partition_overlap_raises():
+    # Overlapping test indices across inner folds: not a valid partition, must raise.
+    parent_train = [np.array([0, 1, 2, 3])]
     fold = [
-        (np.array([0]), np.array([1, 2])),
-        (np.array([0]), np.array([2, 3])),
+        (np.array([2, 3]), np.array([0, 1])),
+        (np.array([0]), np.array([1, 2, 3])),  # test index 1 overlaps with the first inner fold
     ]
-    assert _check_is_inner_partition(fold, [np.array([0])]) is False
+    with pytest.raises(ValueError, match="Inner test folds must not overlap"):
+        _check_is_inner_partition(fold, parent_train)
+
+
+@pytest.mark.ci
+def test_check_is_inner_partition_indices_outside_training_fold():
+    # Inner indices must be drawn from the outer training fold.
+    parent_train = [np.array([0, 1, 2, 3])]
+    fold_bad_test = [
+        (np.array([2, 3]), np.array([0, 1])),
+        (np.array([0, 1]), np.array([2, 3, 9])),  # index 9 is not part of the training fold
+    ]
+    with pytest.raises(ValueError, match="Inner test indices must be a subset of the outer training fold."):
+        _check_is_inner_partition(fold_bad_test, parent_train)
+
+    fold_bad_train = [
+        (np.array([2, 3, 9]), np.array([0, 1])),  # index 9 is not part of the training fold
+        (np.array([0, 1]), np.array([2, 3])),
+    ]
+    with pytest.raises(ValueError, match="Inner train indices must be a subset of the outer training fold."):
+        _check_is_inner_partition(fold_bad_train, parent_train)
+
+
+@pytest.mark.ci
+def test_check_fold_smpls_inner_index_validation():
+    # Index-level validation is delegated to the base validator (dtype, range, disjoint train/test).
+    n_obs = 10
+
+    non_integer = [(np.array([0.0, 1.0]), np.array([2, 3]))]
+    with pytest.raises(TypeError, match="Train indices must be of type integer."):
+        _check_fold_smpls_inner(non_integer, n_obs)
+
+    out_of_range = [(np.array([0, 1]), np.array([2, n_obs]))]
+    with pytest.raises(ValueError, match=r"Test indices must be in \[0, n_obs\)."):
+        _check_fold_smpls_inner(out_of_range, n_obs)
+
+    overlapping_train_test = [(np.array([0, 1, 2]), np.array([2, 3]))]
+    with pytest.raises(ValueError, match="Intersection of train and test indices is not empty."):
+        _check_fold_smpls_inner(overlapping_train_test, n_obs)
