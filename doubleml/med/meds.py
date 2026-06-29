@@ -626,19 +626,19 @@ class DoubleMLMEDS(SampleSplittingMixin):
             expected_inner_learners_keys = [f"ml_G_inner_{i}" for i in range(self.n_folds)]
             expected_learners_keys += expected_inner_learners_keys
 
-        for key, value in external_predictions_dict.items():
-            if not isinstance(value, dict):
+        for model_id, model_predictions in external_predictions_dict.items():
+            if not isinstance(model_predictions, dict):
                 raise TypeError(
-                    f"external_predictions[{key}] must hold a dictionary. "
-                    + f"Current value in external_predictions[{key}] is of type {type(value)}"
+                    f"external_predictions[{model_id}] must hold a dictionary. "
+                    + f"Current value in external_predictions[{model_id}] is of type {type(model_predictions)}"
                 )
-            for d_col in value.keys():
+            for d_col in model_predictions.keys():
                 assert d_col in set(self._dml_data.d_cols)
-                if not set(value[d_col].keys()).issubset(expected_learners_keys):
+                if not set(model_predictions[d_col].keys()).issubset(expected_learners_keys):
                     raise ValueError(
                         f"external_predictions[{d_col}] must hold a dictionnary whose keys are a "
                         + f"subset of {set(expected_learners_keys)}. "
-                        + f"Passed keys: {set(value[self._dml_data.d_cols].keys())}."
+                        + f"Passed keys: {set(model_predictions[d_col].keys())}."
                     )
 
     def tune_ml_models(
