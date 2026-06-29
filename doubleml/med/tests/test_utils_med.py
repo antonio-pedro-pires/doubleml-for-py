@@ -171,6 +171,26 @@ def test_check_fold_smpls_inner_not_tuple():
 
 
 @pytest.mark.ci
+def test_check_reps_smpls_inner_not_list():
+    with pytest.raises(TypeError, match="smpls_inner must be a list of lists."):
+        _check_reps_smpls_inner(0, "not_a_list", [])
+
+
+@pytest.mark.ci
+def test_check_fold_smpls_inner_not_list():
+    with pytest.raises(TypeError, match="smpls_inner must be a list of lists of lists."):
+        _check_fold_smpls_inner("not_a_list")
+
+
+@pytest.mark.ci
+def test_check_fold_smpls_inner_wrong_length():
+    # An inner_fold must contain exactly 2 elements (train, test).
+    bad_fold = [[np.array([1])]]
+    with pytest.raises(ValueError, match="The smpls_inner inner_fold must contain exactly 2 elements."):
+        _check_fold_smpls_inner(bad_fold)
+
+
+@pytest.mark.ci
 def test_check_is_inner_partition_valid(valid_smpls_structure):
     smpls, smpls_inner, *_ = valid_smpls_structure
     for rep_inner, rep in zip(smpls_inner, smpls):
@@ -187,3 +207,13 @@ def test_check_is_inner_partition_error(valid_smpls_structure):
             fold_inner.pop()  # Makes it so that a partition is impossible.
             with pytest.raises(ValueError, match="Some of the smpls_inner_fold do not partition the training samples"):
                 _check_is_inner_partition(fold_inner, fold)
+
+
+@pytest.mark.ci
+def test_check_is_inner_partition_overlap_returns_false():
+    # Overlapping test indices across inner folds: not a valid partition, returns False.
+    fold = [
+        (np.array([0]), np.array([1, 2])),
+        (np.array([0]), np.array([2, 3])),
+    ]
+    assert _check_is_inner_partition(fold, [np.array([0])]) is False

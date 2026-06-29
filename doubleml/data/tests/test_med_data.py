@@ -361,3 +361,44 @@ def test_force_all_m_finite_setter():
         med_data.force_all_m_finite = 123
     with pytest.raises(ValueError, match="Invalid force_all_m_finite:"):
         med_data.force_all_m_finite = "string"
+
+
+@pytest.mark.ci
+def test_from_arrays_multiple_mediators():
+    np.random.seed(42)
+    n = 50
+    x = np.random.randn(n, 3)
+    y = np.random.randn(n)
+    d = np.random.randint(0, 2, n)
+
+    # A single mediator is stored in a column named "m".
+    med_single = DoubleMLMEDData.from_arrays(x, y, d, np.random.randn(n))
+    assert med_single.m_cols == ["m"]
+    assert med_single.n_meds == 1
+    assert med_single.m.shape == (n, 1)
+
+    # Multiple mediators are stored in columns named "m1", "m2", ...
+    med_multi = DoubleMLMEDData.from_arrays(x, y, d, np.random.randn(n, 3))
+    assert med_multi.m_cols == ["m1", "m2", "m3"]
+    assert med_multi.n_meds == 3
+    assert med_multi.m.shape == (n, 3)
+
+
+@pytest.mark.ci
+def test_binary_meds_property():
+    np.random.seed(3141)
+    n = 50
+    df = pd.DataFrame(
+        {
+            "y": np.random.randn(n),
+            "d": np.random.randint(0, 2, n),
+            "x1": np.random.randn(n),
+            "m1": np.random.randint(0, 2, n),  # binary mediator
+            "m2": np.random.randn(n),  # continuous mediator
+        }
+    )
+    med_data = DoubleMLMEDData(df, y_col="y", d_cols="d", x_cols="x1", m_cols=["m1", "m2"])
+
+    binary_meds = med_data.binary_meds
+    assert binary_meds["m1"]
+    assert not binary_meds["m2"]
