@@ -127,6 +127,24 @@ def test_external_predictions_exceptions(external_predictions_exceptions_fixture
         med_obj_ext.fit(external_predictions=prediction_dict)
 
 
+@pytest.mark.ci
+@pytest.mark.filterwarnings("ignore:ps_processor_config not specified")
+def test_med_sensitivity_not_implemented(dml_data, learner_linear):
+    dml_med_obj = DoubleMLMED(
+        dml_data=dml_data,
+        outcome="factual",
+        treatment_level=1,
+        ml_g=learner_linear["ml_g"],
+        ml_m=learner_linear["ml_m"],
+        n_folds=2,
+    )
+    dml_med_obj.fit()
+
+    msg = "Sensitivity analysis is not implemented for this model."
+    with pytest.raises(NotImplementedError, match=msg):
+        dml_med_obj.sensitivity_analysis()
+
+
 def _get_preds(obj, keys):
     return {k: np.array([np.ndarray.flatten(subarray) for subarray in obj.predictions[k]]) for k in keys}
 

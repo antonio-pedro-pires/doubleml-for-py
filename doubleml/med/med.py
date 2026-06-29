@@ -642,7 +642,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         return results
 
     def _sensitivity_element_est(self, preds):
-        pass
+        raise NotImplementedError()
 
     def set_sample_splitting(self, smpls, all_smpls_cluster=None, is_cluster_data=False, smpls_inner=None):
         if self.double_sample_splitting:
