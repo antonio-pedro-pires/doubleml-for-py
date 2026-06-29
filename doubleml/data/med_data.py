@@ -277,7 +277,7 @@ class DoubleMLMEDData(DoubleMLData):
             value = [value]
         if not isinstance(value, list):
             raise TypeError(
-                "The mediation variable(s) m_cols must be of str or list type (or None). "
+                "The mediation variable(s) m_cols must be of str or list type. "
                 f"{str(value)} of type {str(type(value))} was passed."
             )
         if not len(set(value)) == len(value):

@@ -176,9 +176,7 @@ def test_m_cols_setter():
     med_data.m_cols = ["m2", "m1"]
     assert np.array_equal(med_data.m, m_comp)
 
-    msg = (
-        r"The mediation variable\(s\) m_cols must be of str or list type \(or None\). " r"1 of type <class 'int'> was passed."
-    )
+    msg = r"The mediation variable\(s\) m_cols must be of str or list type. " r"1 of type <class 'int'> was passed."
     with pytest.raises(TypeError, match=msg):
         med_data.m_cols = 1
 
