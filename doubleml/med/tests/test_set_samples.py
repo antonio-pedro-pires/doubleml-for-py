@@ -5,38 +5,6 @@ from doubleml import DoubleMLMED
 
 
 @pytest.fixture(scope="module")
-def med_objs(
-    dml_data,
-    learner_linear,
-    binary_outcomes,
-    binary_scores,
-    normalize_ipw,
-    binary_treats,
-    n_folds,
-    double_sample_splitting,
-    n_rep,
-    ps_processor_config,
-):
-
-    kwargs = {
-        "dml_data": dml_data,
-        "outcome": binary_outcomes,
-        "treatment_level": binary_treats,
-        "score": "efficient-alt",
-        "normalize_ipw": normalize_ipw,
-        "double_sample_splitting": double_sample_splitting,
-        "ps_processor_config": ps_processor_config,
-        **learner_linear,
-    }
-
-    np.random.seed(3141)
-    med_obj = DoubleMLMED(**kwargs)
-    np.random.seed(3141)
-    med_obj_ext = DoubleMLMED(**kwargs)
-    return med_obj, med_obj_ext
-
-
-@pytest.fixture(scope="module")
 def set_smpls_sampling_fixture(dml_data, learner_linear, binary_outcomes, double_sample_splitting, ps_processor_config):
     treatment_level = 1  # Fixed treatment_level since the treatment level has no effect on set_smpls_sampling.
     med_obj = DoubleMLMED(
