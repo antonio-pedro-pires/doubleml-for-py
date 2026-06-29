@@ -75,6 +75,12 @@ def test_meds_confint_before_fit_exception(meds_obj):
 
 
 @pytest.mark.ci
+def test_meds_bootstrap_before_fit_exception(meds_obj):
+    with pytest.raises(ValueError, match=re.escape("Apply fit() before bootstrap().")):
+        meds_obj.bootstrap()
+
+
+@pytest.mark.ci
 def test_meds_external_predictions_invalid_keys_exception(dml_data, learner_linear):
     meds_obj = DoubleMLMEDS(dml_data=dml_data, **learner_linear)
     invalid_ext_preds = {"invalid_key": {}}
