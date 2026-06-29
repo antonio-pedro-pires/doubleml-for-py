@@ -640,7 +640,6 @@ class DoubleMLMEDS(SampleSplittingMixin):
                         + f"subset of {set(expected_learners_keys)}. "
                         + f"Passed keys: {set(value[self._dml_data.d_cols].keys())}."
                     )
-            return
 
     def tune_ml_models(
         self,
