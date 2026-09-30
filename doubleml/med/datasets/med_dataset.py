@@ -10,7 +10,7 @@ _data_frame_alias = _get_data_frame_alias()
 _dml_mediation_data_alias = _get_dml_mediation_data_alias()
 
 
-def make_med_data(n_obs=1000, dim_x=20, return_type="DoubleMLMediationData", **kwargs):
+def make_med_data(n_obs=1000, dim_x=20, return_type="DoubleMLMediationData", b=0.3, **kwargs):
     """
     Generates data from a mediation analysis model used in  Helmut Farbmacher et al. (2022) for Table 1.
     The data generating process is defined as
@@ -43,9 +43,9 @@ def make_med_data(n_obs=1000, dim_x=20, return_type="DoubleMLMediationData", **k
         If ``'DataFrame'``, ``'pd.DataFrame'`` or ``pd.DataFrame``, returns a ``pd.DataFrame``.
 
         If ``'array'``, ``'np.ndarray'``, ``'np.array'`` or ``np.ndarray``, returns ``np.ndarray``'s ``(x, y, d)``.
-    **kwargs
-        Additional keyword arguments to set non-default values for the parameters
-        :math:`b=0.3`
+    b :
+        The confounding strength: the i-th element of the coefficient vector :math:`\\beta`
+        is :math:`b / i^2`. Default is ``0.3``.
     References
     ----------
 
@@ -54,7 +54,6 @@ def make_med_data(n_obs=1000, dim_x=20, return_type="DoubleMLMediationData", **k
     """
 
     # Draw beta vector
-    b = kwargs.get("b", 0.3)
     beta = [b / (i**2) for i in range(1, dim_x + 1)]
 
     # Draw covariates X.
@@ -81,7 +80,7 @@ def make_med_data(n_obs=1000, dim_x=20, return_type="DoubleMLMediationData", **k
     # Generate d, m, y vectors
     d = 1.0 * (x.dot(beta) + w > 0)
     m = 1.0 * (0.5 * d + x.dot(beta) + v > 0)
-    y = 0.5 * d + 0.5 * m + 0.5 * m * d + u
+    y = 0.5 * d + 0.5 * m + 0.5 * m * d + x.dot(beta) + u
 
     if return_type in _array_alias:
         return x, y, d, m
