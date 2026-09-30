@@ -5,6 +5,7 @@ from doubleml.data import (
     DoubleMLClusterData,
     DoubleMLData,
     DoubleMLDIDData,
+    DoubleMLMEDData,
     DoubleMLPanelData,
     DoubleMLRDDData,
     DoubleMLSSMData,
@@ -18,6 +19,7 @@ _dml_panel_data_alias = ["DoubleMLPanelData", DoubleMLPanelData]
 _dml_rdd_data_alias = ["DoubleMLRDDData", DoubleMLRDDData]
 _dml_ssm_data_alias = ["DoubleMLSSMData", DoubleMLSSMData]
 _dml_cluster_data_alias = ["DoubleMLClusterData", DoubleMLClusterData]
+_dml_mediation_data_alias = ["DoubleMLMediationData", DoubleMLMEDData]
 
 
 def _get_array_alias():
@@ -58,3 +60,8 @@ def _get_dml_rdd_data_alias():
 def _get_dml_ssm_data_alias():
     """Returns the list of DoubleMLSSMData aliases."""
     return _dml_ssm_data_alias
+
+
+def _get_dml_mediation_data_alias():
+    """Returns the list of DoubleMLMediationData aliases."""
+    return _dml_mediation_data_alias
