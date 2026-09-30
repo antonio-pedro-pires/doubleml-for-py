@@ -3,7 +3,7 @@ from typing import Optional
 
 import numpy as np
 from sklearn.model_selection import cross_val_predict
-from sklearn.utils import check_X_y
+from sklearn.utils import check_array, check_consistent_length, check_X_y
 
 from doubleml.double_ml import DoubleML
 from doubleml.double_ml_score_mixins import LinearScoreMixin
@@ -53,14 +53,14 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         The outcome parameter to estimate.
         - 'factual': Estimate the factual outcome :math:`E[Y(d, M(d))]`.
         - 'counterfactual': Estimate the counterfactual outcome :math:`E[Y(d, M(d'))]`.
-        where :math:`d' \neq d
+        where :math:`d' \\neq d`.
 
     treatment_level : int
         The treatment level :math:`d`.
 
     score : str
         A str (``'efficient-alt'``)  specifying the score function to use.
-        Default is 'efficient-alt'.
+        The only option currently available is 'efficient-alt'.
 
     n_folds : int
         Number of folds.
@@ -241,8 +241,12 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         external_predictions,
         return_models,
     ):
-        x, y = check_X_y(self._dml_data.x, self._dml_data.y, ensure_all_finite=True)
-        x, d = check_X_y(x, self._dml_data.d, ensure_all_finite=True)
+        x, y = check_X_y(self._dml_data.x, self._dml_data.y, ensure_all_finite=False)
+        # check_X_y's ensure_all_finite is only ever applied to its first (X) argument, never to
+        # the second (y) argument (see sklearn.utils.validation._check_y); since d sits in that
+        # slot, validate it with check_array instead to actually honor ensure_all_finite=False.
+        d = check_array(self._dml_data.d, ensure_2d=False, allow_nd=False, ensure_all_finite=False, input_name="d")
+        check_consistent_length(x, d)
 
         # Check whether there are external predictions for each parameter.
         m_external = external_predictions["ml_m"] is not None
@@ -314,10 +318,17 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         external_predictions,
         return_models=False,
     ):
-        x, y = check_X_y(self._dml_data.x, self._dml_data.y, ensure_all_finite=True)
-        x, d = check_X_y(x, self._dml_data.d, ensure_all_finite=True)
+        x, y = check_X_y(self._dml_data.x, self._dml_data.y, ensure_all_finite=False)
+        # see _nuisance_est: check_array avoids check_X_y's ensure_all_finite being a no-op for
+        # the y-argument slot that d occupies here.
+        d = check_array(self._dml_data.d, ensure_2d=False, allow_nd=False, ensure_all_finite=False, input_name="d")
+        check_consistent_length(x, d)
 
-        x, m = check_X_y(x, self._dml_data.m, ensure_all_finite=True, multi_output=True)
+        # check_X_y(..., multi_output=True) hardcodes ensure_all_finite=True for the y-argument
+        # internally (sklearn's _check_y), ignoring the caller's setting. m is not really a
+        # "y" target here, so validate it with check_array instead to honor ensure_all_finite.
+        m = check_array(self._dml_data.m, ensure_2d=False, allow_nd=False, ensure_all_finite=False, input_name="m")
+        check_consistent_length(x, m)
         xm = np.column_stack((x, m))
 
         # Check whether there are external predictions for each parameter.
@@ -545,8 +556,11 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         )
 
     def _nuisance_tuning_optuna(self, optuna_params, scoring_methods, cv, optuna_settings):
-        x, y = check_X_y(self._dml_data.x, self._dml_data.y, ensure_all_finite=True)
-        x, d = check_X_y(x, self._dml_data.d, ensure_all_finite=True)
+        x, y = check_X_y(self._dml_data.x, self._dml_data.y, ensure_all_finite=False)
+        # see _nuisance_est: check_array avoids check_X_y's ensure_all_finite being a no-op for
+        # the y-argument slot that d occupies here.
+        d = check_array(self._dml_data.d, ensure_2d=False, allow_nd=False, ensure_all_finite=False, input_name="d")
+        check_consistent_length(x, d)
 
         if scoring_methods is None:
             scoring_methods = {"ml_g": None, "ml_m": None, "ml_G": None, "ml_M": None, "ml_nested_g": None}
@@ -585,7 +599,10 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
             }
 
         else:
-            x, m = check_X_y(x, self._dml_data.m, ensure_all_finite=False, multi_output=True)
+            # see _nuisance_est_counterfactual: check_array avoids check_X_y(multi_output=True)
+            # hardcoding ensure_all_finite=True for m.
+            m = check_array(self._dml_data.m, ensure_2d=False, allow_nd=False, ensure_all_finite=False, input_name="m")
+            check_consistent_length(x, m)
             xm = np.column_stack((x, m))
 
             M_tune_res = _dml_tune_optuna(

@@ -38,16 +38,22 @@ class DoubleMLMEDData(DoubleMLData):
          treatment variables should be added as covariates.
          Default is ``True``.
      force_all_x_finite : bool, optional
-         Indicates whether to force there are missing or infinite
-         values in the covariates :math:`X`.
+         Indicates whether to raise an error if there are missing or infinite
+         values in the covariates :math:`X`. Possible values are: ``True`` (neither missings
+         ``np.nan``/``pd.NA`` nor infinite values ``np.inf`` are allowed), ``False`` (missings and
+         infinite values are allowed), ``'allow-nan'`` (only missings are allowed).
          Default is ``True``.
      force_all_d_finite : bool, optional
          Indicates whether to raise an error if there are missing or infinite
-         values in the treatment variable :math:`D`.
+         values in the treatment variable :math:`D`. Possible values are: ``True`` (neither missings
+         ``np.nan``/``pd.NA`` nor infinite values ``np.inf`` are allowed), ``False`` (missings and
+         infinite values are allowed), ``'allow-nan'`` (only missings are allowed).
          Default is ``True``.
      force_all_m_finite : bool, optional
          Indicates whether to raise an error if there are missing or infinite
-         values in the mediators :math:`M`.
+         values in the mediators :math:`M`. Possible values are: ``True`` (neither missings
+         ``np.nan``/``pd.NA`` nor infinite values ``np.inf`` are allowed), ``False`` (missings and
+         infinite values are allowed), ``'allow-nan'`` (only missings are allowed).
          Default is ``True``.
 
     Examples
@@ -170,15 +176,21 @@ class DoubleMLMEDData(DoubleMLData):
             Default is ``False``.
         force_all_x_finite : bool, optional
             Indicates whether to raise an error if there are missing or
-            infinite values in the covariates :math:`X`.
+            infinite values in the covariates :math:`X`. Possible values are: ``True`` (neither
+            missings ``np.nan``/``pd.NA`` nor infinite values ``np.inf`` are allowed), ``False``
+            (missings and infinite values are allowed), ``'allow-nan'`` (only missings are allowed).
             Default is ``True``.
         force_all_d_finite : bool, optional
             Indicates whether to raise an error if there are missing or
-            infinite values in the treatment variable :math:`D`.
-            Default is ``True``.
+            infinite values in the treatment variable :math:`D`. Possible values are: ``True``
+            (neither missings ``np.nan``/``pd.NA`` nor infinite values ``np.inf`` are allowed),
+            ``False`` (missings and infinite values are allowed), ``'allow-nan'`` (only missings
+            are allowed). Default is ``True``.
         force_all_m_finite : bool, optional
             Indicates whether to raise an error if there are missing or
-            infinite values in the mediators :math:`M`.
+            infinite values in the mediators :math:`M`. Possible values are: ``True`` (neither
+            missings ``np.nan``/``pd.NA`` nor infinite values ``np.inf`` are allowed), ``False``
+            (missings and infinite values are allowed), ``'allow-nan'`` (only missings are allowed).
             Default is ``True``.
 
         Returns
@@ -230,7 +242,7 @@ class DoubleMLMEDData(DoubleMLData):
             force_all_x_finite=force_all_x_finite,
             force_all_d_finite=force_all_d_finite,
         )
-        m = check_array(m, ensure_2d=False, allow_nd=False, ensure_all_finite=force_all_m_finite)
+        m = check_array(m, ensure_2d=False, allow_nd=False, ensure_all_finite=force_all_m_finite, input_name="m")
         m = _assure_2d_array(m)
 
         if m.shape[1] == 1:
@@ -331,8 +343,10 @@ class DoubleMLMEDData(DoubleMLData):
 
     def _check_binary_mediators(self):
         is_binary = pd.Series(dtype=bool, index=self.m_cols)
-        if not self._force_all_m_finite:
-            is_binary[:] = False  # if we allow infinite values, we cannot check for binary
+        if self._force_all_m_finite is not True:
+            # force_all_m_finite is False or 'allow-nan': missing/infinite values may be
+            # present, so type_of_target() (which itself rejects NaN/inf) cannot be used.
+            is_binary[:] = False
         else:
             for m_var in self.m_cols:
                 this_m = self.data.loc[:, m_var]
