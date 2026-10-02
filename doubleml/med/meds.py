@@ -16,13 +16,7 @@ from doubleml.utils._checks import _check_score
 from doubleml.utils._descriptive import generate_summary
 from doubleml.utils._tune_optuna import TUNE_ML_MODELS_DOC
 
-# TODO Checklist:
-# Add possibility to not perform nested sampling
-# Add ipw_normalization (with ps module?)
-# Add/update data/learner checks
-# Add confint
-# Check bootstrap logic
-# Add sensitivity analysis
+# Known limitations: sensitivity analysis is not implemented for DoubleMLMEDS.
 
 
 class DoubleMLMEDS(SampleSplittingMixin):
@@ -451,6 +445,22 @@ class DoubleMLMEDS(SampleSplittingMixin):
         external_predictions : dict, optional
             External predictions to use for the estimation.
             Default is ``None``.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import doubleml as dml
+        >>> from doubleml.med.datasets import make_med_data
+        >>> from sklearn.linear_model import LogisticRegression, Lasso
+        >>> np.random.seed(3141)
+        >>> ml_g = Lasso()
+        >>> ml_G = Lasso()
+        >>> ml_nested_g = Lasso()
+        >>> ml_m = LogisticRegression(l1_ratio=1, solver="liblinear", max_iter=1000)
+        >>> ml_M = LogisticRegression(l1_ratio=1, solver="liblinear", max_iter=1000)
+        >>> obj_dml_data = make_med_data()
+        >>> dml_meds_obj = dml.DoubleMLMEDS(obj_dml_data, ml_m, ml_g, ml_G, ml_M, ml_nested_g)
+        >>> dml_meds_obj.fit().summary  # doctest: +SKIP
         """
         if external_predictions is not None:
             self._check_external_predictions(external_predictions)
@@ -514,6 +524,22 @@ class DoubleMLMEDS(SampleSplittingMixin):
         -------
         df_ci : pd.DataFrame
             A data frame with the confidence interval(s).
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import doubleml as dml
+        >>> from doubleml.med.datasets import make_med_data
+        >>> from sklearn.linear_model import LogisticRegression, Lasso
+        >>> np.random.seed(3141)
+        >>> ml_g = Lasso()
+        >>> ml_G = Lasso()
+        >>> ml_nested_g = Lasso()
+        >>> ml_m = LogisticRegression(l1_ratio=1, solver="liblinear", max_iter=1000)
+        >>> ml_M = LogisticRegression(l1_ratio=1, solver="liblinear", max_iter=1000)
+        >>> obj_dml_data = make_med_data()
+        >>> dml_meds_obj = dml.DoubleMLMEDS(obj_dml_data, ml_m, ml_g, ml_G, ml_M, ml_nested_g)
+        >>> dml_meds_obj.fit().confint()  # doctest: +SKIP
         """
         if self.framework is None:
             raise ValueError("Apply fit() before confint().")
@@ -535,6 +561,22 @@ class DoubleMLMEDS(SampleSplittingMixin):
         Returns
         -------
         self : object
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import doubleml as dml
+        >>> from doubleml.med.datasets import make_med_data
+        >>> from sklearn.linear_model import LogisticRegression, Lasso
+        >>> np.random.seed(3141)
+        >>> ml_g = Lasso()
+        >>> ml_G = Lasso()
+        >>> ml_nested_g = Lasso()
+        >>> ml_m = LogisticRegression(l1_ratio=1, solver="liblinear", max_iter=1000)
+        >>> ml_M = LogisticRegression(l1_ratio=1, solver="liblinear", max_iter=1000)
+        >>> obj_dml_data = make_med_data()
+        >>> dml_meds_obj = dml.DoubleMLMEDS(obj_dml_data, ml_m, ml_g, ml_G, ml_M, ml_nested_g)
+        >>> dml_meds_obj.fit().evaluate_effects().effects_summary  # doctest: +SKIP
         """
         if self.framework is None:
             raise ValueError("Apply fit() before calling evaluate_effects()")
@@ -702,6 +744,22 @@ class DoubleMLMEDS(SampleSplittingMixin):
         Returns
         -------
         self : object
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import doubleml as dml
+        >>> from doubleml.med.datasets import make_med_data
+        >>> from sklearn.linear_model import LogisticRegression, Lasso
+        >>> np.random.seed(3141)
+        >>> ml_g = Lasso()
+        >>> ml_G = Lasso()
+        >>> ml_nested_g = Lasso()
+        >>> ml_m = LogisticRegression(l1_ratio=1, solver="liblinear", max_iter=1000)
+        >>> ml_M = LogisticRegression(l1_ratio=1, solver="liblinear", max_iter=1000)
+        >>> obj_dml_data = make_med_data()
+        >>> dml_meds_obj = dml.DoubleMLMEDS(obj_dml_data, ml_m, ml_g, ml_G, ml_M, ml_nested_g)
+        >>> dml_meds_obj.fit().bootstrap().boot_t_stat  # doctest: +SKIP
         """
         if self._framework is None:
             raise ValueError("Apply fit() before bootstrap().")

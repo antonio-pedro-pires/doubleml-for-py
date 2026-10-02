@@ -51,6 +51,14 @@ def make_med_data(n_obs=1000, dim_x=20, return_type="DoubleMLMediationData", b=0
 
     Helmut Farbmacher , Martin Huber , Lukáš Lafférs , Henrika Langen , Martin Spindler
     The Econometrics Journal, Volume 25, Issue 2, May 2022, Pages 277–300, https://doi.org/10.1093/ectj/utac003
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from doubleml.med.datasets import make_med_data
+    >>> np.random.seed(3141)
+    >>> obj_dml_data = make_med_data(n_obs=500, dim_x=5)
+    >>> x, y, d, m = make_med_data(n_obs=500, dim_x=5, return_type="array")
     """
 
     # Draw beta vector
