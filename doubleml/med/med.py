@@ -1,4 +1,3 @@
-import warnings
 from numbers import Integral
 from typing import Optional
 
@@ -163,13 +162,8 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         self._external_predictions_implemented = True
         self._sensitivity_implemented = False
 
-        if ps_processor_config is not None:
-            self._ps_processor_config = ps_processor_config
-            self._ps_processor = PSProcessor.from_config(self._ps_processor_config)
-        else:
-            warnings.warn("ps_processor_config not specified. Using default configuration.")
-            self._ps_processor_config = PSProcessorConfig()
-            self._ps_processor = PSProcessor.from_config(self._ps_processor_config)
+        self._ps_processor_config = ps_processor_config if ps_processor_config is not None else PSProcessorConfig()
+        self._ps_processor = PSProcessor.from_config(self._ps_processor_config)
 
     @property
     def outcome(self):
