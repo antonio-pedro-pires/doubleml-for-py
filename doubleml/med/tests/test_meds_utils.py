@@ -3,6 +3,7 @@ import pytest
 
 from doubleml import DoubleMLMEDS
 from doubleml.med.datasets import make_med_data
+from doubleml.med.utils._meds_utils import generate_effects_summary
 
 # TODO: Remove warning filter once sklearn gets to version 1.10
 pytestmark = pytest.mark.filterwarnings("ignore: l1_ratio parameter is only used when penalty ")
@@ -20,3 +21,9 @@ def test_effects_summary_stacks_the_summaries_of_all_effects(learner_linear):
     assert list(effects_summary.index) == ["ATE", "DIR_TREAT", "DIR_CONTROL", "INDIR_TREAT", "INDIR_CONTROL"]
     for effect_name, effect_framework in meds_obj.effects.items():
         pd.testing.assert_series_equal(effects_summary.loc[effect_name], effect_framework.summary.iloc[0], check_names=False)
+
+
+@pytest.mark.ci
+def test_generate_effects_summary_without_effects():
+    """Without effects, the summary is an empty data frame. This case cannot be reached through DoubleMLMEDS."""
+    pd.testing.assert_frame_equal(generate_effects_summary({}), pd.DataFrame(index=[]))
