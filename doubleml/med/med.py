@@ -1,3 +1,5 @@
+"""Double machine learning for causal mediation analysis with a binary treatment (DoubleMLMED)."""
+
 from numbers import Integral
 from typing import Optional
 

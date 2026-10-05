@@ -1,3 +1,5 @@
+"""Helper functions for DoubleMLMEDS."""
+
 import pandas as pd
 
 from doubleml.double_ml_framework import DoubleMLFramework

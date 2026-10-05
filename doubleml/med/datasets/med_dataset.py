@@ -1,3 +1,5 @@
+"""Data generating process for causal mediation analysis."""
+
 import numpy as np
 import pandas as pd
 from scipy.linalg import toeplitz
