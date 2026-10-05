@@ -21,74 +21,74 @@ from doubleml.utils._tune_optuna import TUNE_ML_MODELS_DOC
 
 class DoubleMLMEDS(SampleSplittingMixin):
     """Double machine learning for causal mediation analysis with binary treatment.
-        Computes the average treatment effect (ATE), direct effects
-        and indirects effect.
+    Computes the average treatment effect (ATE), direct effects
+    and indirects effect.
 
-        Parameters
-        ----------
-        obj_dml_data : :class:`DoubleMLMEDData` object
-            The :class:`DoubleMLMEDData` object providing the data and specifying the variables for the causal model.
+    Parameters
+    ----------
+    obj_dml_data : :class:`DoubleMLMEDData` object
+        The :class:`DoubleMLMEDData` object providing the data and specifying the variables for the causal model.
 
-        ml_g : estimator implementing ``fit()`` and ``predict()``
-            A machine learner implementing ``fit()`` and ``predict()`` methods (e.g.
-            :py:class:`sklearn.linear_model.Lasso`) for the nuisance function :math:`E[Y|D,X]`.
+    ml_g : estimator implementing ``fit()`` and ``predict()``
+        A machine learner implementing ``fit()`` and ``predict()`` methods (e.g.
+        :py:class:`sklearn.linear_model.Lasso`) for the nuisance function :math:`E[Y|D,X]`.
 
-        ml_G : estimator implementing ``fit()`` and ``predict()``
-            A machine learner implementing ``fit()`` and ``predict()`` methods (e.g.
-            :py:class:`sklearn.linear_model.Lasso`) for the nuisance function :math:`E[Y|D,M,X]`.
-            Only required if ``outcome`` is 'counterfactual'.
+    ml_G : estimator implementing ``fit()`` and ``predict()``
+        A machine learner implementing ``fit()`` and ``predict()`` methods (e.g.
+        :py:class:`sklearn.linear_model.Lasso`) for the nuisance function :math:`E[Y|D,M,X]`.
+        Only required if ``outcome`` is 'counterfactual'.
 
-        ml_nested_g : estimator implementing ``fit()`` and ``predict()``
-            A machine learner implementing ``fit()`` and ``predict()`` methods (e.g.
-            :py:class:`sklearn.linear_model.Lasso`) for the nuisance function :math:`E[E[Y|D=d,M,X]|D=1-d, X]`
-            Only required if ``outcome`` is 'counterfactual'.
+    ml_nested_g : estimator implementing ``fit()`` and ``predict()``
+        A machine learner implementing ``fit()`` and ``predict()`` methods (e.g.
+        :py:class:`sklearn.linear_model.Lasso`) for the nuisance function :math:`E[E[Y|D=d,M,X]|D=1-d, X]`
+        Only required if ``outcome`` is 'counterfactual'.
 
-        ml_m : classifier implementing ``fit()`` and ``predict_proba()``
-            A machine learner implementing ``fit()`` and ``predict_proba()`` methods (e.g.
-            :py:class:`sklearn.linear_model.LogisticRegression`) for the nuisance function :math:`P(D=d|X)`.
+    ml_m : classifier implementing ``fit()`` and ``predict_proba()``
+        A machine learner implementing ``fit()`` and ``predict_proba()`` methods (e.g.
+        :py:class:`sklearn.linear_model.LogisticRegression`) for the nuisance function :math:`P(D=d|X)`.
 
-        ml_M : classifier implementing ``fit()`` and ``predict_proba()``
-            A machine learner implementing ``fit()`` and ``predict_proba()`` methods (e.g.
-            :py:class:`sklearn.linear_model.LogisticRegression`) for the nuisance function :math:`P(D=d|M,X)`.
-            Only required if ``outcome`` is 'counterfactual'.
+    ml_M : classifier implementing ``fit()`` and ``predict_proba()``
+        A machine learner implementing ``fit()`` and ``predict_proba()`` methods (e.g.
+        :py:class:`sklearn.linear_model.LogisticRegression`) for the nuisance function :math:`P(D=d|M,X)`.
+        Only required if ``outcome`` is 'counterfactual'.
 
-        n_folds : int
-            Number of folds.
-            Default is ``5``.
+    n_folds : int
+        Number of folds.
+        Default is ``5``.
 
-        n_rep : int
-            Number of repetitions for the sample splitting.
-            Default is ``1``.
+    n_rep : int
+        Number of repetitions for the sample splitting.
+        Default is ``1``.
 
-        score : str
-            A str (``'efficient-alt'`` is the only choice)  specifying the score function to use.
-            Default is 'efficient-alt'.
+    score : str
+        A str (``'efficient-alt'`` is the only choice)  specifying the score function to use.
+        Default is 'efficient-alt'.
 
-        normalize_ipw : bool
-            Indicates whether the inverse probability weights are normalized.
-            Default is ``True``.
+    normalize_ipw : bool
+        Indicates whether the inverse probability weights are normalized.
+        Default is ``True``.
 
-        draw_sample_splitting : bool
-            Indicates whether the sample splitting should be drawn during initialization of the object.
-            Default is ``True``.
+    draw_sample_splitting : bool
+        Indicates whether the sample splitting should be drawn during initialization of the object.
+        Default is ``True``.
 
-        double_sample_splitting : bool
-            Indicates whether the data is resampled for the estimation of the nested parameter.
-            Default is ``True``.
+    double_sample_splitting : bool
+        Indicates whether the data is resampled for the estimation of the nested parameter.
+        Default is ``True``.
 
-        ps_processor_config : PSProcessorConfig
-            configuration file for the propensity score processor (PSProcessor) object.
-            When None, the PSProcessor is initialized with its default values.
-            Default is ``None``
+    ps_processor_config : PSProcessorConfig
+        configuration file for the propensity score processor (PSProcessor) object.
+        When None, the PSProcessor is initialized with its default values.
+        Default is ``None``
 
-            As in the other DoubleML models, propensity scores are clipped to
-            ``[clipping_threshold, 1 - clipping_threshold]`` (default ``clipping_threshold=0.01``) and no observations
-            are dropped. The original paper and the R function ``medDML`` of the package ``causalweight``
-            (argument ``trim``) instead drop observations with extreme propensity scores, so estimates can differ
-            slightly if propensity scores are close to 0 or 1. Use ``PSProcessorConfig(clipping_threshold=...)`` to
-            change the threshold.
+        As in the other DoubleML models, propensity scores are clipped to
+        ``[clipping_threshold, 1 - clipping_threshold]`` (default ``clipping_threshold=0.01``) and no observations
+        are dropped. The original paper and the R function ``medDML`` of the package ``causalweight``
+        (argument ``trim``) instead drop observations with extreme propensity scores, so estimates can differ
+        slightly if propensity scores are close to 0 or 1. Use ``PSProcessorConfig(clipping_threshold=...)`` to
+        change the threshold.
 
-        Examples
+    Examples
     --------
 
     >>> import numpy as np
