@@ -50,3 +50,16 @@ def test_external_predictions_binary_treat(meds_fixture_binary_treat):
 
     for elem in values_of_interest:
         assert np.array_equal(meds_obj.framework.__getattribute__(elem), meds_obj_ext.framework.__getattribute__(elem))
+
+
+@pytest.mark.ci
+def test_meds_external_predictions_for_subset_of_models(dml_data, learner_linear):
+    """External predictions can be given for only some of the models, the others are estimated as usual."""
+    meds_obj = DoubleMLMEDS(dml_data=dml_data, n_folds=2, n_folds_inner=2, **learner_linear)
+    constant_propensity = 0.5
+    external_predictions = {"factual_1": {"d": {"ml_m": np.full((dml_data.n_obs, 1), constant_propensity)}}}
+
+    meds_obj.fit(external_predictions=external_predictions)
+
+    np.testing.assert_allclose(meds_obj.modeldict["factual_1"].predictions["ml_m"], constant_propensity)
+    assert not np.allclose(meds_obj.modeldict["factual_0"].predictions["ml_m"], constant_propensity)

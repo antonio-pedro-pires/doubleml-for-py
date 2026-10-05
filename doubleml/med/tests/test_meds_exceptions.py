@@ -124,3 +124,28 @@ def test_meds_external_predictions_invalid_learner_keys_exception(dml_data, lear
     msg = f"external_predictions[{d_col}] must hold a dictionnary whose keys are a "
     with pytest.raises(ValueError, match=re.escape(msg)):
         meds_obj.fit(external_predictions=invalid_ext_preds)
+
+
+@pytest.mark.ci
+def test_meds_external_predictions_invalid_treatment_variable_exception(dml_data, learner_linear):
+    meds_obj = DoubleMLMEDS(dml_data=dml_data, **learner_linear)
+    model_id = meds_obj.models_ids[0]
+    d_cols = meds_obj._dml_data.d_cols
+    invalid_ext_preds = {model_id: {"not_a_column": {"ml_m": np.zeros((1, 1))}}}
+    msg = (
+        f"external_predictions[{model_id}] must be keyed by the treatment variables. "
+        + f"Expected keys: {set(d_cols)}. Passed keys: {{'not_a_column'}}."
+    )
+    with pytest.raises(ValueError, match=re.escape(msg)):
+        meds_obj.fit(external_predictions=invalid_ext_preds)
+
+
+@pytest.mark.ci
+def test_meds_external_predictions_treatment_variable_not_dict_exception(dml_data, learner_linear):
+    meds_obj = DoubleMLMEDS(dml_data=dml_data, **learner_linear)
+    model_id = meds_obj.models_ids[0]
+    d_col = meds_obj._dml_data.d_cols[0]
+    invalid_ext_preds = {model_id: {d_col: [1, 2, 3]}}
+    msg = f"external_predictions[{model_id}][{d_col}] must hold a dictionary. " + f"Current value is of type {type([1, 2, 3])}"
+    with pytest.raises(TypeError, match=re.escape(msg)):
+        meds_obj.fit(external_predictions=invalid_ext_preds)
