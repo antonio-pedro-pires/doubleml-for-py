@@ -9,7 +9,7 @@ from sklearn import clone
 from doubleml.double_ml_framework import concat
 from doubleml.double_ml_sampling_mixins import SampleSplittingMixin
 from doubleml.med.med import DoubleMLMED
-from doubleml.med.utils._med_utils import _check_med_data
+from doubleml.med.utils._med_utils import _check_med_data, _inner_g_learner_names
 from doubleml.med.utils._meds_utils import generate_effects_summary
 from doubleml.utils import PSProcessorConfig
 from doubleml.utils._checks import _check_score
@@ -693,7 +693,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
             "ml_nested_g",
         ]
         if self.double_sample_splitting:
-            expected_inner_learners_keys = [f"ml_G_inner_{i}" for i in range(self.n_folds)]
+            expected_inner_learners_keys = _inner_g_learner_names(self.n_folds)
             expected_learners_keys += expected_inner_learners_keys
 
         for model_id, model_predictions in external_predictions_dict.items():

@@ -7,7 +7,13 @@ from sklearn.utils import check_array, check_consistent_length, check_X_y
 
 from doubleml.double_ml import DoubleML
 from doubleml.double_ml_score_mixins import LinearScoreMixin
-from doubleml.med.utils._med_utils import _check_inner_sample_splitting, _check_med_data, _normalize_propensity_med
+from doubleml.med.utils._med_utils import (
+    _check_inner_sample_splitting,
+    _check_med_data,
+    _inner_g_learner_name,
+    _inner_g_learner_names,
+    _normalize_propensity_med,
+)
 from doubleml.utils._checks import _check_finite_predictions, _check_sample_splitting, _check_score
 from doubleml.utils._estimation import (
     _cond_targets,
@@ -224,7 +230,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         else:
             learners = ["ml_m", "ml_G", "ml_M", "ml_nested_g"]
             if self.double_sample_splitting:
-                inner_G_learners = [f"ml_G_inner_{i}" for i in range(self.n_folds)]
+                inner_G_learners = _inner_g_learner_names(self.n_folds)
                 learners += inner_G_learners
 
         self._params = {learner: {key: [None] * self.n_rep for key in self._dml_data.d_cols} for learner in learners}
@@ -394,15 +400,15 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
                 missing = [
                     i
                     for i in range(self.n_folds)
-                    if (f"ml_G_inner_{i}") not in external_predictions.keys()
-                    or external_predictions[f"ml_G_inner_{i}"] is None
+                    if _inner_g_learner_name(i) not in external_predictions.keys()
+                    or external_predictions[_inner_g_learner_name(i)] is None
                 ]
                 if len(missing) > 0:
                     raise ValueError(
                         "When providing external predictions for ml_G, also inner predictions for all inner folds "
                         f"have to be provided (missing: {', '.join([str(i) for i in missing])})."
                     )
-                G_hat_inner = [external_predictions[f"ml_G_inner_{i}"] for i in range(self.n_folds)]
+                G_hat_inner = [external_predictions[name] for name in _inner_g_learner_names(self.n_folds)]
                 G_hat = {
                     "preds": external_predictions["ml_G"],
                     "preds_inner": G_hat_inner,
@@ -446,9 +452,9 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
                     return_models=return_models,
                 )
             # store inner predictions as separate keys per inner fold
-            inner_predictions = {f"ml_G_inner_{i}": G_hat["preds_inner"][i] for i in range(len(G_hat["preds_inner"]))}
+            inner_predictions = {_inner_g_learner_name(i): G_hat["preds_inner"][i] for i in range(len(G_hat["preds_inner"]))}
             inner_targets = {
-                f"ml_G_inner_{i}": (
+                _inner_g_learner_name(i): (
                     G_hat.get("targets_inner")[i]
                     if G_hat.get("targets_inner") is not None and i < len(G_hat["targets_inner"])
                     else None
@@ -458,7 +464,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
             # the flat list of inner models is ordered by outer fold, with one model per inner fold
             n_inner = len(G_hat["models"]) // self.n_folds if G_hat["models"] is not None else None
             inner_models = {
-                f"ml_G_inner_{i}": G_hat["models"][i * n_inner : (i + 1) * n_inner] if n_inner is not None else None
+                _inner_g_learner_name(i): G_hat["models"][i * n_inner : (i + 1) * n_inner] if n_inner is not None else None
                 for i in range(len(G_hat.get("preds_inner", [])))
             }
 

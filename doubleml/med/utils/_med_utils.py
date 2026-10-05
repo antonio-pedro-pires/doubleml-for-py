@@ -208,3 +208,13 @@ def _check_med_data(dml_data):
     if dml_data.z_cols is not None:
         raise NotImplementedError("instrumental variables for mediation analysis is not yet implemented.")
     return dml_data
+
+
+def _inner_g_learner_name(i_fold: int) -> str:
+    """Name of the entry holding the inner predictions of ml_G for the outer fold ``i_fold``."""
+    return f"ml_G_inner_{i_fold}"
+
+
+def _inner_g_learner_names(n_folds: int) -> list[str]:
+    """Names of the entries holding the inner predictions of ml_G, one for each outer fold."""
+    return [_inner_g_learner_name(i_fold) for i_fold in range(n_folds)]
