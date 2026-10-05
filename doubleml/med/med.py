@@ -24,8 +24,8 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
 
     Parameters
     ----------
-    dml_data : :class:`DoubleMLMediationData` object
-        The :class:`DoubleMLMediationData` object providing the data and specifying the variables for the causal model.
+    dml_data : :class:`DoubleMLMEDData` object
+        The :class:`DoubleMLMEDData` object providing the data and specifying the variables for the causal model.
 
     ml_g : estimator implementing ``fit()`` and ``predict()``
         A machine learner implementing ``fit()`` and ``predict()`` methods (e.g.

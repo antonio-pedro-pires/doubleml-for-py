@@ -196,7 +196,7 @@ def _check_is_inner_partition(fold, train_smpls):
 def _check_med_data(dml_data):
     if not isinstance(dml_data, DoubleMLMEDData):
         raise TypeError(
-            "Mediation analysis requires data of type DoubleMLMediationData."
+            "Mediation analysis requires data of type DoubleMLMEDData."
             f" Data of type {str(type(dml_data))} was provided instead."
         )
     if dml_data.n_treat != 1:
