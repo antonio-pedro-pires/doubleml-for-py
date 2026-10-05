@@ -24,7 +24,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
 
     Parameters
     ----------
-    dml_data : :class:`DoubleMLMEDData` object
+    obj_dml_data : :class:`DoubleMLMEDData` object
         The :class:`DoubleMLMEDData` object providing the data and specifying the variables for the causal model.
 
     ml_g : estimator implementing ``fit()`` and ``predict()``
@@ -58,10 +58,6 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
     treatment_level : int
         The treatment level :math:`d`.
 
-    score : str
-        A str (``'efficient-alt'``)  specifying the score function to use.
-        The only option currently available is 'efficient-alt'.
-
     n_folds : int
         Number of folds.
         Default is ``5``.
@@ -69,6 +65,10 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
     n_rep : int
         Number of repetitions for the sample splitting.
         Default is ``1``.
+
+    score : str
+        A str (``'efficient-alt'``)  specifying the score function to use.
+        The only option currently available is 'efficient-alt'.
 
     normalize_ipw : bool
         Indicates whether the inverse probability weights are normalized.
@@ -109,7 +109,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
 
     def __init__(
         self,
-        dml_data,
+        obj_dml_data,
         treatment_level,
         outcome,
         ml_m,
@@ -117,22 +117,22 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         ml_G=None,
         ml_M=None,
         ml_nested_g=None,
-        score="efficient-alt",
         n_folds=5,
         n_rep=1,
+        score="efficient-alt",
         n_folds_inner=5,
         normalize_ipw=True,
         draw_sample_splitting=True,
         double_sample_splitting=True,
         ps_processor_config: Optional[PSProcessorConfig] = None,
     ):
-        self._dml_data = _check_med_data(dml_data)
+        self._dml_data = _check_med_data(obj_dml_data)
 
         self._double_sample_splitting = double_sample_splitting
         self.n_folds_inner = n_folds_inner
 
         super().__init__(
-            dml_data, n_folds, n_rep, score, draw_sample_splitting, double_sample_splitting=self.double_sample_splitting
+            obj_dml_data, n_folds, n_rep, score, draw_sample_splitting, double_sample_splitting=self.double_sample_splitting
         )
 
         valid_scores = ["efficient-alt"]
