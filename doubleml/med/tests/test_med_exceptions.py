@@ -379,3 +379,13 @@ def test_med_multiple_treatments_exception(med_data_two_treatments, learner_line
     msg = re.escape("Mediation analysis supports exactly one treatment variable, got 2: ['d', 'd2'].")
     with pytest.raises(ValueError, match=msg):
         DoubleMLMED(dml_data=med_data_two_treatments, treatment_level=1, outcome="factual", **learner_linear)
+
+
+@pytest.mark.ci
+@pytest.mark.parametrize("numpy_level", [np.int64(1), np.int32(0)], ids=["int64", "int32"])
+def test_med_accepts_numpy_integer_treatment_level(dml_data, learner_linear, numpy_level):
+    """Treatment levels given as numpy integers, e.g. taken from np.unique, are accepted and stored as int."""
+    med_obj = DoubleMLMED(dml_data=dml_data, outcome="factual", treatment_level=numpy_level, **learner_linear)
+
+    assert med_obj.treatment_level == int(numpy_level)
+    assert type(med_obj.treatment_level) is int
