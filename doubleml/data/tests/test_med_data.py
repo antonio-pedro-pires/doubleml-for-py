@@ -1,3 +1,5 @@
+"""Tests of the data container DoubleMLMEDData."""
+
 import numpy as np
 import pandas as pd
 import pytest
