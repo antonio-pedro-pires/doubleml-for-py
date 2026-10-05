@@ -227,3 +227,10 @@ def test_meds_redraw_sample_splitting_updates_models(dml_data, learner_linear, d
             np.testing.assert_equal(model.smpls_inner, meds_obj.smpls_inner)
     assert meds_obj.framework is None
     assert meds_obj.effects is None
+
+
+@pytest.mark.ci
+def test_meds_has_no_unused_trimming_attribute(dml_data, learner_linear):
+    """Propensity scores are clipped, not trimmed, so the object does not offer a count of trimmed observations."""
+    meds_obj = DoubleMLMEDS(obj_dml_data=dml_data, **learner_linear)
+    assert not hasattr(meds_obj, "n_trimmed")
