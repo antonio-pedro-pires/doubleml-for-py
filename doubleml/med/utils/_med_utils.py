@@ -199,6 +199,10 @@ def _check_med_data(dml_data):
             "Mediation analysis requires data of type DoubleMLMediationData."
             f" Data of type {str(type(dml_data))} was provided instead."
         )
+    if dml_data.n_treat != 1:
+        raise ValueError(
+            f"Mediation analysis supports exactly one treatment variable, got {dml_data.n_treat}: {dml_data.d_cols}."
+        )
     if not all(dml_data.binary_treats):
         raise ValueError("Treatment variables for mediation analysis must be binary and take values 1 or 0.")
     if dml_data.z_cols is not None:
