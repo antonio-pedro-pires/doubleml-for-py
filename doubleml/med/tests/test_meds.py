@@ -1,9 +1,11 @@
 import numpy as np
 import pytest
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 
 from doubleml import DoubleMLMED
 from doubleml.double_ml_framework import concat
 from doubleml.med import DoubleMLMEDS
+from doubleml.med.datasets import make_med_data
 
 # TODO: Remove warning filter once sklearn gets to version 1.10
 pytestmark = pytest.mark.filterwarnings("ignore: l1_ratio parameter is only used when penalty ")
@@ -146,3 +148,34 @@ def test_bootstrap(fit_objs):
     individual_med_objs.bootstrap()
 
     assert np.allclose(meds_obj.boot_t_stat, individual_med_objs.boot_t_stat)
+
+
+@pytest.mark.ci
+def test_effects_summary_reflects_latest_fit():
+    """After fitting again, effects_summary is computed from the new fit and not taken from the previous one."""
+    np.random.seed(3141)
+    data = make_med_data(n_obs=300, dim_x=5)
+    meds_obj = DoubleMLMEDS(
+        data,
+        ml_m=RandomForestClassifier(n_estimators=5),
+        ml_g=RandomForestRegressor(n_estimators=5),
+        ml_G=RandomForestRegressor(n_estimators=5),
+        ml_M=RandomForestClassifier(n_estimators=5),
+        ml_nested_g=RandomForestRegressor(n_estimators=5),
+        n_folds=2,
+        n_folds_inner=2,
+    )
+
+    meds_obj.fit()
+    coef_factual_1_first = meds_obj.modeldict["factual_1"].coef.copy()
+    meds_obj.effects_summary  # evaluates and caches the effects of the first fit
+
+    meds_obj.fit()  # the random forests make the second fit differ from the first
+    coef_factual_1 = meds_obj.modeldict["factual_1"].coef
+    coef_factual_0 = meds_obj.modeldict["factual_0"].coef
+    coef_counterfactual_0 = meds_obj.modeldict["counterfactual_0"].coef
+    assert not np.allclose(coef_factual_1, coef_factual_1_first), "the second fit should differ from the first"
+
+    effects_summary = meds_obj.effects_summary
+    np.testing.assert_allclose(effects_summary.loc["ATE", "coef"], (coef_factual_1 - coef_factual_0)[0])
+    np.testing.assert_allclose(effects_summary.loc["INDIR_CONTROL", "coef"], (coef_counterfactual_0 - coef_factual_0)[0])
