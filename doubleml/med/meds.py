@@ -496,7 +496,8 @@ class DoubleMLMEDS(SampleSplittingMixin):
     def _fit_model(self, score, n_jobs_cv=None, store_predictions=True, store_models=False, external_predictions_dict=None):
         model = self.modeldict[score]
         if external_predictions_dict is not None:
-            external_predictions = external_predictions_dict[score]
+            # models without entry in external_predictions are estimated as usual
+            external_predictions = external_predictions_dict.get(score)
         else:
             external_predictions = None
 
@@ -677,8 +678,18 @@ class DoubleMLMEDS(SampleSplittingMixin):
                     f"external_predictions[{model_id}] must hold a dictionary. "
                     + f"Current value in external_predictions[{model_id}] is of type {type(model_predictions)}"
                 )
+            if not set(model_predictions.keys()).issubset(set(self._dml_data.d_cols)):
+                raise ValueError(
+                    f"external_predictions[{model_id}] must be keyed by the treatment variables. "
+                    + f"Expected keys: {set(self._dml_data.d_cols)}. "
+                    + f"Passed keys: {set(model_predictions.keys())}."
+                )
             for d_col in model_predictions.keys():
-                assert d_col in set(self._dml_data.d_cols)
+                if not isinstance(model_predictions[d_col], dict):
+                    raise TypeError(
+                        f"external_predictions[{model_id}][{d_col}] must hold a dictionary. "
+                        + f"Current value is of type {type(model_predictions[d_col])}"
+                    )
                 if not set(model_predictions[d_col].keys()).issubset(expected_learners_keys):
                     raise ValueError(
                         f"external_predictions[{d_col}] must hold a dictionnary whose keys are a "
