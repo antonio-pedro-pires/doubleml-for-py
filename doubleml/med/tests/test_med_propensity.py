@@ -1,5 +1,3 @@
-"""Tests of the propensity scores estimated and processed by DoubleMLMED."""
-
 import numpy as np
 import pytest
 from sklearn.isotonic import IsotonicRegression
