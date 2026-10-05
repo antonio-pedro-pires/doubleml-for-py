@@ -488,6 +488,9 @@ class DoubleMLMEDS(SampleSplittingMixin):
         # aggregate all frameworks
         self._framework = concat(framework_list)
 
+        # the effects are derived from the frameworks of the models, so they are recomputed on the next access
+        self._effects = None
+
         return self
 
     def _fit_model(self, score, n_jobs_cv=None, store_predictions=True, store_models=False, external_predictions_dict=None):
