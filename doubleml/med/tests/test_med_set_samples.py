@@ -60,8 +60,8 @@ def reset_splits_fixture(learner_linear, reset_outcome):
     data = make_med_data(n_obs=300, dim_x=5)
     kwargs = {"dml_data": data, "outcome": reset_outcome, "treatment_level": 1, **learner_linear}
 
-    # the reference uses a different n_folds, n_rep and n_folds_inner than the object receiving its splits
-    med_ref = DoubleMLMED(n_folds=2, n_rep=2, n_folds_inner=3, **kwargs)
+    # n_folds and n_rep follow the externally set splits (as for all DoubleML models), n_folds_inner must match
+    med_ref = DoubleMLMED(n_folds=2, n_rep=2, n_folds_inner=2, **kwargs)
     med_ref.fit()
     med_ext = DoubleMLMED(n_folds=3, n_rep=1, n_folds_inner=2, **kwargs)
     returned = med_ext.set_sample_splitting(smpls=med_ref.smpls, smpls_inner=med_ref.smpls_inner)
@@ -78,11 +78,11 @@ def test_set_sample_splitting_returns_self(reset_splits_fixture):
 
 @pytest.mark.ci
 def test_set_sample_splitting_updates_dimensions(reset_splits_fixture):
-    """The number of repetitions, folds and inner folds follow the externally set splits."""
+    """The number of repetitions and folds follow the externally set splits, the inner fold count is unchanged."""
     med_ref, med_ext, _ = reset_splits_fixture
     assert med_ext.n_rep == med_ref.n_rep == 2
     assert med_ext.n_folds == med_ref.n_folds == 2
-    assert med_ext.n_folds_inner == med_ref.n_folds_inner == 3
+    assert med_ext.n_folds_inner == med_ref.n_folds_inner == 2
 
 
 @pytest.mark.ci
@@ -101,3 +101,24 @@ def test_set_sample_splitting_returns_self_single_split(dml_data, learner_linear
     med_ref = DoubleMLMED(**kwargs, **learner_linear)
     med_ext = DoubleMLMED(draw_sample_splitting=False, **kwargs, **learner_linear)
     assert med_ext.set_sample_splitting(smpls=med_ref.smpls) is med_ext
+
+
+@pytest.mark.ci
+def test_set_sample_splitting_inner_folds_mismatch_raises(learner_linear, reset_outcome):
+    """Inner splits with another number of inner folds than n_folds_inner are rejected and leave the object unchanged."""
+    np.random.seed(3141)
+    data = make_med_data(n_obs=300, dim_x=5)
+    kwargs = {"dml_data": data, "outcome": reset_outcome, "treatment_level": 1, **learner_linear}
+    med_ref = DoubleMLMED(n_folds=3, n_folds_inner=3, **kwargs)
+    med_ext = DoubleMLMED(n_folds=3, n_folds_inner=2, **kwargs)
+    smpls_before = med_ext.smpls
+    smpls_inner_before = med_ext.smpls_inner
+
+    msg = r"smpls_inner provides 3 inner folds per outer fold, but n_folds_inner=2\. "
+    with pytest.raises(ValueError, match=msg):
+        med_ext.set_sample_splitting(smpls=med_ref.smpls, smpls_inner=med_ref.smpls_inner)
+
+    assert med_ext.n_folds_inner == 2
+    assert med_ext.smpls is smpls_before
+    assert med_ext.smpls_inner is smpls_inner_before
+    med_ext.fit()  # the object is still usable with its original splits
