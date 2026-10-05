@@ -39,3 +39,13 @@ def test_docstring_sections_are_consistently_indented(label, docstring):
             misindented.append(f"line {i + 1}: {line!r}")
 
     assert not misindented, f"{label} has misindented lines: " + "; ".join(misindented[:3])
+
+
+@pytest.mark.ci
+@pytest.mark.parametrize("model_class", [DoubleMLMED, DoubleMLMEDS])
+def test_every_constructor_parameter_is_documented(model_class):
+    """The class docstring documents all parameters of the constructor."""
+    documented = set(re.findall(r"^(\w+) : ", inspect.getdoc(model_class), flags=re.MULTILINE))
+    parameters = set(inspect.signature(model_class).parameters)
+
+    assert not parameters - documented, f"{model_class.__name__} does not document: {sorted(parameters - documented)}"
