@@ -34,7 +34,7 @@ def dml_med_fixture(binary_outcomes, binary_treats, dml_data, learner_linear, ps
     else:
         active_learners = {k: clone(v) for k, v in learner_linear.items() if k in ["ml_m", "ml_G", "ml_M", "ml_nested_g"]}
     dml_med_obj = DoubleMLMED(
-        dml_data=dml_data, outcome=binary_outcomes, treatment_level=binary_treats, **active_learners, **dml_args
+        obj_dml_data=dml_data, outcome=binary_outcomes, treatment_level=binary_treats, **active_learners, **dml_args
     )
 
     dml_objs = (dml_med_obj, DoubleMLMED)
@@ -67,7 +67,7 @@ def test_property_types_and_shapes(fitted_dml_obj):
 @pytest.fixture(scope="module")
 def fitted_meds_obj(dml_data, learner_linear, ps_processor_config):
     meds_obj = DoubleMLMEDS(
-        dml_data=dml_data,
+        obj_dml_data=dml_data,
         n_folds=2,
         n_rep=1,
         ps_processor_config=ps_processor_config,
@@ -80,7 +80,7 @@ def fitted_meds_obj(dml_data, learner_linear, ps_processor_config):
 @pytest.mark.ci
 @pytest.mark.filterwarnings("ignore:ps_processor_config not specified")
 def test_meds_properties_lifecycle(dml_data, learner_linear):
-    meds_obj = DoubleMLMEDS(dml_data=dml_data, n_folds=2, n_rep=1, **learner_linear)
+    meds_obj = DoubleMLMEDS(obj_dml_data=dml_data, n_folds=2, n_rep=1, **learner_linear)
 
     # Before fit: every result-related property is None and the effects summary is empty.
     for prop in ["coef", "all_coef", "se", "all_se", "t_stat", "pval", "n_rep_boot", "boot_method", "boot_t_stat", "effects"]:

@@ -15,7 +15,7 @@ from doubleml.med.utils._med_utils import (
 )
 def med_obj(dml_data, learner_linear, ps_processor_config):
     return DoubleMLMED(
-        dml_data=dml_data,
+        obj_dml_data=dml_data,
         outcome="counterfactual",
         treatment_level=1,
         ml_m=learner_linear["ml_m"],
@@ -49,7 +49,7 @@ def valid_smpls_different_n_inner_folds(
     ps_processor_config,
 ):
     alt_med_obj = DoubleMLMED(
-        dml_data=dml_data,
+        obj_dml_data=dml_data,
         outcome="counterfactual",
         treatment_level=1,
         ml_m=learner_linear["ml_m"],
@@ -72,7 +72,7 @@ def valid_smpls_different_n_folds(
     ps_processor_config,
 ):
     alt_med_obj = DoubleMLMED(
-        dml_data=dml_data,
+        obj_dml_data=dml_data,
         outcome="counterfactual",
         treatment_level=1,
         ml_m=learner_linear["ml_m"],

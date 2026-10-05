@@ -16,7 +16,7 @@ def learners(learner_linear):
 
 @pytest.fixture
 def meds_obj(dml_data, learner_linear):
-    return DoubleMLMEDS(dml_data=dml_data, **learner_linear)
+    return DoubleMLMEDS(obj_dml_data=dml_data, **learner_linear)
 
 
 @pytest.fixture(scope="module")
@@ -42,7 +42,7 @@ def test_evaluate_effects_exception(meds_obj):
 def test_meds_data_type_exception(learners, bad_data):
     not_med_data, _, _ = bad_data
     with pytest.raises(TypeError, match="Mediation analysis requires data"):
-        DoubleMLMEDS(dml_data=not_med_data, **learners)
+        DoubleMLMEDS(obj_dml_data=not_med_data, **learners)
 
 
 @pytest.mark.ci
@@ -50,27 +50,27 @@ def test_meds_non_binary_treatment_exception(learners, bad_data):
     _, _, med_data_non_binary = bad_data
     msg = "Treatment variables for mediation analysis must be binary and take values 1 or 0."
     with pytest.raises(ValueError, match=re.escape(msg)):
-        DoubleMLMEDS(dml_data=med_data_non_binary, **learners)
+        DoubleMLMEDS(obj_dml_data=med_data_non_binary, **learners)
 
 
 @pytest.mark.ci
 def test_meds_multiple_treatments_exception(learners, med_data_two_treatments):
     msg = re.escape("Mediation analysis supports exactly one treatment variable, got 2: ['d', 'd2'].")
     with pytest.raises(ValueError, match=msg):
-        DoubleMLMEDS(dml_data=med_data_two_treatments, **learners)
+        DoubleMLMEDS(obj_dml_data=med_data_two_treatments, **learners)
 
 
 @pytest.mark.ci
 def test_meds_instrumental_variables_exception(learners, bad_data):
     _, med_data_iv, _ = bad_data
     with pytest.raises(NotImplementedError, match="instrumental variables for mediation analysis is not yet implemented."):
-        DoubleMLMEDS(dml_data=med_data_iv, **learners)
+        DoubleMLMEDS(obj_dml_data=med_data_iv, **learners)
 
 
 @pytest.mark.ci
 def test_meds_smpls_not_set_exception(dml_data, learners):
     msg = "Sample splitting not specified. Draw samples via .draw_sample splitting(). External samples not implemented yet."
-    meds_obj_no_smpls = DoubleMLMEDS(dml_data=dml_data, draw_sample_splitting=False, **learners)
+    meds_obj_no_smpls = DoubleMLMEDS(obj_dml_data=dml_data, draw_sample_splitting=False, **learners)
     with pytest.raises(ValueError, match=re.escape(msg)):
         _ = meds_obj_no_smpls.smpls
 
@@ -89,7 +89,7 @@ def test_meds_bootstrap_before_fit_exception(meds_obj):
 
 @pytest.mark.ci
 def test_meds_external_predictions_invalid_keys_exception(dml_data, learner_linear):
-    meds_obj = DoubleMLMEDS(dml_data=dml_data, **learner_linear)
+    meds_obj = DoubleMLMEDS(obj_dml_data=dml_data, **learner_linear)
     invalid_ext_preds = {"invalid_key": {}}
     expected_keys = set(meds_obj.models_ids)
     passed_keys = set(invalid_ext_preds.keys())
@@ -104,7 +104,7 @@ def test_meds_external_predictions_invalid_keys_exception(dml_data, learner_line
 
 @pytest.mark.ci
 def test_meds_external_predictions_not_dict_exception(dml_data, learner_linear):
-    meds_obj = DoubleMLMEDS(dml_data=dml_data, **learner_linear)
+    meds_obj = DoubleMLMEDS(obj_dml_data=dml_data, **learner_linear)
     model_id = meds_obj.models_ids[0]
     invalid_ext_preds = {model_id: "not_a_dict"}
     msg = (
@@ -117,7 +117,7 @@ def test_meds_external_predictions_not_dict_exception(dml_data, learner_linear):
 
 @pytest.mark.ci
 def test_meds_external_predictions_invalid_learner_keys_exception(dml_data, learner_linear):
-    meds_obj = DoubleMLMEDS(dml_data=dml_data, **learner_linear)
+    meds_obj = DoubleMLMEDS(obj_dml_data=dml_data, **learner_linear)
     model_id = meds_obj.models_ids[0]
     d_col = meds_obj._dml_data.d_cols[0]
     invalid_ext_preds = {model_id: {d_col: {"ml_invalid": np.zeros((1, 1))}}}
@@ -128,7 +128,7 @@ def test_meds_external_predictions_invalid_learner_keys_exception(dml_data, lear
 
 @pytest.mark.ci
 def test_meds_external_predictions_invalid_treatment_variable_exception(dml_data, learner_linear):
-    meds_obj = DoubleMLMEDS(dml_data=dml_data, **learner_linear)
+    meds_obj = DoubleMLMEDS(obj_dml_data=dml_data, **learner_linear)
     model_id = meds_obj.models_ids[0]
     d_cols = meds_obj._dml_data.d_cols
     invalid_ext_preds = {model_id: {"not_a_column": {"ml_m": np.zeros((1, 1))}}}
@@ -142,7 +142,7 @@ def test_meds_external_predictions_invalid_treatment_variable_exception(dml_data
 
 @pytest.mark.ci
 def test_meds_external_predictions_treatment_variable_not_dict_exception(dml_data, learner_linear):
-    meds_obj = DoubleMLMEDS(dml_data=dml_data, **learner_linear)
+    meds_obj = DoubleMLMEDS(obj_dml_data=dml_data, **learner_linear)
     model_id = meds_obj.models_ids[0]
     d_col = meds_obj._dml_data.d_cols[0]
     invalid_ext_preds = {model_id: {d_col: [1, 2, 3]}}

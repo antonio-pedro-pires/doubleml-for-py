@@ -12,7 +12,7 @@ pytestmark = pytest.mark.filterwarnings("ignore: l1_ratio parameter is only used
 def dml_med_fixture(binary_outcomes, binary_treats, dml_data, learner_linear, ps_processor_config):
     if binary_outcomes == "factual":
         med_obj = DoubleMLMED(
-            dml_data=dml_data,
+            obj_dml_data=dml_data,
             outcome=binary_outcomes,
             treatment_level=binary_treats,
             ml_g=learner_linear["ml_g"],
@@ -21,7 +21,7 @@ def dml_med_fixture(binary_outcomes, binary_treats, dml_data, learner_linear, ps
         )
     else:
         med_obj = DoubleMLMED(
-            dml_data=dml_data,
+            obj_dml_data=dml_data,
             outcome=binary_outcomes,
             treatment_level=binary_treats,
             ml_m=learner_linear["ml_m"],
@@ -36,7 +36,7 @@ def dml_med_fixture(binary_outcomes, binary_treats, dml_data, learner_linear, ps
 @pytest.fixture(scope="module")
 def dml_meds_fixture(dml_data, learner_linear, ps_processor_config):
     meds_obj = DoubleMLMEDS(
-        dml_data=dml_data,
+        obj_dml_data=dml_data,
         ps_processor_config=ps_processor_config,
         **learner_linear,
     )
@@ -74,7 +74,7 @@ def test_meds_defaults(dml_meds_fixture):
 def test_med_default_ps_config(dml_data, learner_linear):
     with pytest.warns(UserWarning, match="ps_processor_config not specified"):
         obj = DoubleMLMED(
-            dml_data=dml_data,
+            obj_dml_data=dml_data,
             outcome="factual",
             treatment_level=0,
             ml_g=learner_linear["ml_g"],

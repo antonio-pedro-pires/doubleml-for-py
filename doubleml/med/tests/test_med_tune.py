@@ -24,7 +24,7 @@ def untuned_tuned_scores(
 
     if binary_outcomes == "factual":
         med_obj = DoubleMLMED(
-            dml_data=dml_data,
+            obj_dml_data=dml_data,
             outcome=binary_outcomes,
             treatment_level=binary_treats,
             ml_g=learner_tree["ml_g"],
@@ -33,7 +33,7 @@ def untuned_tuned_scores(
         )
     else:
         med_obj = DoubleMLMED(
-            dml_data=dml_data,
+            obj_dml_data=dml_data,
             outcome=binary_outcomes,
             treatment_level=binary_treats,
             ml_m=learner_tree["ml_m"],
@@ -122,7 +122,7 @@ _CONSTANT_G = 42.0
 def nested_g_tuning_and_fit_calls(dml_data):
     """Tune only ml_nested_g with a constant ml_G, then fit, and record what the nested learner was trained on."""
     med_obj = DoubleMLMED(
-        dml_data=dml_data,
+        obj_dml_data=dml_data,
         outcome="counterfactual",
         treatment_level=1,
         ml_m=DecisionTreeClassifier(random_state=123),

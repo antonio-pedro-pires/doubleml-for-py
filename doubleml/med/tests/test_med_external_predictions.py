@@ -26,7 +26,7 @@ def med_objs(
 ):
 
     kwargs = {
-        "dml_data": dml_data,
+        "obj_dml_data": dml_data,
         "outcome": binary_outcomes,
         "treatment_level": binary_treats,
         "score": "efficient-alt",

@@ -9,7 +9,7 @@ from doubleml.med.datasets import make_med_data
 def set_smpls_sampling_fixture(dml_data, learner_linear, binary_outcomes, double_sample_splitting, ps_processor_config):
     treatment_level = 1  # Fixed treatment_level since the treatment level has no effect on set_smpls_sampling.
     med_obj = DoubleMLMED(
-        dml_data=dml_data,
+        obj_dml_data=dml_data,
         outcome=binary_outcomes,
         treatment_level=treatment_level,
         double_sample_splitting=double_sample_splitting,
@@ -17,7 +17,7 @@ def set_smpls_sampling_fixture(dml_data, learner_linear, binary_outcomes, double
         **learner_linear,
     )
     med_obj_ext = DoubleMLMED(
-        dml_data=dml_data,
+        obj_dml_data=dml_data,
         outcome=binary_outcomes,
         treatment_level=treatment_level,
         double_sample_splitting=double_sample_splitting,
@@ -58,7 +58,7 @@ def reset_splits_fixture(learner_linear, reset_outcome):
     """A reference object with its own splits, and a second object that gets those splits set externally."""
     np.random.seed(3141)
     data = make_med_data(n_obs=300, dim_x=5)
-    kwargs = {"dml_data": data, "outcome": reset_outcome, "treatment_level": 1, **learner_linear}
+    kwargs = {"obj_dml_data": data, "outcome": reset_outcome, "treatment_level": 1, **learner_linear}
 
     # n_folds, n_rep and n_folds_inner follow the externally set splits (as n_folds and n_rep do for all DoubleML models)
     med_ref = DoubleMLMED(n_folds=2, n_rep=2, n_folds_inner=3, **kwargs)
@@ -97,7 +97,7 @@ def test_set_sample_splitting_then_fit_matches_reference(reset_splits_fixture):
 @pytest.mark.ci
 def test_set_sample_splitting_returns_self_single_split(dml_data, learner_linear):
     """Without double sample splitting, set_sample_splitting also returns the object for chaining."""
-    kwargs = {"dml_data": dml_data, "outcome": "factual", "treatment_level": 1, "double_sample_splitting": False}
+    kwargs = {"obj_dml_data": dml_data, "outcome": "factual", "treatment_level": 1, "double_sample_splitting": False}
     med_ref = DoubleMLMED(**kwargs, **learner_linear)
     med_ext = DoubleMLMED(draw_sample_splitting=False, **kwargs, **learner_linear)
     assert med_ext.set_sample_splitting(smpls=med_ref.smpls) is med_ext

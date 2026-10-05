@@ -20,7 +20,7 @@ pytestmark = pytest.mark.filterwarnings("ignore: l1_ratio parameter is only used
 @pytest.fixture(scope="module")
 def meds_obj(dml_data, learner_linear, double_sample_splitting, ps_processor_config):
     return DoubleMLMEDS(
-        dml_data=dml_data,
+        obj_dml_data=dml_data,
         n_folds=5,
         n_rep=1,
         n_folds_inner=5,
@@ -41,7 +41,7 @@ def individual_med_objs(meds_obj, learner_linear, double_sample_splitting):
     individual_modeldict = {}
     for model_id, model in meds_obj.modeldict.items():
         ind_model = DoubleMLMED(
-            dml_data=meds_obj._dml_data,
+            obj_dml_data=meds_obj._dml_data,
             treatment_level=model.treatment_level,
             outcome=model.outcome,
             n_folds=meds_obj.n_folds,
@@ -185,7 +185,7 @@ def test_effects_summary_reflects_latest_fit():
 def test_meds_draw_sample_splitting_after_construction_without_splits(dml_data, learner_linear, double_sample_splitting):
     """Splits drawn after construction are used by all models, and the object can be fitted."""
     meds_obj = DoubleMLMEDS(
-        dml_data=dml_data,
+        obj_dml_data=dml_data,
         n_folds=2,
         n_folds_inner=2,
         double_sample_splitting=double_sample_splitting,
@@ -206,7 +206,7 @@ def test_meds_draw_sample_splitting_after_construction_without_splits(dml_data, 
 def test_meds_redraw_sample_splitting_updates_models(dml_data, learner_linear, double_sample_splitting):
     """Drawing new splits replaces the splits of all models and discards the results of the previous fit."""
     meds_obj = DoubleMLMEDS(
-        dml_data=dml_data,
+        obj_dml_data=dml_data,
         n_folds=2,
         n_folds_inner=2,
         double_sample_splitting=double_sample_splitting,
