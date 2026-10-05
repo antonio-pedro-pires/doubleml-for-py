@@ -63,7 +63,7 @@ def test_med_data_check(check_med_data_fixture, binary_treats, learner_linear, p
     )
 
     msg = (
-        "Mediation analysis requires data of type DoubleMLMediationData."
+        "Mediation analysis requires data of type DoubleMLMEDData."
         + f" Data of type {str(type(not_med_data))} was provided instead."
     )
     with pytest.raises(TypeError, match=msg):

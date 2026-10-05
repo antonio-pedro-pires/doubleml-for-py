@@ -19,7 +19,7 @@ _dml_panel_data_alias = ["DoubleMLPanelData", DoubleMLPanelData]
 _dml_rdd_data_alias = ["DoubleMLRDDData", DoubleMLRDDData]
 _dml_ssm_data_alias = ["DoubleMLSSMData", DoubleMLSSMData]
 _dml_cluster_data_alias = ["DoubleMLClusterData", DoubleMLClusterData]
-_dml_mediation_data_alias = ["DoubleMLMediationData", DoubleMLMEDData]
+_dml_mediation_data_alias = ["DoubleMLMEDData", DoubleMLMEDData]
 
 
 def _get_array_alias():
@@ -63,5 +63,5 @@ def _get_dml_ssm_data_alias():
 
 
 def _get_dml_mediation_data_alias():
-    """Returns the list of DoubleMLMediationData aliases."""
+    """Returns the list of DoubleMLMEDData aliases."""
     return _dml_mediation_data_alias
