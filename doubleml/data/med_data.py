@@ -343,16 +343,16 @@ class DoubleMLMEDData(DoubleMLData):
 
     def _check_binary_mediators(self):
         is_binary = pd.Series(dtype=bool, index=self.m_cols)
-        if self._force_all_m_finite is not True:
-            # force_all_m_finite is False or 'allow-nan': missing/infinite values may be
-            # present, so type_of_target() (which itself rejects NaN/inf) cannot be used.
+        if self._force_all_m_finite is False:
+            # missing and infinite values may be present, so the mediators are not checked
             is_binary[:] = False
         else:
             for m_var in self.m_cols:
-                this_m = self.data.loc[:, m_var]
-                binary_m = type_of_target(this_m) == "binary"
+                # for force_all_m_finite='allow-nan' only the observed values are checked, since type_of_target() rejects NaN
+                this_m = self.data.loc[:, m_var].dropna()
+                binary_m = this_m.size > 0 and type_of_target(this_m) == "binary"
                 zero_one_treat = np.all((np.power(this_m, 2) - this_m) == 0)
-                is_binary[m_var] = binary_m & zero_one_treat
+                is_binary[m_var] = bool(binary_m and zero_one_treat)
         return is_binary
 
     def _check_disjoint_sets(self):
