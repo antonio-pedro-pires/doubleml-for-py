@@ -22,7 +22,7 @@ def test_factual_propensity_independent_of_treatment_level():
     # checks that ml_m estimates the same probability regardless of the treatment level.
     data = make_med_data(n_obs=400)
     common = dict(
-        dml_data=data,
+        obj_dml_data=data,
         outcome="factual",
         ml_g=LinearRegression(),
         ml_m=LogisticRegression(),
@@ -49,7 +49,7 @@ def test_counterfactual_propensities_independent_of_treatment_level():
     # levels produce the same ml_M and ml_m predictions.
     data = make_med_data(n_obs=400)
     common = dict(
-        dml_data=data,
+        obj_dml_data=data,
         outcome="counterfactual",
         ml_m=LogisticRegression(),
         ml_M=LogisticRegression(),
@@ -78,7 +78,7 @@ def test_ps_calibration_uses_dml_folds(outcome, learner_linear):
     data = make_med_data(n_obs=300, dim_x=5)
     ps_processor_config = PSProcessorConfig(calibration_method="isotonic", cv_calibration=True)
     med_obj = DoubleMLMED(
-        dml_data=data,
+        obj_dml_data=data,
         outcome=outcome,
         treatment_level=1,
         n_folds=3,
