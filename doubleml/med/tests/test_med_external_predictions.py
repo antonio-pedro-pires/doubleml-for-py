@@ -60,7 +60,7 @@ def dml_med_fixture(
 
     prediction_dict = {"d": _get_preds(med_obj, med_obj.learner.keys())}
 
-    if med_obj.double_sample_splitting and med_obj.outcome == "counterfactual":
+    if med_obj.outcome == "counterfactual":
         for i in range(med_obj.n_folds):
             prediction_dict["d"][f"ml_G_inner_{i}"] = med_obj.predictions[f"ml_G_inner_{i}"][:, :, 0]
 
@@ -153,7 +153,7 @@ def _get_res(obj, obj_ext, boot_methods, n_rep_boot):
 @pytest.mark.parametrize("n_outer_folds", [2, 3])
 @pytest.mark.parametrize("double_sample_splitting", [True, False], ids=["double_split", "single_split"])
 def test_med_inner_learner_names(dml_data, learner_linear, n_outer_folds, double_sample_splitting):
-    """The counterfactual model has one inner ml_G entry per outer fold if the sample splitting is double."""
+    """The counterfactual model has one ml_G_inner entry per outer fold, for single and double sample splitting."""
     med_obj = DoubleMLMED(
         obj_dml_data=dml_data,
         outcome="counterfactual",
@@ -163,7 +163,23 @@ def test_med_inner_learner_names(dml_data, learner_linear, n_outer_folds, double
         **learner_linear,
     )
 
-    expected_names = ["ml_m", "ml_G", "ml_M", "ml_nested_g"]
-    if double_sample_splitting:
-        expected_names += [f"ml_G_inner_{i}" for i in range(n_outer_folds)]
+    expected_names = ["ml_m", "ml_G", "ml_M", "ml_nested_g"] + [f"ml_G_inner_{i}" for i in range(n_outer_folds)]
     assert med_obj.params_names == expected_names
+
+
+@pytest.mark.ci
+def test_med_external_predictions_for_ml_G_require_the_per_fold_predictions_single_split(dml_data, learner_linear):
+    med_obj = DoubleMLMED(
+        obj_dml_data=dml_data,
+        outcome="counterfactual",
+        treatment_level=1,
+        n_folds=3,
+        double_sample_splitting=False,
+        **learner_linear,
+    )
+    med_obj.fit()
+    external_predictions = {"d": {"ml_G": med_obj.predictions["ml_G"][:, :, 0]}}
+
+    msg = re.escape("When providing external predictions for ml_G, also inner predictions for all inner folds ")
+    with pytest.raises(ValueError, match=msg):
+        med_obj.fit(external_predictions=external_predictions)
