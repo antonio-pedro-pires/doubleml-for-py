@@ -676,19 +676,27 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
                 raise ValueError("smpls_inner is required")
             if all_smpls_cluster is not None or is_cluster_data:
                 raise NotImplementedError("sample setting with cluster data and inner samples not supported.")
-            self._smpls, self._smpls_cluster, self._n_rep, self._n_folds = _check_sample_splitting(
+            new_smpls, new_smpls_cluster, new_n_rep, new_n_folds = _check_sample_splitting(
                 all_smpls=smpls,
                 all_smpls_cluster=all_smpls_cluster,
                 dml_data=self._dml_data,
                 is_cluster_data=is_cluster_data,
                 n_obs=None,
             )
-            self._smpls_inner, self._n_folds_inner = _check_inner_sample_splitting(
+            new_smpls_inner, new_n_folds_inner = _check_inner_sample_splitting(
                 smpls_inner,
-                self._smpls,
+                new_smpls,
                 self._dml_data.n_obs,
             )
-            self.n_folds_inner = self._n_folds_inner
+            if new_n_folds_inner != self.n_folds_inner:
+                raise ValueError(
+                    f"smpls_inner provides {new_n_folds_inner} inner folds per outer fold, "
+                    f"but n_folds_inner={self.n_folds_inner}. "
+                    "Create the object with a matching n_folds_inner."
+                )
+
+            self._smpls, self._smpls_cluster, self._n_rep, self._n_folds = new_smpls, new_smpls_cluster, new_n_rep, new_n_folds
+            self._smpls_inner, self._n_folds_inner = new_smpls_inner, new_n_folds_inner
             self._initialize_dml_model()
             return self
 
