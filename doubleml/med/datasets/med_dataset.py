@@ -10,7 +10,7 @@ _data_frame_alias = _get_data_frame_alias()
 _dml_mediation_data_alias = _get_dml_mediation_data_alias()
 
 
-def make_med_data(n_obs=1000, dim_x=20, return_type="DoubleMLMediationData", b=0.3, **kwargs):
+def make_med_data(n_obs=1000, dim_x=20, return_type="DoubleMLMEDData", b=0.3):
     """
     Generates data from a mediation analysis model used in  Helmut Farbmacher et al. (2022) for Table 1.
     The data generating process is defined as
@@ -38,11 +38,11 @@ def make_med_data(n_obs=1000, dim_x=20, return_type="DoubleMLMediationData", b=0
     dim_x :
         The number of covariates.
     return_type :
-        If ``'DoubleMLData'`` or ``DoubleMLData``, returns a ``DoubleMLMediationData`` object.
+        If ``'DoubleMLMEDData'`` or ``DoubleMLMEDData``, returns a ``DoubleMLMEDData`` object.
 
         If ``'DataFrame'``, ``'pd.DataFrame'`` or ``pd.DataFrame``, returns a ``pd.DataFrame``.
 
-        If ``'array'``, ``'np.ndarray'``, ``'np.array'`` or ``np.ndarray``, returns ``np.ndarray``'s ``(x, y, d)``.
+        If ``'array'``, ``'np.ndarray'``, ``'np.array'`` or ``np.ndarray``, returns ``np.ndarray``'s ``(x, y, d, m)``.
     b :
         The confounding strength: the i-th element of the coefficient vector :math:`\\beta`
         is :math:`b / i^2`. Default is ``0.3``.
