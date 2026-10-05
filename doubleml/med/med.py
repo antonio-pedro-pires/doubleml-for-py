@@ -671,6 +671,32 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         raise NotImplementedError()
 
     def set_sample_splitting(self, smpls, all_smpls_cluster=None, is_cluster_data=False, smpls_inner=None):
+        """
+        Set the sample splitting for the model.
+
+        The attributes ``n_folds`` and ``n_rep`` are derived from the provided partition ``smpls``. If
+        ``double_sample_splitting=True``, ``smpls_inner`` has to be provided and ``n_folds_inner`` is derived from it.
+
+        Parameters
+        ----------
+        smpls : list or tuple
+            The sample splitting, in the format described in :meth:`DoubleML.set_sample_splitting`.
+
+        all_smpls_cluster : list or None
+            Cluster sample splitting. Not supported together with inner samples.
+
+        is_cluster_data : bool
+            Indicates cluster data. Not supported together with inner samples.
+
+        smpls_inner : list or None
+            The inner sample splitting used for the nested estimation. For each repetition and each outer fold, a list
+            of ``n_folds_inner`` tuples ``(train_ind, test_ind)`` of indices within the outer training sample.
+            Required if ``double_sample_splitting=True``.
+
+        Returns
+        -------
+        self : object
+        """
         if self.double_sample_splitting:
             if smpls_inner is None:
                 raise ValueError("smpls_inner is required")
@@ -688,15 +714,9 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
                 new_smpls,
                 self._dml_data.n_obs,
             )
-            if new_n_folds_inner != self.n_folds_inner:
-                raise ValueError(
-                    f"smpls_inner provides {new_n_folds_inner} inner folds per outer fold, "
-                    f"but n_folds_inner={self.n_folds_inner}. "
-                    "Create the object with a matching n_folds_inner."
-                )
 
             self._smpls, self._smpls_cluster, self._n_rep, self._n_folds = new_smpls, new_smpls_cluster, new_n_rep, new_n_folds
-            self._smpls_inner, self._n_folds_inner = new_smpls_inner, new_n_folds_inner
+            self._smpls_inner, self.n_folds_inner = new_smpls_inner, new_n_folds_inner
             self._initialize_dml_model()
             return self
 
