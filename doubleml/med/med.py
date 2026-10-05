@@ -75,6 +75,12 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         A str (``'efficient-alt'``)  specifying the score function to use.
         The only option currently available is 'efficient-alt'.
 
+    n_folds_inner : int
+        Number of inner folds used for the estimation of the nested parameter if ``double_sample_splitting=True``.
+        The training sample of each of the ``n_folds`` folds is split into ``n_folds_inner`` inner folds,
+        see the notes.
+        Default is ``5``.
+
     normalize_ipw : bool
         Indicates whether the inverse probability weights are normalized.
         Default is ``True``.
@@ -84,7 +90,8 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         Default is ``True``.
 
     double_sample_splitting : bool
-        Indicates whether the data is resampled for the estimation of the nested parameter.
+        Indicates whether the data is resampled for the estimation of the nested parameter
+        :math:`E[E[Y|D=d,M,X]|D=1-d,X]`, see the notes. Only used for the estimation if ``outcome`` is 'counterfactual'.
         Default is ``True``.
 
     ps_processor_config : PSProcessorConfig
@@ -98,6 +105,32 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         (argument ``trim``) instead drop observations with extreme propensity scores, so estimates can differ
         slightly if propensity scores are close to 0 or 1. Use ``PSProcessorConfig(clipping_threshold=...)`` to
         change the threshold.
+
+    Notes
+    -----
+    The counterfactual outcome requires the nested parameter :math:`E[E[Y|D=d,M,X]|D=1-d,X]`, which is estimated in two
+    stages: ``ml_G`` estimates :math:`E[Y|D=d,M,X]` and ``ml_nested_g`` regresses the predictions of ``ml_G`` on
+    :math:`X`. To avoid overfitting, the two stages are not estimated on the same data.
+
+    If ``double_sample_splitting=True``, the training sample of each of the ``n_folds`` folds is split into
+    ``n_folds_inner`` inner folds. ``ml_G`` is fitted on the inner training folds, its out-of-fold predictions within
+    the training sample are the targets of ``ml_nested_g``, and its predictions for the observations of the fold itself
+    are the average of the predictions of the inner models. Algorithm 2 of Farbmacher et al. (2022) instead splits the
+    training sample into two non-overlapping subsamples, one for each stage, and Theorem 4.2 of the paper is stated for
+    that algorithm. The R function ``medDML`` of the package ``causalweight`` also splits the training data for the
+    sequential estimation of the two stages if ``fewsplits=FALSE`` (the default).
+
+    If ``double_sample_splitting=False``, both stages use the same training data and ``n_folds_inner`` is not used.
+    This corresponds to ``fewsplits=TRUE`` of ``medDML``.
+
+    The paper uses four-fold cross-fitting in its simulations and ``medDML`` uses three folds by default, while
+    ``n_folds`` is ``5`` by default here.
+
+    References
+    ----------
+    Helmut Farbmacher, Martin Huber, Lukáš Lafférs, Henrika Langen, Martin Spindler (2022).
+    Causal mediation analysis with double machine learning. The Econometrics Journal, 25(2), 277-300.
+    https://doi.org/10.1093/ectj/utac003
 
     Examples
     --------
