@@ -179,3 +179,51 @@ def test_effects_summary_reflects_latest_fit():
     effects_summary = meds_obj.effects_summary
     np.testing.assert_allclose(effects_summary.loc["ATE", "coef"], (coef_factual_1 - coef_factual_0)[0])
     np.testing.assert_allclose(effects_summary.loc["INDIR_CONTROL", "coef"], (coef_counterfactual_0 - coef_factual_0)[0])
+
+
+@pytest.mark.ci
+def test_meds_draw_sample_splitting_after_construction_without_splits(dml_data, learner_linear, double_sample_splitting):
+    """Splits drawn after construction are used by all models, and the object can be fitted."""
+    meds_obj = DoubleMLMEDS(
+        dml_data=dml_data,
+        n_folds=2,
+        n_folds_inner=2,
+        double_sample_splitting=double_sample_splitting,
+        draw_sample_splitting=False,
+        **learner_linear,
+    )
+
+    assert meds_obj.draw_sample_splitting() is meds_obj
+    meds_obj.fit()
+
+    for model in meds_obj.modeldict.values():
+        np.testing.assert_equal(model.smpls, meds_obj.smpls)
+        if double_sample_splitting:
+            np.testing.assert_equal(model.smpls_inner, meds_obj.smpls_inner)
+
+
+@pytest.mark.ci
+def test_meds_redraw_sample_splitting_updates_models(dml_data, learner_linear, double_sample_splitting):
+    """Drawing new splits replaces the splits of all models and discards the results of the previous fit."""
+    meds_obj = DoubleMLMEDS(
+        dml_data=dml_data,
+        n_folds=2,
+        n_folds_inner=2,
+        double_sample_splitting=double_sample_splitting,
+        **learner_linear,
+    )
+    meds_obj.fit()
+    meds_obj.effects_summary  # evaluates and caches the effects of the first fit
+    smpls_before = meds_obj.smpls
+
+    np.random.seed(99)
+    meds_obj.draw_sample_splitting()
+
+    with pytest.raises(AssertionError):
+        np.testing.assert_equal(meds_obj.smpls, smpls_before)  # the redraw gave different splits
+    for model in meds_obj.modeldict.values():
+        np.testing.assert_equal(model.smpls, meds_obj.smpls)
+        if double_sample_splitting:
+            np.testing.assert_equal(model.smpls_inner, meds_obj.smpls_inner)
+    assert meds_obj.framework is None
+    assert meds_obj.effects is None
