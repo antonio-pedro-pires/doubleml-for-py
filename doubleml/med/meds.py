@@ -1,5 +1,3 @@
-"""Double machine learning for causal mediation analysis with the effects of all treatment levels (DoubleMLMEDS)."""
-
 import itertools
 from typing import Optional
 

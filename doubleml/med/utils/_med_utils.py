@@ -1,5 +1,3 @@
-"""Helper functions for DoubleMLMED: propensity score normalization and checks of the data and the samples."""
-
 import numpy as np
 
 from doubleml.data import DoubleMLMEDData

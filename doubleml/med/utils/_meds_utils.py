@@ -1,5 +1,3 @@
-"""Helper functions for DoubleMLMEDS."""
-
 import pandas as pd
 
 

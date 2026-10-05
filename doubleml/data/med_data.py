@@ -1,5 +1,3 @@
-"""Data container for causal mediation analysis."""
-
 import io
 
 import numpy as np
