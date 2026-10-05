@@ -24,7 +24,7 @@ def test_obj_vs_from_arrays():
 
 @pytest.mark.ci
 def test_from_arrays():
-    # create dataset of type DoubleMLMediationData
+    # create dataset of type DoubleMLMEDData
     med_data = make_med_data()
 
     # test custom configuration to check that DoubleMLData's
