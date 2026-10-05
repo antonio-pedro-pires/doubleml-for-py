@@ -1,9 +1,12 @@
 import numpy as np
 import pytest
+from sklearn.isotonic import IsotonicRegression
 from sklearn.linear_model import LinearRegression, LogisticRegression
+from sklearn.model_selection import cross_val_predict
 
 from doubleml import DoubleMLMED
 from doubleml.med.datasets import make_med_data
+from doubleml.utils import PSProcessorConfig
 
 # TODO: Remove warning filter once sklearn gets to version 1.10
 pytestmark = pytest.mark.filterwarnings("ignore: l1_ratio parameter is only used when penalty ")
@@ -66,3 +69,37 @@ def test_counterfactual_propensities_independent_of_treatment_level():
 
     np.testing.assert_allclose(med_control.predictions["ml_M"], med_treat.predictions["ml_M"])
     np.testing.assert_allclose(med_control.predictions["ml_m"], med_treat.predictions["ml_m"])
+
+
+@pytest.mark.ci
+@pytest.mark.parametrize("outcome", ["factual", "counterfactual"])
+def test_ps_calibration_uses_dml_folds(outcome, learner_linear):
+    """Cross-validated isotonic calibration of the propensity scores uses the sample splitting of the model."""
+    data = make_med_data(n_obs=300, dim_x=5)
+    ps_processor_config = PSProcessorConfig(calibration_method="isotonic", cv_calibration=True)
+    med_obj = DoubleMLMED(
+        dml_data=data,
+        outcome=outcome,
+        treatment_level=1,
+        n_folds=3,
+        double_sample_splitting=False,
+        ps_processor_config=ps_processor_config,
+        **learner_linear,
+    )
+
+    # known raw propensity scores are passed as external predictions, all other nuisances are estimated
+    rng = np.random.RandomState(3141)
+    propensity_learners = ["ml_m"] if outcome == "factual" else ["ml_m", "ml_M"]
+    raw_scores = {learner: rng.uniform(0.2, 0.8, size=(data.n_obs, 1)) for learner in propensity_learners}
+    med_obj.fit(external_predictions={"d": raw_scores})
+
+    for learner, raw in raw_scores.items():
+        calibrated = cross_val_predict(
+            IsotonicRegression(out_of_bounds="clip", y_min=0.0, y_max=1.0),
+            raw,
+            data.d,
+            cv=med_obj.smpls[0],
+            method="predict",
+        )
+        expected = np.clip(calibrated, ps_processor_config.clipping_threshold, 1 - ps_processor_config.clipping_threshold)
+        np.testing.assert_allclose(med_obj.predictions[learner][:, 0, 0], expected, err_msg=f"calibration of {learner}")
