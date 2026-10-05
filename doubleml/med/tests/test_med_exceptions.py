@@ -1,4 +1,5 @@
 import copy
+import re
 
 import numpy as np
 import pytest
@@ -371,3 +372,10 @@ def test_med_sensitivity_not_implemented(dml_data, learner_linear):
     msg = "Sensitivity analysis is not implemented for this model."
     with pytest.raises(NotImplementedError, match=msg):
         dml_med_obj.sensitivity_analysis()
+
+
+@pytest.mark.ci
+def test_med_multiple_treatments_exception(med_data_two_treatments, learner_linear):
+    msg = re.escape("Mediation analysis supports exactly one treatment variable, got 2: ['d', 'd2'].")
+    with pytest.raises(ValueError, match=msg):
+        DoubleMLMED(dml_data=med_data_two_treatments, treatment_level=1, outcome="factual", **learner_linear)

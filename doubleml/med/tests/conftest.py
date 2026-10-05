@@ -1,8 +1,10 @@
+import numpy as np
 import pytest
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 
+from doubleml.data import DoubleMLMEDData
 from doubleml.med.datasets import make_med_data
 from doubleml.tests._utils_tune_optuna import (
     _SAMPLER_CASES,
@@ -115,3 +117,12 @@ def optuna_settings(request):
 @pytest.fixture(scope="session", params=[PSProcessorConfig()])
 def ps_processor_config(request):
     return request.param
+
+
+@pytest.fixture(scope="session")
+def med_data_two_treatments():
+    """Mediation data with two binary treatment variables."""
+    data = make_med_data(n_obs=300, dim_x=5)
+    df = data.data.copy()
+    df["d2"] = np.random.RandomState(1).binomial(1, 0.4, size=len(df))
+    return DoubleMLMEDData(df, y_col=data.y_col, d_cols=[data.d_cols[0], "d2"], m_cols=data.m_cols, x_cols=data.x_cols)

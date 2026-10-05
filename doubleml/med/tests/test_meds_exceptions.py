@@ -54,6 +54,13 @@ def test_meds_non_binary_treatment_exception(learners, bad_data):
 
 
 @pytest.mark.ci
+def test_meds_multiple_treatments_exception(learners, med_data_two_treatments):
+    msg = re.escape("Mediation analysis supports exactly one treatment variable, got 2: ['d', 'd2'].")
+    with pytest.raises(ValueError, match=msg):
+        DoubleMLMEDS(dml_data=med_data_two_treatments, **learners)
+
+
+@pytest.mark.ci
 def test_meds_instrumental_variables_exception(learners, bad_data):
     _, med_data_iv, _ = bad_data
     with pytest.raises(NotImplementedError, match="instrumental variables for mediation analysis is not yet implemented."):
