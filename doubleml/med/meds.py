@@ -64,6 +64,12 @@ class DoubleMLMEDS(SampleSplittingMixin):
         A str (``'efficient-alt'`` is the only choice)  specifying the score function to use.
         Default is 'efficient-alt'.
 
+    n_folds_inner : int
+        Number of inner folds used for the estimation of the nested parameter if ``double_sample_splitting=True``.
+        The training sample of each of the ``n_folds`` folds is split into ``n_folds_inner`` inner folds,
+        see the notes.
+        Default is ``5``.
+
     normalize_ipw : bool
         Indicates whether the inverse probability weights are normalized.
         Default is ``True``.
@@ -73,7 +79,8 @@ class DoubleMLMEDS(SampleSplittingMixin):
         Default is ``True``.
 
     double_sample_splitting : bool
-        Indicates whether the data is resampled for the estimation of the nested parameter.
+        Indicates whether the data is resampled for the estimation of the nested parameter
+        :math:`E[E[Y|D=d,M,X]|D=1-d,X]`, see the notes. Only used for the estimation of the counterfactual outcomes.
         Default is ``True``.
 
     ps_processor_config : PSProcessorConfig
@@ -87,6 +94,11 @@ class DoubleMLMEDS(SampleSplittingMixin):
         (argument ``trim``) instead drop observations with extreme propensity scores, so estimates can differ
         slightly if propensity scores are close to 0 or 1. Use ``PSProcessorConfig(clipping_threshold=...)`` to
         change the threshold.
+
+    Notes
+    -----
+    The sample splitting for the estimation of the nested parameter, which is controlled by
+    ``double_sample_splitting`` and ``n_folds_inner``, is described in the notes of :class:`DoubleMLMED`.
 
     Examples
     --------
