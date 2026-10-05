@@ -374,6 +374,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
 
         inner_predictions = {}
         inner_targets = {}
+        inner_models = {}
         if self.double_sample_splitting:
             # Get inner samples conditional on treatment:
             smpls_inner_d1 = []
@@ -447,6 +448,12 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
                 )
                 for i in range(len(G_hat.get("preds_inner", [])))
             }
+            # the flat list of inner models is ordered by outer fold, with one model per inner fold
+            n_inner = len(G_hat["models"]) // self.n_folds if G_hat["models"] is not None else None
+            inner_models = {
+                f"ml_G_inner_{i}": G_hat["models"][i * n_inner : (i + 1) * n_inner] if n_inner is not None else None
+                for i in range(len(G_hat.get("preds_inner", [])))
+            }
 
         else:
             if G_external:
@@ -464,6 +471,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
                     n_jobs=n_jobs_cv,
                     est_params=self._get_params("ml_G"),
                     method=self._predict_method["ml_G"],
+                    return_models=return_models,
                 )
             if nested_g_external:
                 nested_g_hat = {"preds": external_predictions["ml_nested_g"], "targets": None, "models": None}
@@ -498,6 +506,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
                 "ml_M": M_hat["models"],
                 "ml_G": G_hat["models"],
                 "ml_nested_g": nested_g_hat["models"],
+                **inner_models,
             },
         }
 
