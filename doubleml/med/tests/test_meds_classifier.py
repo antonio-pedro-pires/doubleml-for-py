@@ -1,3 +1,5 @@
+"""Tests of DoubleMLMEDS with a binary outcome and classifiers as outcome learners."""
+
 import numpy as np
 import pytest
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor

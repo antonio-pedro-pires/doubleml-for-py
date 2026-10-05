@@ -1,3 +1,5 @@
+"""Tests of the return types of the properties and methods of DoubleMLMED and DoubleMLMEDS."""
+
 import numpy as np
 import pandas as pd
 import pytest

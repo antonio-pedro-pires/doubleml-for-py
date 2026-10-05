@@ -1,3 +1,5 @@
+"""Tests of the data generating process make_med_data."""
+
 import numpy as np
 import pandas as pd
 import pytest

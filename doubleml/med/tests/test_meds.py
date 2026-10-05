@@ -1,3 +1,5 @@
+"""Tests of DoubleMLMEDS against a collection of DoubleMLMED objects."""
+
 import numpy as np
 import pytest
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor

@@ -1,3 +1,5 @@
+"""Tests of the constructor signatures of DoubleMLMED and DoubleMLMEDS."""
+
 import inspect
 
 import pytest

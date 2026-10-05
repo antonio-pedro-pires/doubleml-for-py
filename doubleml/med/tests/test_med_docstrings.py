@@ -1,3 +1,6 @@
+"""Tests of the docstrings of the mediation analysis."""
+
+import importlib
 import inspect
 import re
 
@@ -39,3 +42,23 @@ def test_docstring_sections_are_consistently_indented(label, docstring):
             misindented.append(f"line {i + 1}: {line!r}")
 
     assert not misindented, f"{label} has misindented lines: " + "; ".join(misindented[:3])
+
+
+_MED_MODULES = [
+    "doubleml.med",
+    "doubleml.med.med",
+    "doubleml.med.meds",
+    "doubleml.med.utils._med_utils",
+    "doubleml.med.utils._meds_utils",
+    "doubleml.med.datasets",
+    "doubleml.med.datasets.med_dataset",
+    "doubleml.data.med_data",
+]
+
+
+@pytest.mark.ci
+@pytest.mark.parametrize("module_name", _MED_MODULES)
+def test_med_modules_have_a_module_docstring(module_name):
+    """Every module of the mediation analysis starts with a module docstring."""
+    module = importlib.import_module(module_name)
+    assert module.__doc__ is not None and module.__doc__.strip(), f"{module_name} has no module docstring"

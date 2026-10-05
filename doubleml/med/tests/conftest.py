@@ -1,3 +1,5 @@
+"""Shared fixtures for the tests of the mediation analysis."""
+
 import numpy as np
 import pytest
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor

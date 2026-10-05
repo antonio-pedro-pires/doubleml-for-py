@@ -1,3 +1,5 @@
+"""Tests of tuning the learners of DoubleMLMEDS."""
+
 import pytest
 
 from doubleml.med import DoubleMLMEDS

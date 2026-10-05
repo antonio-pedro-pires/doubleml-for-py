@@ -1,3 +1,5 @@
+"""Tests of the helper functions of DoubleMLMED for the inner sample splitting."""
+
 import numpy as np
 import pytest
 
