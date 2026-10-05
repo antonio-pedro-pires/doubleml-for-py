@@ -267,7 +267,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
                 method=self._predict_method["ml_m"],
                 return_models=return_models,
             )
-        m_hat["preds"] = self._ps_processor.adjust_ps(m_hat["preds"], d)
+        m_hat["preds"] = self._ps_processor.adjust_ps(m_hat["preds"], d, cv=smpls, learner_name="ml_m")
 
         if g_external:
             g_hat = {
@@ -353,7 +353,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
                 method=self._predict_method["ml_m"],
                 return_models=return_models,
             )
-        m_hat["preds"] = self._ps_processor.adjust_ps(m_hat["preds"], d)
+        m_hat["preds"] = self._ps_processor.adjust_ps(m_hat["preds"], d, cv=smpls, learner_name="ml_m")
 
         # Estimate the probability of treatment conditional on the mediator and covariates.
         if M_external:
@@ -369,7 +369,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
                 method=self._predict_method["ml_M"],
                 return_models=return_models,
             )
-        M_hat["preds"] = self._ps_processor.adjust_ps(M_hat["preds"], d)
+        M_hat["preds"] = self._ps_processor.adjust_ps(M_hat["preds"], d, cv=smpls, learner_name="ml_M")
 
         inner_predictions = {}
         inner_targets = {}
