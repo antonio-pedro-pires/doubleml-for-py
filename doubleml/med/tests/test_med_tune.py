@@ -1,5 +1,3 @@
-"""Tests of tuning the learners of DoubleMLMED."""
-
 import re
 
 import numpy as np

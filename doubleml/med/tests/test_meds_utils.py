@@ -1,5 +1,3 @@
-"""Tests of the helper functions of DoubleMLMEDS."""
-
 import pandas as pd
 import pytest
 

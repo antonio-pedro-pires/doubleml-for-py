@@ -1,5 +1,3 @@
-"""Tests of setting the sample splitting of DoubleMLMED."""
-
 import numpy as np
 import pytest
 

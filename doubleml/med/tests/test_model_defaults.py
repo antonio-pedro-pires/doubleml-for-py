@@ -1,5 +1,3 @@
-"""Tests of the default attributes of DoubleMLMED and DoubleMLMEDS before and after fitting."""
-
 import warnings
 
 import pandas as pd

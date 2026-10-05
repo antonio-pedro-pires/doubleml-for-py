@@ -1,5 +1,3 @@
-"""Tests of the exceptions raised by DoubleMLMEDS."""
-
 import copy
 import re
 
