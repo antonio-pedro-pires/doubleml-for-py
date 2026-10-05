@@ -287,12 +287,12 @@ def test_check_binary_mediators():
         assert type_of_target(med_data.data[m]) == "binary"
     assert not med_data._check_binary_mediators().all()
 
-    # The mediation variables allow Nans. Even without an actual Nan, the binary check cannot be run safely
-    # (type_of_target rejects Nans), so binary_meds should return False.
+    # The mediation variables allow Nans but have no actual Nan. The observed values are checked, so binary_meds
+    # should return True.
     med_data.force_all_m_finite = "allow-nan"
     for m in med_data.m_cols:
         assert type_of_target(med_data.data[m]) == "binary"
-    assert not med_data._check_binary_mediators().all()
+    assert med_data._check_binary_mediators().all()
 
     # The mediation variables contains Nans, binary_meds should return False.
     med_data.data["m1"] = np.nan
@@ -401,3 +401,38 @@ def test_binary_meds_property():
     binary_meds = med_data.binary_meds
     assert binary_meds["m1"]
     assert not binary_meds["m2"]
+
+
+@pytest.mark.ci
+def test_binary_meds_allow_nan_checks_observed_values():
+    """With force_all_m_finite='allow-nan', a mediator is binary if its observed values are 0 and 1."""
+    np.random.seed(3141)
+    n = 60
+    with_nan = np.random.randint(0, 2, n).astype(float)
+    with_nan[:5] = np.nan
+    three_values = np.random.randint(0, 3, n).astype(float)
+    three_values[:5] = np.nan
+    zero_two = 2.0 * np.random.randint(0, 2, n)
+    zero_two[:5] = np.nan
+    df = pd.DataFrame(
+        {
+            "y": np.random.randn(n),
+            "d": np.random.randint(0, 2, n),
+            "x1": np.random.randn(n),
+            "m_binary_with_nan": with_nan,
+            "m_binary_complete": np.random.randint(0, 2, n).astype(float),
+            "m_three_values_with_nan": three_values,
+            "m_zero_two_with_nan": zero_two,
+            "m_all_nan": np.full(n, np.nan),
+        }
+    )
+    m_cols = [c for c in df.columns if c.startswith("m_")]
+    med_data = DoubleMLMEDData(df, y_col="y", d_cols="d", x_cols="x1", m_cols=m_cols, force_all_m_finite="allow-nan")
+
+    assert med_data.binary_meds.to_dict() == {
+        "m_binary_with_nan": True,
+        "m_binary_complete": True,
+        "m_three_values_with_nan": False,
+        "m_zero_two_with_nan": False,
+        "m_all_nan": False,
+    }
