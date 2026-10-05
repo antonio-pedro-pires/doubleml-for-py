@@ -1,4 +1,5 @@
 import warnings
+from numbers import Integral
 from typing import Optional
 
 import numpy as np
@@ -784,7 +785,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         return outcome
 
     def _check_levels(self, treatment_level):
-        if not isinstance(treatment_level, int):
+        if not isinstance(treatment_level, Integral):
             raise TypeError(
                 "Treatment level must be an integer."
                 + f" Treatment level {str(treatment_level)} of type {str(type(treatment_level))} provided."
@@ -794,4 +795,4 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
             raise ValueError(
                 "Treatment level must be either 0 or 1" + f" Treatment level provided was {str(treatment_level)}."
             )
-        return treatment_level
+        return int(treatment_level)
