@@ -26,7 +26,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
 
         Parameters
         ----------
-        dml_data : :class:`DoubleMLMEDData` object
+        obj_dml_data : :class:`DoubleMLMEDData` object
             The :class:`DoubleMLMEDData` object providing the data and specifying the variables for the causal model.
 
         ml_g : estimator implementing ``fit()`` and ``predict()``
@@ -52,10 +52,6 @@ class DoubleMLMEDS(SampleSplittingMixin):
             :py:class:`sklearn.linear_model.LogisticRegression`) for the nuisance function :math:`P(D=d|M,X)`.
             Only required if ``outcome`` is 'counterfactual'.
 
-        score : str
-            A str (``'efficient-alt'`` is the only choice)  specifying the score function to use.
-            Default is 'efficient-alt'.
-
         n_folds : int
             Number of folds.
             Default is ``5``.
@@ -63,6 +59,10 @@ class DoubleMLMEDS(SampleSplittingMixin):
         n_rep : int
             Number of repetitions for the sample splitting.
             Default is ``1``.
+
+        score : str
+            A str (``'efficient-alt'`` is the only choice)  specifying the score function to use.
+            Default is 'efficient-alt'.
 
         normalize_ipw : bool
             Indicates whether the inverse probability weights are normalized.
@@ -109,7 +109,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
 
     def __init__(
         self,
-        dml_data,
+        obj_dml_data,
         ml_m,
         ml_g,
         ml_G,
@@ -117,15 +117,15 @@ class DoubleMLMEDS(SampleSplittingMixin):
         ml_nested_g,
         n_folds=5,
         n_rep=1,
-        n_folds_inner=5,
         score="efficient-alt",
+        n_folds_inner=5,
         normalize_ipw=True,
         draw_sample_splitting=True,
         double_sample_splitting=True,
         ps_processor_config: Optional[PSProcessorConfig] = None,
     ):
 
-        self._dml_data = _check_med_data(dml_data)
+        self._dml_data = _check_med_data(obj_dml_data)
         self._is_cluster_data = self._dml_data.is_cluster_data
 
         # Check score
@@ -641,7 +641,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
             learners = pot_learners if outcome == "factual" else counter_learners
 
             model = DoubleMLMED(
-                dml_data=self._dml_data,
+                obj_dml_data=self._dml_data,
                 outcome=outcome,
                 treatment_level=treatment,
                 n_rep=self._n_rep,
