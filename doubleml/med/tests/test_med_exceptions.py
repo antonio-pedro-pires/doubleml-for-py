@@ -389,3 +389,21 @@ def test_med_accepts_numpy_integer_treatment_level(dml_data, learner_linear, num
 
     assert med_obj.treatment_level == int(numpy_level)
     assert type(med_obj.treatment_level) is int
+
+
+class _NanRegressor(LinearRegression):
+    """Regressor whose predictions are not finite."""
+
+    def predict(self, X):
+        return np.full(len(X), np.nan)
+
+
+@pytest.mark.ci
+def test_med_non_finite_inner_predictions_exception_names_learner(dml_data, learner_linear):
+    """The error for non-finite inner predictions of ml_G names the nuisance learner."""
+    learners = {**learner_linear, "ml_G": _NanRegressor()}
+    med_obj = DoubleMLMED(dml_data=dml_data, outcome="counterfactual", treatment_level=1, **learners)
+
+    msg = r"Predictions from learner _NanRegressor\(\) for ml_G are not finite\."
+    with pytest.raises(ValueError, match=msg):
+        med_obj.fit()
