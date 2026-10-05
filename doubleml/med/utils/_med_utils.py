@@ -218,3 +218,23 @@ def _inner_g_learner_name(i_fold):
 def _inner_g_learner_names(n_folds):
     """Names of the entries holding the inner predictions of ml_G, one for each outer fold."""
     return [_inner_g_learner_name(i_fold) for i_fold in range(n_folds)]
+
+
+def _check_inner_g_external_predictions(external_predictions, n_folds):
+    missing = [
+        i
+        for i in range(n_folds)
+        if _inner_g_learner_name(i) not in external_predictions.keys()
+        or external_predictions[_inner_g_learner_name(i)] is None
+    ]
+    if len(missing) > 0:
+        raise ValueError(
+            "When providing external predictions for ml_G, also inner predictions for all inner folds "
+            f"have to be provided (missing: {', '.join([str(i) for i in missing])})."
+        )
+
+
+def _predict_with_method(model, x, method):
+    if method == "predict_proba":
+        return model.predict_proba(x)[:, 1]
+    return getattr(model, method)(x)

@@ -704,9 +704,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
             "ml_G",
             "ml_nested_g",
         ]
-        if self.double_sample_splitting:
-            expected_inner_learners_keys = _inner_g_learner_names(self.n_folds)
-            expected_learners_keys += expected_inner_learners_keys
+        expected_learners_keys += _inner_g_learner_names(self.n_folds)
 
         for model_id, model_predictions in external_predictions_dict.items():
             if not isinstance(model_predictions, dict):
