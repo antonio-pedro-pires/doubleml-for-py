@@ -11,70 +11,70 @@ from doubleml.utils._estimation import _assure_2d_array
 
 class DoubleMLMEDData(DoubleMLData):
     """
-     Data-container for causal mediation analysis.
+    Data-container for causal mediation analysis.
 
-     :class:`DoubleMLMEDData` objects can be initialized from a
-     :class:`pandas.DataFrame` via :meth:`DoubleMLMEDData.__init__` or from
-     :class:`numpy.ndarray` via the class method :meth:`DoubleMLMEDData.from_arrays`.
+    :class:`DoubleMLMEDData` objects can be initialized from a
+    :class:`pandas.DataFrame` via :meth:`DoubleMLMEDData.__init__` or from
+    :class:`numpy.ndarray` via the class method :meth:`DoubleMLMEDData.from_arrays`.
 
-     Parameters
-     ----------
-     data : :class:`pandas.DataFrame`
-         The data.
-     y_col : str
-         The name of the outcome variable :math:`Y`.
-     d_cols : str or list
-         The name of the treatment variable :math:`D`.
-     m_cols : str or list
-         The name of the mediator variable(s) :math:`M`.
-     x_cols : str or list, optional
-         The names of the covariates :math:`X`.
-         Default is ``None``.
-     z_cols : str or list, optional
-         The names of the instrumental variables :math:`Z`.
-         Default is ``None``.
-     use_other_treat_as_covariate : bool, optional
-         Indicates whether in the case of multiple treatment variables the other
-         treatment variables should be added as covariates.
-         Default is ``True``.
-     force_all_x_finite : bool, optional
-         Indicates whether to raise an error if there are missing or infinite
-         values in the covariates :math:`X`. Possible values are: ``True`` (neither missings
-         ``np.nan``/``pd.NA`` nor infinite values ``np.inf`` are allowed), ``False`` (missings and
-         infinite values are allowed), ``'allow-nan'`` (only missings are allowed).
-         Default is ``True``.
-     force_all_d_finite : bool, optional
-         Indicates whether to raise an error if there are missing or infinite
-         values in the treatment variable :math:`D`. Possible values are: ``True`` (neither missings
-         ``np.nan``/``pd.NA`` nor infinite values ``np.inf`` are allowed), ``False`` (missings and
-         infinite values are allowed), ``'allow-nan'`` (only missings are allowed).
-         Default is ``True``.
-     force_all_m_finite : bool, optional
-         Indicates whether to raise an error if there are missing or infinite
-         values in the mediators :math:`M`. Possible values are: ``True`` (neither missings
-         ``np.nan``/``pd.NA`` nor infinite values ``np.inf`` are allowed), ``False`` (missings and
-         infinite values are allowed), ``'allow-nan'`` (only missings are allowed).
-         Default is ``True``.
+    Parameters
+    ----------
+    data : :class:`pandas.DataFrame`
+        The data.
+    y_col : str
+        The name of the outcome variable :math:`Y`.
+    d_cols : str or list
+        The name of the treatment variable :math:`D`.
+    m_cols : str or list
+        The name of the mediator variable(s) :math:`M`.
+    x_cols : str or list, optional
+        The names of the covariates :math:`X`.
+        Default is ``None``.
+    z_cols : str or list, optional
+        The names of the instrumental variables :math:`Z`.
+        Default is ``None``.
+    use_other_treat_as_covariate : bool, optional
+        Indicates whether in the case of multiple treatment variables the other
+        treatment variables should be added as covariates.
+        Default is ``True``.
+    force_all_x_finite : bool, optional
+        Indicates whether to raise an error if there are missing or infinite
+        values in the covariates :math:`X`. Possible values are: ``True`` (neither missings
+        ``np.nan``/``pd.NA`` nor infinite values ``np.inf`` are allowed), ``False`` (missings and
+        infinite values are allowed), ``'allow-nan'`` (only missings are allowed).
+        Default is ``True``.
+    force_all_d_finite : bool, optional
+        Indicates whether to raise an error if there are missing or infinite
+        values in the treatment variable :math:`D`. Possible values are: ``True`` (neither missings
+        ``np.nan``/``pd.NA`` nor infinite values ``np.inf`` are allowed), ``False`` (missings and
+        infinite values are allowed), ``'allow-nan'`` (only missings are allowed).
+        Default is ``True``.
+    force_all_m_finite : bool, optional
+        Indicates whether to raise an error if there are missing or infinite
+        values in the mediators :math:`M`. Possible values are: ``True`` (neither missings
+        ``np.nan``/``pd.NA`` nor infinite values ``np.inf`` are allowed), ``False`` (missings and
+        infinite values are allowed), ``'allow-nan'`` (only missings are allowed).
+        Default is ``True``.
 
     Examples
-     --------
-     >>> import pandas as pd
-     >>> import numpy as np
-     >>> from doubleml import DoubleMLMEDData
-     >>> df = pd.DataFrame({
-     ...     'y': np.random.randn(100),
-     ...     'd': np.random.randint(0, 2, 100),
-     ...     'm1': np.random.randn(100),
-     ...     'm2': np.random.randint(0, 2, 100),
-     ...     'x1': np.random.randn(100),
-     ...     'x2': np.random.randn(100)
-     ... })
-     >>> med_data = DoubleMLMEDData(data=df,
-     ...                            y_col='y',
-     ...                            d_cols='d',
-     ...                            m_cols=['m1', 'm2'],
-     ...                            x_cols=['x1', 'x2'],
-     ...                            force_all_m_finite=True)
+    --------
+    >>> import pandas as pd
+    >>> import numpy as np
+    >>> from doubleml import DoubleMLMEDData
+    >>> df = pd.DataFrame({
+    ...     'y': np.random.randn(100),
+    ...     'd': np.random.randint(0, 2, 100),
+    ...     'm1': np.random.randn(100),
+    ...     'm2': np.random.randint(0, 2, 100),
+    ...     'x1': np.random.randn(100),
+    ...     'x2': np.random.randn(100)
+    ... })
+    >>> med_data = DoubleMLMEDData(data=df,
+    ...                            y_col='y',
+    ...                            d_cols='d',
+    ...                            m_cols=['m1', 'm2'],
+    ...                            x_cols=['x1', 'x2'],
+    ...                            force_all_m_finite=True)
     """
 
     def __init__(
