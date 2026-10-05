@@ -13,7 +13,6 @@ pytestmark = pytest.mark.filterwarnings("ignore: l1_ratio parameter is only used
 
 
 @pytest.mark.ci
-@pytest.mark.filterwarnings("ignore:ps_processor_config not specified")
 def test_factual_propensity_independent_of_treatment_level():
     # ml_m is meant to estimate the propensity score P(D=1|X). Because ml_m was fit on
     # self.treated (d == treatment_level), for treatment_level=0 it instead estimated
@@ -41,7 +40,6 @@ def test_factual_propensity_independent_of_treatment_level():
 
 
 @pytest.mark.ci
-@pytest.mark.filterwarnings("ignore:ps_processor_config not specified")
 def test_counterfactual_propensities_independent_of_treatment_level():
     # ml_M estimates P(D=1|M,X) and ml_m estimates P(D=1|X); both are fit on d and so must
     # not depend on treatment_level. This guards the counterfactual against the mistake fixed
