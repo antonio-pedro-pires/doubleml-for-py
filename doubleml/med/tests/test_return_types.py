@@ -78,7 +78,6 @@ def fitted_meds_obj(dml_data, learner_linear, ps_processor_config):
 
 
 @pytest.mark.ci
-@pytest.mark.filterwarnings("ignore:ps_processor_config not specified")
 def test_meds_properties_lifecycle(dml_data, learner_linear):
     meds_obj = DoubleMLMEDS(obj_dml_data=dml_data, n_folds=2, n_rep=1, **learner_linear)
 

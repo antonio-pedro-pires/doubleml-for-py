@@ -361,7 +361,6 @@ def test_med_learners_check_counterfactual(
 
 
 @pytest.mark.ci
-@pytest.mark.filterwarnings("ignore:ps_processor_config not specified")
 def test_med_sensitivity_not_implemented(dml_data, learner_linear):
     dml_med_obj = DoubleMLMED(
         obj_dml_data=dml_data,

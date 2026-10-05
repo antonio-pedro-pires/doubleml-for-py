@@ -1,7 +1,10 @@
+import warnings
+
 import pandas as pd
 import pytest
 
 from doubleml import DoubleMLMED, DoubleMLMEDS
+from doubleml.utils import PSProcessorConfig
 from doubleml.utils._check_defaults import _check_basic_defaults_after_fit, _check_basic_defaults_before_fit, _fit_bootstrap
 
 # TODO: Remove warning filter once sklearn gets to version 1.10
@@ -72,7 +75,9 @@ def test_meds_defaults(dml_meds_fixture):
 
 @pytest.mark.ci
 def test_med_default_ps_config(dml_data, learner_linear):
-    with pytest.warns(UserWarning, match="ps_processor_config not specified"):
+    """Without ps_processor_config the default configuration is used silently, as in the other models."""
+    with warnings.catch_warnings(record=True) as caught_warnings:
+        warnings.simplefilter("always")
         obj = DoubleMLMED(
             obj_dml_data=dml_data,
             outcome="factual",
@@ -80,5 +85,7 @@ def test_med_default_ps_config(dml_data, learner_linear):
             ml_g=learner_linear["ml_g"],
             ml_m=learner_linear["ml_m"],
         )
-    assert obj.ps_processor_config is not None
+
+    assert not [w for w in caught_warnings if "ps_processor_config" in str(w.message)]
+    assert obj.ps_processor_config == PSProcessorConfig()
     assert obj.ps_processor is not None
