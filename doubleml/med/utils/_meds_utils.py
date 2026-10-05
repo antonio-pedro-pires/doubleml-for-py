@@ -17,6 +17,9 @@ def generate_effects_summary(effects: dict[str, DoubleMLFramework]) -> pd.DataFr
     pd.DataFrame
         The summaries of all effects, indexed by the names of the effects.
     """
+    if not effects:
+        return pd.DataFrame(index=[])
+
     df_effects = pd.concat([effect.summary for effect in effects.values()])
     df_effects.index = list(effects)
     return df_effects
