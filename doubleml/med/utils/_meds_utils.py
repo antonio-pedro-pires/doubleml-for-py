@@ -2,10 +2,8 @@
 
 import pandas as pd
 
-from doubleml.double_ml_framework import DoubleMLFramework
 
-
-def generate_effects_summary(effects: dict[str, DoubleMLFramework]) -> pd.DataFrame:
+def generate_effects_summary(effects):
     """
     Stack the summaries of the effects into one data frame, with one row per effect.
 

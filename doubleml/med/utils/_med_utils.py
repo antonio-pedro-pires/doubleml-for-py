@@ -7,29 +7,25 @@ from doubleml.utils._checks import _check_smpl_split_tpl
 
 
 def _normalize_propensity_med(
-    normalize_ipw: bool,
-    outcome: str,
-    d: np.ndarray,
-    treatment_level: int,
-    m_preds: np.ndarray,
-    M_preds: np.ndarray | None = None,
-) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
+    normalize_ipw,
+    outcome,
+    d,
+    treatment_level,
+    m_preds,
+    M_preds=None,
+):
     """
     Normalizes propensity scores for causal mediation analysis. Normalizes both factual and counterfactual scores.
     """
     n_obs = len(d)
-    result: np.ndarray | tuple[np.ndarray, np.ndarray]
     if outcome == "factual":
         result = _normalize_factual(normalize_ipw, d, treatment_level, m_preds, n_obs)
     elif outcome == "counterfactual":
-        assert M_preds is not None, "M_preds is required for the counterfactual outcome."
         result = _normalize_counterfactual(normalize_ipw, d, treatment_level, m_preds, M_preds, n_obs)
     return result
 
 
-def _normalize_factual(
-    normalize_ipw: bool, d: np.ndarray, treatment_level: int, m_preds: np.ndarray, n_obs: int
-) -> np.ndarray:
+def _normalize_factual(normalize_ipw, d, treatment_level, m_preds, n_obs):
     """
     Normalizes factual scores in the context of causal mediation analysis.
     """
@@ -48,9 +44,7 @@ def _normalize_factual(
     return result
 
 
-def _normalize_counterfactual(
-    normalize_ipw: bool, d: np.ndarray, treatment_level: int, m_preds: np.ndarray, M_preds: np.ndarray, n_obs: int
-) -> tuple[np.ndarray, np.ndarray]:
+def _normalize_counterfactual(normalize_ipw, d, treatment_level, m_preds, M_preds, n_obs):
     """
     Normalizes counterfactual scores in the context of causal mediation analysis.
     """
@@ -95,7 +89,7 @@ def _normalize_counterfactual(
     return result
 
 
-def _check_inner_sample_splitting(smpls_inner: list, smpls: list, n_obs: int) -> tuple[list, int]:
+def _check_inner_sample_splitting(smpls_inner, smpls, n_obs):
     """
     Check that each repetition is a list of lists of tuples.
     :param smpls_inner:
@@ -129,7 +123,7 @@ def _check_inner_sample_splitting(smpls_inner: list, smpls: list, n_obs: int) ->
     return smpls_inner, n_folds_inner
 
 
-def _check_reps_smpls_inner(index: int, rep_inner: list, rep: list, n_obs: int) -> int:
+def _check_reps_smpls_inner(index, rep_inner, rep, n_obs):
     if not isinstance(rep_inner, list):
         raise TypeError(
             "smpls_inner must be a list of lists." + f"At least an element of smpls_inner is of type {str(type(rep_inner))}"
@@ -152,7 +146,7 @@ def _check_reps_smpls_inner(index: int, rep_inner: list, rep: list, n_obs: int) 
     return n_inner_folds[0]
 
 
-def _check_fold_smpls_inner(fold_smpls_inner: list, n_obs: int) -> None:
+def _check_fold_smpls_inner(fold_smpls_inner, n_obs):
     if not isinstance(fold_smpls_inner, list):
         raise TypeError(
             "smpls_inner must be a list of lists of lists."
@@ -171,7 +165,7 @@ def _check_fold_smpls_inner(fold_smpls_inner: list, n_obs: int) -> None:
         _check_smpl_split_tpl(inner_fold, n_obs, check_intersect=True)
 
 
-def _check_is_inner_partition(fold: list, train_smpls: tuple) -> None:
+def _check_is_inner_partition(fold, train_smpls):
     """
     Checks whether the inner smpls form a valid partition of the outer training fold.
 
@@ -183,7 +177,7 @@ def _check_is_inner_partition(fold: list, train_smpls: tuple) -> None:
     :return:
     """
     parent_train = set(train_smpls[0])
-    test_set: set = set()
+    test_set = set()
     for inner_train, test_index in fold:
         if not set(inner_train).issubset(parent_train):
             raise ValueError("Invalid smpls_inner. Inner train indices must be a subset of the outer training fold.")
@@ -201,7 +195,7 @@ def _check_is_inner_partition(fold: list, train_smpls: tuple) -> None:
         raise ValueError("Some of the smpls_inner_fold do not partition the training samples")
 
 
-def _check_med_data(dml_data: object) -> DoubleMLMEDData:
+def _check_med_data(dml_data):
     if not isinstance(dml_data, DoubleMLMEDData):
         raise TypeError(
             "Mediation analysis requires data of type DoubleMLMEDData."
@@ -218,11 +212,11 @@ def _check_med_data(dml_data: object) -> DoubleMLMEDData:
     return dml_data
 
 
-def _inner_g_learner_name(i_fold: int) -> str:
+def _inner_g_learner_name(i_fold):
     """Name of the entry holding the inner predictions of ml_G for the outer fold ``i_fold``."""
     return f"ml_G_inner_{i_fold}"
 
 
-def _inner_g_learner_names(n_folds: int) -> list[str]:
+def _inner_g_learner_names(n_folds):
     """Names of the entries holding the inner predictions of ml_G, one for each outer fold."""
     return [_inner_g_learner_name(i_fold) for i_fold in range(n_folds)]
