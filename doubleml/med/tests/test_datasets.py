@@ -10,6 +10,7 @@ from doubleml.med.datasets import (
 msg_inv_return_type = "Invalid return_type."
 
 
+@pytest.mark.ci
 def test_make_med_data_return_types():
     np.random.seed(3141)
     res = make_med_data(n_obs=100, return_type="DoubleMLMediationData")

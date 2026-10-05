@@ -137,6 +137,7 @@ def test_effects_binary_treats(fit_objs, individual_med_objs):
         assert meds_obj._effects[effects].all_pvals == individual_effects[effects].all_pvals
 
 
+@pytest.mark.ci
 def test_bootstrap(fit_objs):
     meds_obj, individual_med_objs = fit_objs
     np.random.seed(123)
