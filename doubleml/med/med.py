@@ -87,6 +87,13 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         When None, the PSProcessor is initialized with its default values.
         Default is ``None``
 
+        As in the other DoubleML models, propensity scores are clipped to
+        ``[clipping_threshold, 1 - clipping_threshold]`` (default ``clipping_threshold=0.01``) and no observations
+        are dropped. The original paper and the R function ``medDML`` of the package ``causalweight``
+        (argument ``trim``) instead drop observations with extreme propensity scores, so estimates can differ
+        slightly if propensity scores are close to 0 or 1. Use ``PSProcessorConfig(clipping_threshold=...)`` to
+        change the threshold.
+
     Examples
     --------
     >>> import numpy as np
