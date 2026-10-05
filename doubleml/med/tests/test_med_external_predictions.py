@@ -147,3 +147,23 @@ def _get_res(obj, obj_ext, boot_methods, n_rep_boot):
         res_dict["boot_t_stat" + bootstrap] = obj.boot_t_stat
         res_dict["boot_t_stat" + bootstrap + "_ext"] = obj_ext.boot_t_stat
     return res_dict
+
+
+@pytest.mark.ci
+@pytest.mark.parametrize("n_outer_folds", [2, 3])
+@pytest.mark.parametrize("double_sample_splitting", [True, False], ids=["double_split", "single_split"])
+def test_med_inner_learner_names(dml_data, learner_linear, n_outer_folds, double_sample_splitting):
+    """The counterfactual model has one inner ml_G entry per outer fold if the sample splitting is double."""
+    med_obj = DoubleMLMED(
+        obj_dml_data=dml_data,
+        outcome="counterfactual",
+        treatment_level=1,
+        n_folds=n_outer_folds,
+        double_sample_splitting=double_sample_splitting,
+        **learner_linear,
+    )
+
+    expected_names = ["ml_m", "ml_G", "ml_M", "ml_nested_g"]
+    if double_sample_splitting:
+        expected_names += [f"ml_G_inner_{i}" for i in range(n_outer_folds)]
+    assert med_obj.params_names == expected_names

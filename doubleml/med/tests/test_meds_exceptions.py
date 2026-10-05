@@ -149,3 +149,16 @@ def test_meds_external_predictions_treatment_variable_not_dict_exception(dml_dat
     msg = f"external_predictions[{model_id}][{d_col}] must hold a dictionary. " + f"Current value is of type {type([1, 2, 3])}"
     with pytest.raises(TypeError, match=re.escape(msg)):
         meds_obj.fit(external_predictions=invalid_ext_preds)
+
+
+@pytest.mark.ci
+def test_meds_external_predictions_inner_key_out_of_range_exception(dml_data, learner_linear):
+    n_folds = 2
+    meds_obj = DoubleMLMEDS(obj_dml_data=dml_data, n_folds=n_folds, n_folds_inner=2, **learner_linear)
+    model_id = "counterfactual_1"
+    d_col = meds_obj._dml_data.d_cols[0]
+    out_of_range_key = f"ml_G_inner_{n_folds}"  # inner entries exist for the folds 0 to n_folds - 1
+    invalid_ext_preds = {model_id: {d_col: {out_of_range_key: np.zeros((1, 1))}}}
+    msg = f"external_predictions[{d_col}] must hold a dictionnary whose keys are a "
+    with pytest.raises(ValueError, match=re.escape(msg)):
+        meds_obj.fit(external_predictions=invalid_ext_preds)
