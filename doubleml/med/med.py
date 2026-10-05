@@ -406,7 +406,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
 
                 G_hat = _double_dml_cv_predict(
                     estimator=self._learner["ml_G"],
-                    estimator_name=self._learner["ml_G"],
+                    estimator_name="ml_G",
                     x=xm,
                     y=y,
                     smpls=smpls_d1,
