@@ -175,7 +175,6 @@ class DoubleMLMEDS(SampleSplittingMixin):
 
         if draw_sample_splitting:
             self.draw_sample_splitting()
-            self._initialize_dml_model()
 
         self._effects = None
 
@@ -600,8 +599,27 @@ class DoubleMLMEDS(SampleSplittingMixin):
 
         return self
 
+    def draw_sample_splitting(self):
+        """
+        Draw sample splitting for DoubleMLMEDS models.
+
+        The samples are drawn according to the attributes ``n_folds``, ``n_rep`` and, for double sample splitting,
+        ``n_folds_inner``. The models are initialized with the new sample splitting, so results of a previous
+        :meth:`fit` are discarded.
+
+        Returns
+        -------
+        self : object
+        """
+        super().draw_sample_splitting()
+        self._initialize_dml_model()
+        return self
+
     def _initialize_dml_model(self):
         self._modeldict = self._initialize_models()
+        # results of a previous fit belong to the models that have just been replaced
+        self._framework = None
+        self._effects = None
         return self
 
     def _initialize_models(self):
