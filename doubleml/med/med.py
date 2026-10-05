@@ -696,6 +696,13 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         Returns
         -------
         self : object
+
+        Notes
+        -----
+        The inner samples have to partition the outer training sample of each fold: inner training and test indices must
+        lie within the outer training sample, and the inner test folds must be disjoint and cover it. As for the outer
+        sample splitting, the splits should be drawn independently of the data, in particular of the outcome.
+        :class:`DoubleMLMEDS` uses this method to share one sample splitting between its models.
         """
         if self.double_sample_splitting:
             if smpls_inner is None:
