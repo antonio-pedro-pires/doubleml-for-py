@@ -2,7 +2,6 @@ import warnings
 from typing import Optional
 
 import numpy as np
-from sklearn.model_selection import cross_val_predict
 from sklearn.utils import check_array, check_consistent_length, check_X_y
 
 from doubleml.double_ml import DoubleML
@@ -15,7 +14,7 @@ from doubleml.utils._estimation import (
     _double_dml_cv_predict,
     _get_cond_smpls,
 )
-from doubleml.utils._tune_optuna import _dml_tune_optuna
+from doubleml.utils._tune_optuna import _dml_tune_optuna, resolve_optuna_cv
 from doubleml.utils.propensity_score_processing import PSProcessor, PSProcessorConfig
 
 
@@ -638,18 +637,27 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
                 params_name="ml_G",
             )
 
-            # Prepare targets for the nested estimator
-            G_hat = cross_val_predict(
-                estimator=self._learner["ml_nested_g"],
-                X=xm,
-                y=y,
-                cv=cv,
-                method=self._predict_method["ml_nested_g"],
-            )
+            # Targets of the nested estimator: ml_G has to be tuned first, since the nested estimator regresses its
+            # predictions on x. We use out-of-fold predictions of the tuned ml_G (fitted on the treated, using x and m)
+            # for all observations. Unlike in _nuisance_est_counterfactual, no inner cross-fitting is used, so the targets
+            # are an approximation of the ones used for estimation (a similar compromise is made for ml_t in
+            # DoubleMLLPLR._nuisance_tuning).
+            cv_resolved = resolve_optuna_cv(cv)
+            tuning_smpls = cv_resolved if isinstance(cv_resolved, list) else list(cv_resolved.split(xm))
+            _, tuning_smpls_treated = _get_cond_smpls(tuning_smpls, treated_mask)
+            G_hat = _dml_cv_predict(
+                self._learner["ml_G"],
+                xm,
+                y,
+                smpls=tuning_smpls_treated,
+                est_params=G_tune_res.best_params,
+                method=self._predict_method["ml_G"],
+            )["preds"]
 
+            # the nested estimator regresses these predictions on x among the non-treated
             nested_g_tune_res = _dml_tune_optuna(
                 y=G_hat[not_treated_mask],
-                x=xm[not_treated_mask],
+                x=x[not_treated_mask],
                 learner=self._learner["ml_nested_g"],
                 param_grid_func=optuna_params["ml_nested_g"],
                 scoring_method=scoring_methods["ml_nested_g"],
