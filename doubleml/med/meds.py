@@ -533,16 +533,15 @@ class DoubleMLMEDS(SampleSplittingMixin):
 
         return model
 
-    def confint(self, joint=False, level=0.95):
+    def confint(self, level=0.95):
         """
         Confidence intervals for DoubleMLMEDS objects.
 
+        The intervals are computed for each model separately. Joint confidence intervals are not offered, because the
+        asymptotic theory of Farbmacher et al. (2022) covers each estimator on its own.
+
         Parameters
         ----------
-        joint : bool
-            Indicates whether joint confidence intervals are computed.
-            Default is ``False``
-
         level : float
             The confidence level.
             Default is ``0.95``.
@@ -550,7 +549,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
         Returns
         -------
         df_ci : pd.DataFrame
-            A data frame with the confidence interval(s).
+            A data frame with the confidence interval(s), one row for each model.
 
         Examples
         --------
@@ -570,7 +569,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
         """
         if self.framework is None:
             raise ValueError("Apply fit() before confint().")
-        df_ci = self.framework.confint(joint=joint, level=level)
+        df_ci = self.framework.confint(joint=False, level=level)
         df_ci.set_index(pd.Index(self.models_ids), inplace=True)
         return df_ci
 
