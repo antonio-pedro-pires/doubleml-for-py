@@ -169,12 +169,21 @@ def _check_is_inner_partition(fold, train_smpls):
 
     The inner folds are obtained by re-sampling across the training fold, so their
     indices must be drawn from the outer training fold (``train_smpls[0]``) and the
-    inner test folds must cover it exactly without overlapping.
+    inner test folds must cover it exactly without overlapping. A single inner tuple is the pair of
+    subsamples ``(A, B)``, which must together cover the outer training fold.
     :param fold: list of inner (train, test) index tuples.
     :param train_smpls: the outer fold (train, test) tuple it is nested in.
     :return:
     """
     parent_train = set(train_smpls[0])
+    if len(fold) == 1:
+        inner_train, test_index = fold[0]
+        if not (set(inner_train) | set(test_index)) == parent_train:
+            raise ValueError(
+                "Invalid smpls_inner. With a single inner tuple (A, B), the subsamples A and B must together cover "
+                "the outer training fold."
+            )
+        return
     test_set = set()
     for inner_train, test_index in fold:
         if not set(inner_train).issubset(parent_train):
@@ -193,6 +202,27 @@ def _check_is_inner_partition(fold, train_smpls):
         raise ValueError("Some of the smpls_inner_fold do not partition the training samples")
 
 
+_SUBSAMPLE_ARM_HINT = " Redraw the sample splitting, use fewer folds or pass a stratified smpls_inner to set_sample_splitting."
+
+
+def _check_subsample_arms(smpls_inner_rep, treated, treatment_level):
+    """Checks that ml_G finds treated units in subsample A and ml_nested_g untreated units in subsample B."""
+    for i_fold, inner_fold in enumerate(smpls_inner_rep):
+        subsample_a, subsample_b = inner_fold[0]
+        n_treated_a = int(np.sum(treated[subsample_a]))
+        if n_treated_a == 0:
+            raise ValueError(
+                f"ml_G requires at least one observation with D={treatment_level} in subsample A of outer fold {i_fold}."
+                f" Found 0 of {len(subsample_a)} observations." + _SUBSAMPLE_ARM_HINT
+            )
+        n_untreated_b = int(np.sum(~treated[subsample_b]))
+        if n_untreated_b == 0:
+            raise ValueError(
+                f"ml_nested_g requires at least one observation with D!={treatment_level} in subsample B of outer fold"
+                f" {i_fold}. Found 0 of {len(subsample_b)} observations." + _SUBSAMPLE_ARM_HINT
+            )
+
+
 def _check_med_data(dml_data):
     if not isinstance(dml_data, DoubleMLMEDData):
         raise TypeError(
@@ -208,6 +238,11 @@ def _check_med_data(dml_data):
     if dml_data.z_cols is not None:
         raise NotImplementedError("instrumental variables for mediation analysis is not yet implemented.")
     return dml_data
+
+
+def _first_inner_split(smpls_inner):
+    """Keep only the first inner tuple, the (A, B) pair, of every outer fold."""
+    return [[[inner_fold[0]] for inner_fold in rep] for rep in smpls_inner]
 
 
 def _inner_g_learner_name(i_fold):

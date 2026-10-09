@@ -10,6 +10,8 @@ from doubleml.med.utils._med_utils import (
     _check_inner_g_external_predictions,
     _check_inner_sample_splitting,
     _check_med_data,
+    _check_subsample_arms,
+    _first_inner_split,
     _inner_g_learner_name,
     _inner_g_learner_names,
     _normalize_propensity_med,
@@ -252,6 +254,29 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         """
         return self._double_sample_splitting
 
+    def draw_sample_splitting(self):
+        """
+        Draw sample splitting for the mediation model.
+
+        If ``double_sample_splitting=True`` and ``n_folds_inner=1``, the training sample of each fold is split once into
+        two disjoint subsamples ``(A, B)``.
+
+        Returns
+        -------
+        self : object
+        """
+        if not (self.double_sample_splitting and self.n_folds_inner == 1):
+            return super().draw_sample_splitting()
+
+        # the inner resampling needs at least two folds, the first inner tuple is the (A, B) pair
+        self.n_folds_inner = 2
+        try:
+            super().draw_sample_splitting()
+        finally:
+            self.n_folds_inner = 1
+        self._smpls_inner = _first_inner_split(self._smpls_inner)
+        return self
+
     @property
     def _score_element_names(self):
         return ["psi_a", "psi_b"]
@@ -432,6 +457,8 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         inner_targets = {}
         inner_models = {}
         if self.double_sample_splitting:
+            if self.n_folds_inner == 1:
+                _check_subsample_arms(self._smpls_inner[self._i_rep], self.treated, self.treatment_level)
             # Get inner samples conditional on treatment:
             smpls_inner_d1 = []
             for fold in self._smpls_inner[self._i_rep]:
@@ -472,13 +499,21 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
                 # (line 120 in doubleml/utils/_estimation.py). In order to avoid this error, it's necessary to
                 # feed the method a 'y' parameter whose subarrays match the 'smpls' parameter's subarrays shapes,
                 # which is exactly what the following line does.
-                G_hat_inner_preds = [G_hat_preds[train] for (train, _), G_hat_preds in zip(smpls_d0, G_hat["preds_inner"])]
+                if self.n_folds_inner == 1:
+                    # the nested estimator is fitted on subsample B only, the units ml_G has predictions for
+                    smpls_nested = [
+                        (np.intersect1d(train_d0, inner_fold[0][1]), test)
+                        for (train_d0, test), inner_fold in zip(smpls_d0, self._smpls_inner[self._i_rep])
+                    ]
+                else:
+                    smpls_nested = smpls_d0
+                G_hat_inner_preds = [G_hat_preds[train] for (train, _), G_hat_preds in zip(smpls_nested, G_hat["preds_inner"])]
 
                 nested_g_hat = _dml_cv_predict(
                     self._learner["ml_nested_g"],
                     x,
                     G_hat_inner_preds,
-                    smpls=smpls_d0,
+                    smpls=smpls_nested,
                     n_jobs=n_jobs_cv,
                     est_params=self._get_params("ml_nested_g"),
                     method=self._predict_method["ml_nested_g"],
