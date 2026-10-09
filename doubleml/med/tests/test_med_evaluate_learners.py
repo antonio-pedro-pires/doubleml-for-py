@@ -1,3 +1,5 @@
+import warnings
+
 import numpy as np
 import pytest
 from sklearn.linear_model import LinearRegression, LogisticRegression
@@ -76,3 +78,27 @@ def test_inner_predictions_of_ml_G_have_no_targets_for_the_other_treatment_level
     untreated = small_data.d == 0
     for name in [name for name in fitted_med.params_names if name.startswith("ml_G_inner_")]:
         assert np.isnan(fitted_med.nuisance_targets[name][untreated]).all(), f"{name} has targets for D = 1-d."
+
+
+@pytest.mark.ci
+@pytest.mark.parametrize("outcome", ["factual", "counterfactual"])
+@pytest.mark.parametrize("double_sample_splitting, n_folds_inner", SPLITTING_CASES, ids=SPLITTING_IDS)
+def test_fit_does_not_warn_about_the_nuisance_loss(small_data, outcome, double_sample_splitting, n_folds_inner):
+    """Learners without targets are skipped when the loss is computed, no 'mean of empty slice' warnings."""
+    np.random.seed(3141)
+    med_obj = DoubleMLMED(
+        obj_dml_data=small_data,
+        treatment_level=1,
+        outcome=outcome,
+        ml_m=LogisticRegression(),
+        ml_g=LinearRegression(),
+        ml_G=LinearRegression(),
+        ml_M=LogisticRegression(),
+        ml_nested_g=LinearRegression(),
+        n_folds=N_FOLDS,
+        n_folds_inner=n_folds_inner,
+        double_sample_splitting=double_sample_splitting,
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", category=RuntimeWarning)
+        med_obj.fit()
