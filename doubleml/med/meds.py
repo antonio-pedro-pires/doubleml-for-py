@@ -41,7 +41,8 @@ class DoubleMLMEDS(SampleSplittingMixin):
     ml_nested_g : estimator implementing ``fit()`` and ``predict()``
         A machine learner implementing ``fit()`` and ``predict()`` methods (e.g.
         :py:class:`sklearn.linear_model.Lasso`) for the nuisance function :math:`E[E[Y|D=d,M,X]|D=1-d, X]`
-        Only required if ``outcome`` is 'counterfactual'.
+        Only required if ``outcome`` is 'counterfactual'. Its target is not an observed outcome but the predictions
+        of ``ml_G``, which also applies to :meth:`tune_ml_models`, see the notes.
 
     ml_m : classifier implementing ``fit()`` and ``predict_proba()``
         A machine learner implementing ``fit()`` and ``predict_proba()`` methods (e.g.
@@ -98,7 +99,8 @@ class DoubleMLMEDS(SampleSplittingMixin):
     Notes
     -----
     The sample splitting for the estimation of the nested parameter, which is controlled by
-    ``double_sample_splitting`` and ``n_folds_inner``, is described in the notes of :class:`DoubleMLMED`.
+    ``double_sample_splitting`` and ``n_folds_inner``, is described in the notes of :class:`DoubleMLMED`, as is the
+    tuning of ``ml_nested_g`` against the predictions of ``ml_G``.
 
     Examples
     --------
