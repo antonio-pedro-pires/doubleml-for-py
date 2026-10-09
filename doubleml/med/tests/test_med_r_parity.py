@@ -7,9 +7,11 @@ from sklearn.linear_model import LinearRegression, LogisticRegression
 
 from doubleml import DoubleMLMED, DoubleMLMEDData
 
-# The reference numbers in r_reference/ were computed with r_reference/hdmedalt_nuisance.R, which repeats the nuisance part
-# of causalweight::hdmedalt (fewsplits=FALSE, MLmethod="parametric") on r_reference/data.csv, using R 4.5.0,
-# SuperLearner 2.0.40 and causalweight 1.1.5. The test does not call R; see the script header to regenerate the numbers.
+# The reference numbers in r_reference/ come from the R package causalweight (1.1.5, with R 4.5.0 and SuperLearner 2.0.40):
+# the nuisance part of hdmedalt (fewsplits=FALSE, MLmethod="parametric"), i.e. SuperLearner SL.lm / SL.glm, on data.csv.
+# r_folds.csv holds the folds of hdmedalt for 300 observations (set.seed(1); sample(300) cut into thirds): the test fold, the
+# subsample A on which E(Y|M,X,D=d) is fitted and the subsample B on which the nested regression is fitted.
+# r_preds.csv holds, for every observation, the predictions of its test fold. The test does not call R.
 REFERENCE_DIR = Path(__file__).parent / "r_reference"
 
 
