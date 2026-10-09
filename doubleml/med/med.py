@@ -429,6 +429,13 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
 
         return psi_elements, preds
 
+    def _inner_g_targets(self, targets):
+        """Outcomes of the observations with D = d, or None if there are none (the loss is not computed then)."""
+        if targets is None:
+            return None
+        targets = _cond_targets(targets, cond_sample=self.treated)
+        return None if np.all(np.isnan(targets)) else targets
+
     def _nuisance_est_counterfactual(
         self,
         smpls,
@@ -643,10 +650,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         # nested estimator has no observed outcome: its predictions are compared with the predictions of ml_G for the
         # observations with D = 1-d, which are the targets of the nested estimation.
         ml_G_targets = _cond_targets(y, cond_sample=self.treated)
-        inner_targets = {
-            name: None if targets is None else _cond_targets(targets, cond_sample=self.treated)
-            for name, targets in inner_targets.items()
-        }
+        inner_targets = {name: self._inner_g_targets(targets) for name, targets in inner_targets.items()}
         nested_g_targets = np.where(self.treated, np.nan, G_hat["preds"])
 
         preds = {
