@@ -179,3 +179,10 @@ def test_methods_need_a_sample_splitting(dml_data, learner_linear):
 
     meds_obj.draw_sample_splitting()
     assert len(meds_obj.modeldict) == 4
+
+
+@pytest.mark.ci
+def test_external_predictions_must_be_a_dictionary(meds_obj):
+    msg = "external_predictions must be a dictionary. Object of type <class 'list'> passed."
+    with pytest.raises(TypeError, match=re.escape(msg)):
+        meds_obj.fit(external_predictions=[1])
