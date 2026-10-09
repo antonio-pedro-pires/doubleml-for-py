@@ -9,7 +9,7 @@ from sklearn import clone
 from doubleml.double_ml_framework import concat
 from doubleml.double_ml_sampling_mixins import SampleSplittingMixin
 from doubleml.med.med import DoubleMLMED
-from doubleml.med.utils._med_utils import _check_med_data, _inner_g_learner_names
+from doubleml.med.utils._med_utils import _check_med_data, _first_inner_split, _inner_g_learner_names
 from doubleml.med.utils._meds_utils import generate_effects_summary
 from doubleml.utils import PSProcessorConfig
 from doubleml.utils._checks import _check_score
@@ -627,14 +627,24 @@ class DoubleMLMEDS(SampleSplittingMixin):
         Draw sample splitting for DoubleMLMEDS models.
 
         The samples are drawn according to the attributes ``n_folds``, ``n_rep`` and, for double sample splitting,
-        ``n_folds_inner``. The models are initialized with the new sample splitting, so results of a previous
+        ``n_folds_inner``. If ``n_folds_inner=1``, the training sample of each fold is split once into two disjoint
+        subsamples ``(A, B)``. The models are initialized with the new sample splitting, so results of a previous
         :meth:`fit` are discarded.
 
         Returns
         -------
         self : object
         """
-        super().draw_sample_splitting()
+        if self._double_sample_splitting and self._n_folds_inner == 1:
+            # the inner resampling needs at least two folds, the first inner tuple is the (A, B) pair
+            self._n_folds_inner = 2
+            try:
+                super().draw_sample_splitting()
+            finally:
+                self._n_folds_inner = 1
+            self._smpls_inner = _first_inner_split(self._smpls_inner)
+        else:
+            super().draw_sample_splitting()
         self._initialize_dml_model()
         return self
 

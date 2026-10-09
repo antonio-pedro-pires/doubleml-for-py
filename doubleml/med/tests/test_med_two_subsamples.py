@@ -2,7 +2,8 @@ import numpy as np
 import pytest
 from sklearn.linear_model import LinearRegression, LogisticRegression
 
-from doubleml import DoubleMLMED
+from doubleml import DoubleMLMED, DoubleMLMEDData
+from doubleml.med import DoubleMLMEDS
 from doubleml.med.datasets import make_med_data
 
 pytestmark = pytest.mark.filterwarnings("ignore: l1_ratio parameter is only used when penalty ")
@@ -224,3 +225,111 @@ def test_single_pair_requires_untreated_units_in_b(small_data):
         ),
     ):
         _fit_with_pair(small_data, drawn, treated_only_b)
+
+
+def _meds_obj(data, n_folds_inner=1, **kwargs):
+    np.random.seed(3141)
+    return DoubleMLMEDS(
+        obj_dml_data=data,
+        ml_m=LogisticRegression(),
+        ml_g=LinearRegression(),
+        ml_G=LinearRegression(),
+        ml_M=LogisticRegression(),
+        ml_nested_g=LinearRegression(),
+        n_folds=N_FOLDS,
+        n_folds_inner=n_folds_inner,
+        double_sample_splitting=True,
+        **kwargs,
+    )
+
+
+@pytest.mark.ci
+def test_meds_single_pair_draw_and_forwarding(small_data):
+    meds_obj = _meds_obj(small_data)
+
+    assert meds_obj.n_folds_inner == 1
+    for inner_fold, (train, _) in zip(meds_obj.smpls_inner[0], meds_obj.smpls[0]):
+        assert len(inner_fold) == 1
+        a_idx, b_idx = inner_fold[0]
+        np.testing.assert_array_equal(np.sort(np.concatenate([a_idx, b_idx])), np.sort(train))
+    for model in meds_obj.modeldict.values():
+        assert model.n_folds_inner == 1
+        np.testing.assert_equal(model.smpls_inner, meds_obj.smpls_inner)
+
+
+@pytest.mark.ci
+def test_meds_single_pair_fit_and_redraw(small_data):
+    meds_obj = _meds_obj(small_data)
+    meds_obj.fit()
+    assert np.all(np.isfinite(meds_obj.coef))
+
+    meds_obj.draw_sample_splitting()
+    assert meds_obj.n_folds_inner == 1
+    assert all(len(inner_fold) == 1 for inner_fold in meds_obj.smpls_inner[0])
+
+
+@pytest.mark.ci
+@pytest.mark.parametrize("n_folds", [2, 3])
+def test_single_pair_nested_predictions_do_not_depend_on_own_fold_outcomes(n_folds):
+    """Cross-fitting: changing the outcomes of the held-out fold leaves its nested predictions unchanged."""
+
+    def build(frame, x_cols):
+        data = DoubleMLMEDData(frame, y_col="y", d_cols="d", m_cols="m", x_cols=x_cols)
+        np.random.seed(7)
+        return DoubleMLMED(
+            obj_dml_data=data,
+            treatment_level=1,
+            outcome="counterfactual",
+            ml_m=LogisticRegression(),
+            ml_G=LinearRegression(),
+            ml_M=LogisticRegression(),
+            ml_nested_g=LinearRegression(),
+            n_folds=n_folds,
+            n_folds_inner=1,
+        )
+
+    np.random.seed(3141)
+    frame = make_med_data(n_obs=400, dim_x=5).data
+    x_cols = [column for column in frame.columns if column.startswith("X")]
+    reference = build(frame, x_cols)
+    held_out = reference.smpls[0][0][1]
+    reference.fit()
+
+    shifted_frame = frame.copy()
+    treated_held_out = held_out[frame["d"].to_numpy()[held_out] == 1]
+    shifted_frame.loc[shifted_frame.index[treated_held_out], "y"] += 25.0
+    shifted = build(shifted_frame, x_cols)
+    shifted.set_sample_splitting(smpls=reference.smpls, smpls_inner=reference.smpls_inner)
+    shifted.fit()
+
+    np.testing.assert_allclose(
+        shifted.predictions["ml_nested_g"][held_out, 0, 0],
+        reference.predictions["ml_nested_g"][held_out, 0, 0],
+        err_msg="the nested predictions of a fold depend on the outcomes of that fold",
+    )
+
+
+@pytest.mark.ci
+def test_single_pair_stored_predictions_and_models(small_data):
+    med_obj = _med_obj(small_data, n_folds_inner=1)
+    med_obj.fit(store_models=True)
+
+    for k, inner_fold in enumerate(med_obj.smpls_inner[0]):
+        stored = med_obj.predictions[f"ml_G_inner_{k}"][:, 0, 0]
+        b_idx = inner_fold[0][1]
+        np.testing.assert_array_equal(np.flatnonzero(np.isfinite(stored)), np.sort(b_idx))
+        assert len(med_obj.models[f"ml_G_inner_{k}"][small_data.d_cols[0]][0]) == 1, "Expected one ml_G model per outer fold."
+
+
+@pytest.mark.ci
+def test_single_pair_external_predictions_round_trip(small_data):
+    med_obj = _med_obj(small_data, n_folds_inner=1)
+    med_obj.fit()
+    external = {"d": {name: med_obj.predictions[name][:, :, 0] for name in med_obj.params_names if name != "ml_g"}}
+
+    med_ext = _med_obj(small_data, n_folds_inner=1, draw_sample_splitting=False)
+    med_ext.set_sample_splitting(smpls=med_obj.smpls, smpls_inner=med_obj.smpls_inner)
+    med_ext.fit(external_predictions=external)
+
+    np.testing.assert_allclose(med_ext.coef, med_obj.coef)
+    np.testing.assert_allclose(med_ext.se, med_obj.se)
