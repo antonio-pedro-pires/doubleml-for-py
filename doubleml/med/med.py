@@ -172,6 +172,10 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
     sets its parameters back to those of the learner passed to the constructor, which is the general behavior of
     :meth:`tune_ml_models`.
 
+    :meth:`evaluate_learners` compares ``ml_G`` with the outcome of the observations with ``D = d``. It compares
+    ``ml_nested_g`` with the predictions of ``ml_G`` for the observations with ``D = 1-d``, because it has no observed
+    outcome. As in other models, observations without a target are marked by ``nan``, which the ``metric`` has to ignore.
+
     References
     ----------
     Helmut Farbmacher, Martin Huber, Lukáš Lafférs, Henrika Langen, Martin Spindler (2022).
@@ -627,6 +631,16 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
                 _inner_g_learner_name(i): [G_hat["models"][i]] if G_hat["models"] is not None else None
                 for i in range(self.n_folds)
             }
+        # ml_G estimates E[Y|D=d,M,X], so its predictions are compared with the outcome of the observations with D = d. The
+        # nested estimator has no observed outcome: its predictions are compared with the predictions of ml_G for the
+        # observations with D = 1-d, which are the targets of the nested estimation.
+        ml_G_targets = _cond_targets(y, cond_sample=self.treated)
+        inner_targets = {
+            name: None if targets is None else _cond_targets(targets, cond_sample=self.treated)
+            for name, targets in inner_targets.items()
+        }
+        nested_g_targets = np.where(self.treated, np.nan, G_hat["preds"])
+
         preds = {
             "predictions": {
                 "ml_m": m_hat["preds"],
@@ -638,8 +652,8 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
             "targets": {
                 "ml_m": m_hat["targets"],
                 "ml_M": M_hat["targets"],
-                "ml_G": G_hat["targets"],
-                "ml_nested_g": nested_g_hat["targets"],
+                "ml_G": ml_G_targets,
+                "ml_nested_g": nested_g_targets,
                 **inner_targets,
             },
             "models": {
