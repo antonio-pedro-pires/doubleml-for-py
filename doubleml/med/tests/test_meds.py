@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 import pytest
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 
@@ -6,6 +7,7 @@ from doubleml import DoubleMLMED
 from doubleml.double_ml_framework import concat
 from doubleml.med import DoubleMLMEDS
 from doubleml.med.datasets import make_med_data
+from doubleml.tests._utils import confint_manual
 
 # TODO: Remove warning filter once sklearn gets to version 1.10
 pytestmark = pytest.mark.filterwarnings("ignore: l1_ratio parameter is only used when penalty ")
@@ -234,3 +236,43 @@ def test_meds_has_no_unused_trimming_attribute(dml_data, learner_linear):
     """Propensity scores are clipped, not trimmed, so the object does not offer a count of trimmed observations."""
     meds_obj = DoubleMLMEDS(obj_dml_data=dml_data, **learner_linear)
     assert not hasattr(meds_obj, "n_trimmed")
+
+
+@pytest.fixture(scope="module")
+def meds_ci_obj(learner_linear):
+    np.random.seed(3141)
+    data = make_med_data(n_obs=300, dim_x=5)
+    return DoubleMLMEDS(data, n_folds=3, n_folds_inner=2, **learner_linear)
+
+
+@pytest.mark.ci
+def test_confint_requires_fit(meds_ci_obj):
+    with pytest.raises(ValueError, match=r"Apply fit\(\) before confint\(\)"):
+        meds_ci_obj.confint()
+
+
+@pytest.mark.ci
+def test_confint_has_no_joint_option(meds_ci_obj):
+    """Joint confidence intervals are not offered: the asymptotic theory of the paper covers each estimator on its own."""
+    meds_ci_obj.fit()
+    meds_ci_obj.bootstrap(n_rep_boot=50)
+    with pytest.raises(TypeError, match="joint"):
+        meds_ci_obj.confint(joint=True)
+
+
+@pytest.mark.ci
+def test_confint_input_validation(meds_ci_obj):
+    meds_ci_obj.fit()
+    with pytest.raises(TypeError, match="The confidence level must be of float type. 5% of type <class 'str'> was passed."):
+        meds_ci_obj.confint(level="5%")
+    with pytest.raises(ValueError, match=r"The confidence level must be in \(0,1\). 0.0 was passed."):
+        meds_ci_obj.confint(level=0.0)
+
+
+@pytest.mark.ci
+@pytest.mark.parametrize("level", [0.9, 0.95])
+def test_confint_matches_manual_computation(meds_ci_obj, level):
+    meds_ci_obj.fit()
+    ci = meds_ci_obj.confint(level=level)
+    ci_manual = confint_manual(meds_ci_obj.coef, meds_ci_obj.se, meds_ci_obj.models_ids, joint=False, level=level)
+    pd.testing.assert_frame_equal(ci, ci_manual)
