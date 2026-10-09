@@ -728,6 +728,10 @@ class DoubleMLMEDS(SampleSplittingMixin):
         return valid_id_pairs
 
     def _check_external_predictions(self, external_predictions_dict):
+        if not isinstance(external_predictions_dict, dict):
+            raise TypeError(
+                "external_predictions must be a dictionary. " + f"Object of type {type(external_predictions_dict)} passed."
+            )
         external_predictions_keys = external_predictions_dict.keys()
         if not set(external_predictions_keys).issubset(set(self.models_ids)):
             raise ValueError(
