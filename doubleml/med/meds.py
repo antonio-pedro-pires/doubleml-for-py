@@ -102,6 +102,9 @@ class DoubleMLMEDS(SampleSplittingMixin):
     ``double_sample_splitting`` and ``n_folds_inner``, is described in the notes of :class:`DoubleMLMED`, as is the
     tuning of ``ml_nested_g`` against the predictions of ``ml_G``.
 
+    :meth:`tune_ml_models` tunes the nuisance learners of each model separately. Its ``ml_param_space`` needs an entry for
+    every learner, and ``None`` leaves a learner untuned, e.g. ``{"ml_nested_g": None}``.
+
     Examples
     --------
 
