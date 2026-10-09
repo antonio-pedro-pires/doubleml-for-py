@@ -209,6 +209,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
 
         # perform sample splitting
         self._smpls = None
+        self._modeldict = None
         self._smpls_inner = None
         self._n_obs_sample_splitting = self._dml_data.n_obs
         self._strata = None
@@ -431,6 +432,11 @@ class DoubleMLMEDS(SampleSplittingMixin):
         """
         The list of models for each level.
         """
+        if self._modeldict is None:
+            raise ValueError(
+                "Sample splitting not specified. Draw samples via .draw_sample splitting(). "
+                + "External samples not implemented yet."
+            )
         return self._modeldict
 
     @property
