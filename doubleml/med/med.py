@@ -143,8 +143,22 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
     cases, the entries ``ml_G_inner_i`` of the predictions hold the predictions of ``ml_G`` that serve as targets of
     ``ml_nested_g`` for the fold ``i``. With ``n_folds_inner=1``, they are missing outside of subsample B.
 
+    The score ``'efficient-alt'`` is the modified score function of expression (3.2) of Farbmacher et al. (2022)
+    (Algorithm 2 and Theorem 4.2), which avoids conditional mediator densities, for the counterfactual outcome
+    :math:`E[Y(d,M(1-d))]`. The factual outcome :math:`E[Y(d,M(d))]` uses the doubly robust score of the mean potential
+    outcome. If ``normalize_ipw=True``, every inverse probability weight is multiplied by the number of observations
+    and divided by the sum of the weights, so that the weights of a treatment group sum to the number of observations,
+    as proposed in the paper. The sum runs over all observations and not fold by fold, as in ``medDML``.
+
     The paper uses four-fold cross-fitting in its simulations and ``medDML`` uses three folds by default, while
     ``n_folds`` is ``5`` by default here.
+
+    The class estimates the mean potential outcome :math:`E[Y(d,M(d'))]` of a binary treatment, :class:`DoubleMLMEDS`
+    combines these into the total, direct and indirect effects. The following parts of the paper and of ``medDML`` are
+    not implemented: the controlled direct effect, the average treatment effect on the treated, the score based on
+    conditional mediator densities (expression (3.1), Algorithm 1 and Theorem 4.1, ``multmed=FALSE`` in ``medDML``),
+    the polynomial expansion of the covariates (``order`` in ``medDML``), cluster data, instrumental variables and
+    sensitivity analysis.
 
     The learner ``ml_nested_g`` has no observed outcome. Its targets are predictions of ``ml_G`` for the observations with
     ``D = 1-d``, so :meth:`tune_ml_models` tunes it after ``ml_G``, using the covariates :math:`X` only. The tuning
@@ -163,6 +177,10 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
     Helmut Farbmacher, Martin Huber, Lukáš Lafférs, Henrika Langen, Martin Spindler (2022).
     Causal mediation analysis with double machine learning. The Econometrics Journal, 25(2), 277-300.
     https://doi.org/10.1093/ectj/utac003
+
+    Hugo Bodory, Martin Huber, Jannis Kueck. causalweight: Estimation Methods for Causal Inference Based on Inverse
+    Probability Weighting and Doubly Robust Estimation. R package (MIT license), https://CRAN.R-project.org/package=causalweight.
+    The estimator follows the function ``medDML`` of this package, which implements the procedure of the paper.
 
     Examples
     --------

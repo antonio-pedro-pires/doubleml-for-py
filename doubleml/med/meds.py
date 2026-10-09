@@ -106,6 +106,22 @@ class DoubleMLMEDS(SampleSplittingMixin):
     :meth:`tune_ml_models` tunes the nuisance learners of each model separately. Its ``ml_param_space`` needs an entry for
     every learner, and ``None`` leaves a learner untuned, e.g. ``{"ml_nested_g": None}``.
 
+    The scope of the estimators, the score and the normalization of the weights are described in the notes of
+    :class:`DoubleMLMED`. This class does not offer ``set_ml_nuisance_params``, ``evaluate_learners`` and ``p_adjust``, which
+    :class:`DoubleMLMED` provides, and sensitivity analysis is not implemented for either class. The hyperparameters are
+    set on the learners passed to the constructor or by :meth:`tune_ml_models`, and the models in ``modeldict`` provide
+    the methods of :class:`DoubleMLMED`. Joint confidence intervals are not offered, because the asymptotic theory of the
+    paper covers each estimator on its own.
+
+    References
+    ----------
+    Helmut Farbmacher, Martin Huber, Lukáš Lafférs, Henrika Langen, Martin Spindler (2022).
+    Causal mediation analysis with double machine learning. The Econometrics Journal, 25(2), 277-300.
+    https://doi.org/10.1093/ectj/utac003
+
+    Hugo Bodory, Martin Huber, Jannis Kueck. causalweight: Estimation Methods for Causal Inference Based on Inverse
+    Probability Weighting and Doubly Robust Estimation. R package (MIT license), https://CRAN.R-project.org/package=causalweight.
+
     Examples
     --------
 
