@@ -308,6 +308,18 @@ def _check_inner_g_external_predictions(external_predictions, n_folds):
         )
 
 
+def _check_inner_g_external_values(inner_predictions, nested_smpls):
+    """Checks that the external entries ml_G_inner_i are finite on the observations where ml_nested_g is fitted."""
+    for i_fold, (preds, (nested_train, _)) in enumerate(zip(inner_predictions, nested_smpls)):
+        n_not_finite = int(np.sum(~np.isfinite(preds[nested_train])))
+        if n_not_finite > 0:
+            raise ValueError(
+                f"The external predictions {_inner_g_learner_name(i_fold)} have to be finite for the observations on which "
+                f"ml_nested_g is fitted in the outer fold {i_fold}, but {n_not_finite} of the {len(nested_train)} "
+                "observations are not finite."
+            )
+
+
 def _predict_with_method(model, x, method):
     if method == "predict_proba":
         return model.predict_proba(x)[:, 1]

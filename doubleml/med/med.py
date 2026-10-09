@@ -8,6 +8,7 @@ from doubleml.double_ml import DoubleML
 from doubleml.double_ml_score_mixins import LinearScoreMixin
 from doubleml.med.utils._med_utils import (
     _check_inner_g_external_predictions,
+    _check_inner_g_external_values,
     _check_inner_sample_splitting,
     _check_med_data,
     _check_subsample_arms,
@@ -141,7 +142,10 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
     used in the score. This corresponds to ``fewsplits=TRUE`` of ``medDML``. The model of a fold is never fitted on the
     observations of that fold, so the nested parameter of a fold does not depend on the outcomes of that fold. In all
     cases, the entries ``ml_G_inner_i`` of the predictions hold the predictions of ``ml_G`` that serve as targets of
-    ``ml_nested_g`` for the fold ``i``. With ``n_folds_inner=1``, they are missing outside of subsample B.
+    ``ml_nested_g`` for the fold ``i``. With ``n_folds_inner=1``, they are missing outside of subsample B. If external
+    predictions of ``ml_G`` are passed to :meth:`fit`, the entries ``ml_G_inner_i`` have to be passed as well. If
+    ``ml_nested_g`` is estimated, they have to be finite for the observations with ``D = 1-d`` on which it is fitted in the
+    fold ``i`` and can be missing elsewhere.
 
     The score ``'efficient-alt'`` is the modified score function of expression (3.2) of Farbmacher et al. (2022)
     (Algorithm 2 and Theorem 4.2), which avoids conditional mediator densities, for the counterfactual outcome
@@ -540,6 +544,8 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
                     ]
                 else:
                     smpls_nested = smpls_d0
+                if G_external:
+                    _check_inner_g_external_values(G_hat["preds_inner"], smpls_nested)
                 G_hat_inner_preds = [G_hat_preds[train] for (train, _), G_hat_preds in zip(smpls_nested, G_hat["preds_inner"])]
 
                 nested_g_hat = _dml_cv_predict(
@@ -610,6 +616,8 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
                 nested_g_hat = {"preds": external_predictions["ml_nested_g"], "targets": None, "models": None}
             else:
                 # fold specific targets, see the comment of the double sample splitting
+                if G_external:
+                    _check_inner_g_external_values(G_hat["preds_inner"], smpls_d0)
                 G_hat_inner_preds = [G_hat["preds_inner"][i][train] for i, (train, _) in enumerate(smpls_d0)]
                 nested_g_hat = _dml_cv_predict(
                     self.learner["ml_nested_g"],
