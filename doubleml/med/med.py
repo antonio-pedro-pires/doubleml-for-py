@@ -83,7 +83,8 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
     n_folds_inner : int
         Number of inner folds used for the estimation of the nested parameter if ``double_sample_splitting=True``.
         The training sample of each of the ``n_folds`` folds is split into ``n_folds_inner`` inner folds,
-        see the notes.
+        see the notes. If ``n_folds_inner=1``, the training sample is instead split once into two subsamples, as in
+        Algorithm 2 of Farbmacher et al. (2022), see the notes.
         Default is ``5``.
 
     normalize_ipw : bool
@@ -117,21 +118,30 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
     stages: ``ml_G`` estimates :math:`E[Y|D=d,M,X]` and ``ml_nested_g`` regresses the predictions of ``ml_G`` on
     :math:`X`. To avoid overfitting, the two stages are not estimated on the same data.
 
-    If ``double_sample_splitting=True``, the training sample of each of the ``n_folds`` folds is split into
+    If ``double_sample_splitting=True`` and ``n_folds_inner=1``, the training sample of each of the ``n_folds`` folds is
+    split once at random into two disjoint subsamples A and B. ``ml_G`` is fitted on the observations of A with ``D = d``
+    and predicts the observations of B and of the fold itself. Its predictions for B are the targets of ``ml_nested_g``,
+    which is fitted on the observations of B with ``D = 1-d``, and its predictions for the observations of the fold itself
+    are used in the score. Each fold has one ``ml_G`` model and the predictions are not averaged. This is Algorithm 2 of
+    Farbmacher et al. (2022), for which Theorem 4.2 of the paper is stated, and it corresponds to ``fewsplits=FALSE`` of
+    the R function ``medDML`` of the package ``causalweight`` (the default). With the same folds and subsamples and linear
+    learners, the predictions of the nuisance functions are identical (tested). Both ``A`` with ``D = d`` and ``B`` with
+    ``D = 1-d`` have to contain observations; otherwise an error is raised and the sample splitting can be redrawn.
+
+    If ``double_sample_splitting=True`` and ``n_folds_inner >= 2``, the training sample of each fold is split into
     ``n_folds_inner`` inner folds. ``ml_G`` is fitted on the inner training folds, its out-of-fold predictions within
-    the training sample are the targets of ``ml_nested_g``, and its predictions for the observations of the fold itself
-    are the average of the predictions of the inner models. Algorithm 2 of Farbmacher et al. (2022) instead splits the
-    training sample into two non-overlapping subsamples, one for each stage, and Theorem 4.2 of the paper is stated for
-    that algorithm. The R function ``medDML`` of the package ``causalweight`` also splits the training data for the
-    sequential estimation of the two stages if ``fewsplits=FALSE`` (the default).
+    the training sample are the targets of ``ml_nested_g``, which is fitted on all observations of the training sample with
+    ``D = 1-d``, and its predictions for the observations of the fold itself are the average of the predictions of the
+    inner models. This cross-fitted variant is not part of the paper. With two inner folds it uses both directions of
+    the split of Algorithm 2 and averages them.
 
     If ``double_sample_splitting=False``, ``n_folds_inner`` is not used and both stages use the training sample of the
     fold. ``ml_G`` is fitted once on the training sample, its predictions for the observations of the training sample
     with ``D = 1-d`` are the targets of ``ml_nested_g``, and its predictions for the observations of the fold itself are
     used in the score. This corresponds to ``fewsplits=TRUE`` of ``medDML``. The model of a fold is never fitted on the
-    observations of that fold, so the nested parameter of a fold does not depend on the outcomes of that fold. In both
+    observations of that fold, so the nested parameter of a fold does not depend on the outcomes of that fold. In all
     cases, the entries ``ml_G_inner_i`` of the predictions hold the predictions of ``ml_G`` that serve as targets of
-    ``ml_nested_g`` for the fold ``i``.
+    ``ml_nested_g`` for the fold ``i``. With ``n_folds_inner=1``, they are missing outside of subsample B.
 
     The paper uses four-fold cross-fitting in its simulations and ``medDML`` uses three folds by default, while
     ``n_folds`` is ``5`` by default here.
@@ -140,12 +150,13 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
     ``D = 1-d``, so :meth:`tune_ml_models` tunes it after ``ml_G``, using the covariates :math:`X` only. The tuning
     criterion is the cross-validated error of ``ml_nested_g`` against out-of-fold predictions of the tuned ``ml_G``. It
     therefore measures how well ``ml_nested_g`` reproduces the predictions of ``ml_G``, not the distance to an observed
-    outcome, and the quality of this tuning depends on how well ``ml_G`` fits. The targets are an approximation of the ones
-    used for estimation, because tuning uses one cross-fitted pass of the tuned ``ml_G`` and no inner sample splitting (a
-    similar compromise is made for ``ml_t`` in :class:`DoubleMLLPLR`). If no parameter space is passed for
-    ``ml_nested_g``, it is not tuned. To tune ``ml_nested_g`` against the tuned ``ml_G``, pass both in the same
-    ``ml_param_space``. A later call with ``set_as_params=True`` that leaves ``ml_G`` out sets its parameters back to those
-    of the learner passed to the constructor, which is the general behavior of :meth:`tune_ml_models`.
+    outcome, and the quality of this tuning depends on how well ``ml_G`` fits. The targets are an approximation of the
+    ones used for estimation, because tuning uses one cross-fitted pass of the tuned ``ml_G`` and neither the inner
+    sample splitting nor the subsamples A and B (a similar compromise is made for ``ml_t`` in :class:`DoubleMLLPLR`). If
+    no parameter space is passed for ``ml_nested_g``, it is not tuned. To tune ``ml_nested_g`` against the tuned
+    ``ml_G``, pass both in the same ``ml_param_space``. A later call with ``set_as_params=True`` that leaves ``ml_G`` out
+    sets its parameters back to those of the learner passed to the constructor, which is the general behavior of
+    :meth:`tune_ml_models`.
 
     References
     ----------
@@ -811,7 +822,8 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
 
         smpls_inner : list or None
             The inner sample splitting used for the nested estimation. For each repetition and each outer fold, a list
-            of ``n_folds_inner`` tuples ``(train_ind, test_ind)`` of indices within the outer training sample.
+            of ``n_folds_inner`` tuples ``(train_ind, test_ind)`` of indices within the outer training sample. A single
+            tuple ``(A, B)`` selects the two-subsample scheme of Algorithm 2 of Farbmacher et al. (2022).
             Required if ``double_sample_splitting=True``.
 
         Returns
@@ -821,7 +833,8 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         Notes
         -----
         The inner samples have to partition the outer training sample of each fold: inner training and test indices must
-        lie within the outer training sample, and the inner test folds must be disjoint and cover it. As for the outer
+        lie within the outer training sample, and the inner test folds must be disjoint and cover it. A single inner
+        tuple ``(A, B)`` is valid if A and B are disjoint and together cover the outer training sample. As for the outer
         sample splitting, the splits should be drawn independently of the data, in particular of the outcome.
         :class:`DoubleMLMEDS` uses this method to share one sample splitting between its models.
         """

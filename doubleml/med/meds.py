@@ -68,7 +68,8 @@ class DoubleMLMEDS(SampleSplittingMixin):
     n_folds_inner : int
         Number of inner folds used for the estimation of the nested parameter if ``double_sample_splitting=True``.
         The training sample of each of the ``n_folds`` folds is split into ``n_folds_inner`` inner folds,
-        see the notes.
+        see the notes. If ``n_folds_inner=1``, the training sample is instead split once into two subsamples, as in
+        Algorithm 2 of Farbmacher et al. (2022).
         Default is ``5``.
 
     normalize_ipw : bool
