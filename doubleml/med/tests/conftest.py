@@ -11,7 +11,7 @@ from doubleml.tests._utils_tune_optuna import (
     _basic_optuna_settings,
     _small_tree_params,
 )
-from doubleml.utils import PSProcessorConfig
+from doubleml.utils import DMLDummyClassifier, DMLDummyRegressor, PSProcessorConfig
 
 
 @pytest.fixture(scope="module", params=[True, False])
@@ -47,6 +47,18 @@ def learner_linear():
         "ml_G": LinearRegression(),
         "ml_M": LogisticRegression(solver="saga", l1_ratio=1, max_iter=250, random_state=42),
         "ml_nested_g": LinearRegression(),
+    }
+
+
+@pytest.fixture(scope="session")
+def learner_dummy():
+    """Learners that raise an error if they are used, for tests that must not fit or predict."""
+    return {
+        "ml_g": DMLDummyRegressor(),
+        "ml_m": DMLDummyClassifier(),
+        "ml_G": DMLDummyRegressor(),
+        "ml_M": DMLDummyClassifier(),
+        "ml_nested_g": DMLDummyRegressor(),
     }
 
 

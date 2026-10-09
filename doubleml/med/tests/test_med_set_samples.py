@@ -6,7 +6,7 @@ from doubleml.med.datasets import make_med_data
 
 
 @pytest.fixture(scope="module")
-def set_smpls_sampling_fixture(dml_data, learner_linear, binary_outcomes, double_sample_splitting, ps_processor_config):
+def set_smpls_sampling_fixture(dml_data, learner_dummy, binary_outcomes, double_sample_splitting, ps_processor_config):
     treatment_level = 1  # Fixed treatment_level since the treatment level has no effect on set_smpls_sampling.
     med_obj = DoubleMLMED(
         obj_dml_data=dml_data,
@@ -14,7 +14,7 @@ def set_smpls_sampling_fixture(dml_data, learner_linear, binary_outcomes, double
         treatment_level=treatment_level,
         double_sample_splitting=double_sample_splitting,
         ps_processor_config=ps_processor_config,
-        **learner_linear,
+        **learner_dummy,
     )
     med_obj_ext = DoubleMLMED(
         obj_dml_data=dml_data,
@@ -23,7 +23,7 @@ def set_smpls_sampling_fixture(dml_data, learner_linear, binary_outcomes, double
         double_sample_splitting=double_sample_splitting,
         draw_sample_splitting=False,
         ps_processor_config=ps_processor_config,
-        **learner_linear,
+        **learner_dummy,
     )
     return med_obj, med_obj_ext
 
@@ -95,9 +95,9 @@ def test_set_sample_splitting_then_fit_matches_reference(reset_splits_fixture):
 
 
 @pytest.mark.ci
-def test_set_sample_splitting_returns_self_single_split(dml_data, learner_linear):
+def test_set_sample_splitting_returns_self_single_split(dml_data, learner_dummy):
     """Without double sample splitting, set_sample_splitting also returns the object for chaining."""
     kwargs = {"obj_dml_data": dml_data, "outcome": "factual", "treatment_level": 1, "double_sample_splitting": False}
-    med_ref = DoubleMLMED(**kwargs, **learner_linear)
-    med_ext = DoubleMLMED(draw_sample_splitting=False, **kwargs, **learner_linear)
+    med_ref = DoubleMLMED(**kwargs, **learner_dummy)
+    med_ext = DoubleMLMED(draw_sample_splitting=False, **kwargs, **learner_dummy)
     assert med_ext.set_sample_splitting(smpls=med_ref.smpls) is med_ext
