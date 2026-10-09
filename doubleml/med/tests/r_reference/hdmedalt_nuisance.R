@@ -1,5 +1,9 @@
 # Nuisance part of causalweight:::hdmedalt (fewsplits=FALSE, MLmethod="parametric"), same lines as in
 # causalweight/R/functions.R, writing the folds and the predictions of E(Y|M,X,D=d) and E[E(Y|M,X,D=d)|D=1-d,X].
+#
+# Produced with R 4.5.0, SuperLearner 2.0.40 and causalweight 1.1.5 (all on CRAN).
+# Regenerate r_preds.csv and r_folds.csv from data.csv with, from this folder:
+#   Rscript hdmedalt_nuisance.R .
 suppressMessages({library(SuperLearner); library(causalweight)})
 MLfunct <- causalweight:::MLfunct
 args <- commandArgs(trailingOnly = TRUE)

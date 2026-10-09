@@ -8,8 +8,8 @@ from sklearn.linear_model import LinearRegression, LogisticRegression
 from doubleml import DoubleMLMED, DoubleMLMEDData
 
 # The reference numbers in r_reference/ were computed with r_reference/hdmedalt_nuisance.R, which repeats the nuisance part
-# of causalweight::hdmedalt (fewsplits=FALSE, MLmethod="parametric", version 1.1.5) on r_reference/data.csv.
-# The test does not call R.
+# of causalweight::hdmedalt (fewsplits=FALSE, MLmethod="parametric") on r_reference/data.csv, using R 4.5.0,
+# SuperLearner 2.0.40 and causalweight 1.1.5. The test does not call R; see the script header to regenerate the numbers.
 REFERENCE_DIR = Path(__file__).parent / "r_reference"
 
 
