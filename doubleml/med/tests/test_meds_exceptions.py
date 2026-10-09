@@ -162,3 +162,20 @@ def test_meds_external_predictions_inner_key_out_of_range_exception(dml_data, le
     msg = f"external_predictions[{d_col}] must hold a dictionnary whose keys are a "
     with pytest.raises(ValueError, match=re.escape(msg)):
         meds_obj.fit(external_predictions=invalid_ext_preds)
+
+
+@pytest.mark.ci
+def test_methods_need_a_sample_splitting(dml_data, learner_linear):
+    """Without a drawn sample splitting there are no models yet, which is reported like a missing smpls."""
+    meds_obj = DoubleMLMEDS(obj_dml_data=dml_data, draw_sample_splitting=False, **learner_linear)
+    msg = "Sample splitting not specified. Draw samples via .draw_sample splitting()"
+
+    with pytest.raises(ValueError, match=re.escape(msg)):
+        meds_obj.modeldict
+    with pytest.raises(ValueError, match=re.escape(msg)):
+        meds_obj.fit()
+    with pytest.raises(ValueError, match=re.escape(msg)):
+        meds_obj.tune_ml_models({"ml_g": None})
+
+    meds_obj.draw_sample_splitting()
+    assert len(meds_obj.modeldict) == 4
