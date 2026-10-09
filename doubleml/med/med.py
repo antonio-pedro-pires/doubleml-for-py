@@ -141,7 +141,9 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
     outcome, and the quality of this tuning depends on how well ``ml_G`` fits. The targets are an approximation of the ones
     used for estimation, because tuning uses one cross-fitted pass of the tuned ``ml_G`` and no inner sample splitting (a
     similar compromise is made for ``ml_t`` in :class:`DoubleMLLPLR`). If no parameter space is passed for
-    ``ml_nested_g``, it is not tuned.
+    ``ml_nested_g``, it is not tuned. To tune ``ml_nested_g`` against the tuned ``ml_G``, pass both in the same
+    ``ml_param_space``. A later call with ``set_as_params=True`` that leaves ``ml_G`` out sets its parameters back to those
+    of the learner passed to the constructor, which is the general behavior of :meth:`tune_ml_models`.
 
     References
     ----------
