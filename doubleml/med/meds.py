@@ -103,8 +103,10 @@ class DoubleMLMEDS(SampleSplittingMixin):
     ``double_sample_splitting`` and ``n_folds_inner``, is described in the notes of :class:`DoubleMLMED`, as is the
     tuning of ``ml_nested_g`` against the predictions of ``ml_G``.
 
-    :meth:`tune_ml_models` tunes the nuisance learners of each model separately. Its ``ml_param_space`` needs an entry for
-    every learner, and ``None`` leaves a learner untuned, e.g. ``{"ml_nested_g": None}``.
+    :meth:`tune_ml_models` tunes the nuisance learners of each model separately. Its ``ml_param_space`` can contain any
+    of the learners ``ml_g``, ``ml_m``, ``ml_G``, ``ml_M`` and ``ml_nested_g``. A model tunes the learners it has, and a
+    learner that is missing or ``None``, e.g. ``{"ml_nested_g": None}``, is left untuned. As in :class:`DoubleMLMED`, tuning
+    ``ml_nested_g`` against the tuned ``ml_G`` requires both in the same ``ml_param_space``.
 
     The scope of the estimators, the score and the normalization of the weights are described in the notes of
     :class:`DoubleMLMED`. This class does not offer ``set_ml_nuisance_params``, ``evaluate_learners`` and ``p_adjust``, which
@@ -779,28 +781,23 @@ class DoubleMLMEDS(SampleSplittingMixin):
             "return_tune_res": return_tune_res,
             "optuna_settings": optuna_settings,
         }
+        if not isinstance(ml_param_space, dict) or len(ml_param_space) == 0:
+            raise ValueError("ml_param_space must be a non-empty dictionary.")
+        valid_learners = ["ml_g", "ml_m", "ml_G", "ml_M", "ml_nested_g"]
+        invalid_keys = [name for name in ml_param_space if name not in valid_learners]
+        if invalid_keys:
+            raise ValueError(
+                f"Invalid ml_param_space keys for DoubleMLMEDS: {', '.join(map(str, invalid_keys))}. "
+                f"Valid keys are: {', '.join(valid_learners)}."
+            )
+
         tune_res = {} if return_tune_res else None
-
         for key, model in self.modeldict.items():
-            if model.outcome == "factual":
-                res = model.tune_ml_models(
-                    ml_param_space={
-                        "ml_g": ml_param_space["ml_g"],
-                        "ml_m": ml_param_space["ml_m"],
-                    },
-                    **tuning_kwargs,
-                )
-            elif model.outcome == "counterfactual":
-                res = model.tune_ml_models(
-                    ml_param_space={
-                        "ml_m": ml_param_space["ml_m"],
-                        "ml_G": ml_param_space["ml_G"],
-                        "ml_M": ml_param_space["ml_M"],
-                        "ml_nested_g": ml_param_space["ml_nested_g"],
-                    },
-                    **tuning_kwargs,
-                )
-
+            # each model tunes the learners it has, a model without a learner in ml_param_space is skipped
+            model_param_space = {name: ml_param_space[name] for name in model.learner_names if name in ml_param_space}
+            if len(model_param_space) == 0:
+                continue
+            res = model.tune_ml_models(ml_param_space=model_param_space, **tuning_kwargs)
             if return_tune_res:
                 tune_res[key] = res
         return tune_res if return_tune_res else None
