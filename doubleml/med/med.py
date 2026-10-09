@@ -46,7 +46,8 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
     ml_nested_g : estimator implementing ``fit()`` and ``predict()``
         A machine learner implementing ``fit()`` and ``predict()`` methods (e.g.
         :py:class:`sklearn.ensemble.RandomForestRegressor`) for the nuisance function :math:`E[E[Y|D=d,M,X]|D=1-d, X]`
-        Only required if ``outcome`` is 'counterfactual'.
+        Only required if ``outcome`` is 'counterfactual'. Its target is not an observed outcome but the predictions
+        of ``ml_G``, which also applies to :meth:`tune_ml_models`, see the notes.
 
     ml_m : classifier implementing ``fit()`` and ``predict_proba()``
         A machine learner implementing ``fit()`` and ``predict_proba()`` methods (e.g.
@@ -132,6 +133,15 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
 
     The paper uses four-fold cross-fitting in its simulations and ``medDML`` uses three folds by default, while
     ``n_folds`` is ``5`` by default here.
+
+    The learner ``ml_nested_g`` has no observed outcome. Its targets are predictions of ``ml_G`` for the observations with
+    ``D = 1-d``, so :meth:`tune_ml_models` tunes it after ``ml_G``, using the covariates :math:`X` only. The tuning
+    criterion is the cross-validated error of ``ml_nested_g`` against out-of-fold predictions of the tuned ``ml_G``. It
+    therefore measures how well ``ml_nested_g`` reproduces the predictions of ``ml_G``, not the distance to an observed
+    outcome, and the quality of this tuning depends on how well ``ml_G`` fits. The targets are an approximation of the ones
+    used for estimation, because tuning uses one cross-fitted pass of the tuned ``ml_G`` and no inner sample splitting (a
+    similar compromise is made for ``ml_t`` in :class:`DoubleMLLPLR`). If no parameter space is passed for
+    ``ml_nested_g``, it is not tuned.
 
     References
     ----------
