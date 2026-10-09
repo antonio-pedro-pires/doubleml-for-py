@@ -2,6 +2,7 @@ import numpy as np
 
 from doubleml.data import DoubleMLMEDData
 from doubleml.utils._checks import _check_smpl_split_tpl
+from doubleml.utils._estimation import _double_dml_cv_predict
 
 
 def _normalize_propensity_med(
@@ -221,6 +222,44 @@ def _check_subsample_arms(smpls_inner_rep, treated, treatment_level):
                 f"ml_nested_g requires at least one observation with D!={treatment_level} in subsample B of outer fold"
                 f" {i_fold}. Found 0 of {len(subsample_b)} observations." + _SUBSAMPLE_ARM_HINT
             )
+
+
+def _double_dml_cv_predict_by_fold(estimator, estimator_name, x, y, smpls, smpls_inner, n_jobs, est_params, method):
+    """
+    Calls ``_double_dml_cv_predict`` with the parameters of each outer fold.
+
+    The parameters of a learner are stored with one entry for each outer fold, whereas ``_double_dml_cv_predict`` hands
+    its ``est_params`` to the inner fits of every outer fold, which expect one entry for each inner fold.
+    """
+    if est_params is None:
+        return _double_dml_cv_predict(
+            estimator, estimator_name, x, y, smpls=smpls, smpls_inner=smpls_inner, n_jobs=n_jobs, method=method
+        )
+
+    res = {
+        "preds": np.zeros(y.shape, dtype=float),
+        "preds_inner": [],
+        "targets_inner": [],
+        "models": [],
+        "targets": np.copy(y),
+    }
+    for fold_smpls, fold_smpls_inner, fold_params in zip(smpls, smpls_inner, est_params):
+        res_fold = _double_dml_cv_predict(
+            estimator,
+            estimator_name,
+            x,
+            y,
+            smpls=[fold_smpls],
+            smpls_inner=[fold_smpls_inner],
+            n_jobs=n_jobs,
+            est_params=fold_params,
+            method=method,
+        )
+        # the predictions of a fold are zero outside of the observations of the fold
+        res["preds"] += res_fold["preds"]
+        for key in ["preds_inner", "targets_inner", "models"]:
+            res[key].extend(res_fold[key])
+    return res
 
 
 def _check_med_data(dml_data):

@@ -11,6 +11,7 @@ from doubleml.med.utils._med_utils import (
     _check_inner_sample_splitting,
     _check_med_data,
     _check_subsample_arms,
+    _double_dml_cv_predict_by_fold,
     _first_inner_split,
     _inner_g_learner_name,
     _inner_g_learner_names,
@@ -21,7 +22,6 @@ from doubleml.utils._checks import _check_finite_predictions, _check_sample_spli
 from doubleml.utils._estimation import (
     _cond_targets,
     _dml_cv_predict,
-    _double_dml_cv_predict,
     _get_cond_smpls,
 )
 from doubleml.utils._tune_optuna import _dml_tune_optuna, resolve_optuna_cv
@@ -488,7 +488,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
                 }
             else:
 
-                G_hat = _double_dml_cv_predict(
+                G_hat = _double_dml_cv_predict_by_fold(
                     estimator=self._learner["ml_G"],
                     estimator_name="ml_G",
                     x=xm,
