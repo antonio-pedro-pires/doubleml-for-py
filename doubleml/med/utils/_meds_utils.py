@@ -1,7 +1,11 @@
+"""Helper to aggregate the effect summaries of the joint mediation estimator."""
+
+from typing import Any
+
 import pandas as pd
 
 
-def generate_effects_summary(effects):
+def generate_effects_summary(effects: dict[str, Any]) -> pd.DataFrame:
     """
     Stack the summaries of the effects into one data frame, with one row per effect.
 

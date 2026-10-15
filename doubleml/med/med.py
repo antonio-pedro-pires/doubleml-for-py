@@ -1,9 +1,12 @@
+"""Causal mediation analysis for a single treatment level and outcome (factual or counterfactual)."""
+
 from numbers import Integral
-from typing import Optional
+from typing import Any, Optional
 
 import numpy as np
 from sklearn.utils import check_array, check_consistent_length, check_X_y
 
+from doubleml.data import DoubleMLMEDData
 from doubleml.double_ml import DoubleML
 from doubleml.double_ml_score_mixins import LinearScoreMixin
 from doubleml.med.utils._med_utils import (
@@ -212,23 +215,23 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
 
     def __init__(
         self,
-        obj_dml_data,
-        treatment_level,
-        outcome,
-        ml_m,
-        ml_g=None,
-        ml_G=None,
-        ml_M=None,
-        ml_nested_g=None,
-        n_folds=5,
-        n_rep=1,
-        score="efficient-alt",
-        n_folds_inner=5,
-        normalize_ipw=True,
-        draw_sample_splitting=True,
-        double_sample_splitting=True,
+        obj_dml_data: DoubleMLMEDData,
+        treatment_level: int,
+        outcome: str,
+        ml_m: Any,
+        ml_g: Any = None,
+        ml_G: Any = None,
+        ml_M: Any = None,
+        ml_nested_g: Any = None,
+        n_folds: int = 5,
+        n_rep: int = 1,
+        score: str = "efficient-alt",
+        n_folds_inner: int = 5,
+        normalize_ipw: bool = True,
+        draw_sample_splitting: bool = True,
+        double_sample_splitting: bool = True,
         ps_processor_config: Optional[PSProcessorConfig] = None,
-    ):
+    ) -> None:
         self._dml_data = _check_med_data(obj_dml_data)
 
         self._double_sample_splitting = double_sample_splitting
@@ -246,7 +249,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
 
         self._treated = self._dml_data.d == treatment_level
 
-        self._predict_method = {}
+        self._predict_method: dict[str, str] = {}
         self._check_learners(ml_g=ml_g, ml_m=ml_m, ml_G=ml_G, ml_M=ml_M, ml_nested_g=ml_nested_g)
 
         self._normalize_ipw = normalize_ipw
@@ -256,42 +259,45 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         self._ps_processor_config = ps_processor_config if ps_processor_config is not None else PSProcessorConfig()
         self._ps_processor = PSProcessor.from_config(self._ps_processor_config)
 
+    _dml_data: DoubleMLMEDData
+    _learner: dict[str, Any]
+
     @property
-    def outcome(self):
+    def outcome(self) -> str:
         """
         The outcome parameter to estimate.
         """
         return self._outcome
 
     @property
-    def normalize_ipw(self):
+    def normalize_ipw(self) -> bool:
         """
         indicates whether the  inverse probability weights are normalized
         """
         return self._normalize_ipw
 
     @property
-    def treatment_level(self):
+    def treatment_level(self) -> int:
         """
         Chosen treatment level.
         """
         return self._treatment_level
 
     @property
-    def treated(self):
+    def treated(self) -> np.ndarray:
         """
         Indicator for observations with chosen treatment level.
         """
         return self._treated
 
     @property
-    def double_sample_splitting(self):
+    def double_sample_splitting(self) -> bool:
         """
         Indicates whether the data is resampled for the estimation of the nested parameter.
         """
         return self._double_sample_splitting
 
-    def draw_sample_splitting(self):
+    def draw_sample_splitting(self) -> "DoubleMLMED":
         """
         Draw sample splitting for the mediation model.
 
@@ -315,24 +321,24 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         return self
 
     @property
-    def _score_element_names(self):
+    def _score_element_names(self) -> list[str]:
         return ["psi_a", "psi_b"]
 
     @property
-    def ps_processor_config(self):
+    def ps_processor_config(self) -> PSProcessorConfig:
         """
         Configuration for propensity score processing (clipping, calibration, etc.).
         """
         return self._ps_processor_config
 
     @property
-    def ps_processor(self):
+    def ps_processor(self) -> PSProcessor:
         """
         Propensity score processor.
         """
         return self._ps_processor
 
-    def _initialize_ml_nuisance_params(self):
+    def _initialize_ml_nuisance_params(self) -> None:
         if self._outcome == "factual":
             learners = ["ml_g", "ml_m"]
         else:
@@ -342,11 +348,11 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
 
     def _nuisance_est(
         self,
-        smpls,
-        n_jobs_cv,
-        external_predictions,
-        return_models,
-    ):
+        smpls: list[tuple[np.ndarray, np.ndarray]],
+        n_jobs_cv: Optional[int],
+        external_predictions: dict[str, Any],
+        return_models: bool,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
         if self._outcome == "factual":
             return self._nuisance_est_factual(smpls, n_jobs_cv, external_predictions, return_models)
         else:
@@ -354,11 +360,11 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
 
     def _nuisance_est_factual(
         self,
-        smpls,
-        n_jobs_cv,
-        external_predictions,
-        return_models,
-    ):
+        smpls: list[tuple[np.ndarray, np.ndarray]],
+        n_jobs_cv: Optional[int],
+        external_predictions: dict[str, Any],
+        return_models: bool,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
         x, y = check_X_y(self._dml_data.x, self._dml_data.y, ensure_all_finite=False)
         # check_X_y's ensure_all_finite is only ever applied to its first (X) argument, never to
         # the second (y) argument (see sklearn.utils.validation._check_y); since d sits in that
@@ -429,7 +435,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
 
         return psi_elements, preds
 
-    def _inner_g_targets(self, targets):
+    def _inner_g_targets(self, targets: Optional[np.ndarray]) -> Optional[np.ndarray]:
         """Outcomes of the observations with D = d, or None if there are none (the loss is not computed then)."""
         if targets is None:
             return None
@@ -438,11 +444,11 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
 
     def _nuisance_est_counterfactual(
         self,
-        smpls,
-        n_jobs_cv,
-        external_predictions,
-        return_models=False,
-    ):
+        smpls: list[tuple[np.ndarray, np.ndarray]],
+        n_jobs_cv: Optional[int],
+        external_predictions: dict[str, Any],
+        return_models: bool = False,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
         x, y = check_X_y(self._dml_data.x, self._dml_data.y, ensure_all_finite=False)
         # see _nuisance_est: check_array avoids check_X_y's ensure_all_finite being a no-op for
         # the y-argument slot that d occupies here.
@@ -567,12 +573,9 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
                 )
             # store inner predictions as separate keys per inner fold
             inner_predictions = {_inner_g_learner_name(i): G_hat["preds_inner"][i] for i in range(len(G_hat["preds_inner"]))}
+            targets_inner = G_hat.get("targets_inner")
             inner_targets = {
-                _inner_g_learner_name(i): (
-                    G_hat.get("targets_inner")[i]
-                    if G_hat.get("targets_inner") is not None and i < len(G_hat["targets_inner"])
-                    else None
-                )
+                _inner_g_learner_name(i): targets_inner[i] if targets_inner is not None and i < len(targets_inner) else None
                 for i in range(len(G_hat.get("preds_inner", [])))
             }
             # the flat list of inner models is ordered by outer fold, with one model per inner fold
@@ -688,7 +691,15 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
 
         return psi_elements, preds
 
-    def _score_elements(self, y, m_hat_preds, g_hat_preds=None, M_hat_preds=None, G_hat_preds=None, nested_g_hat_preds=None):
+    def _score_elements(
+        self,
+        y: np.ndarray,
+        m_hat_preds: np.ndarray,
+        g_hat_preds: Any = None,
+        M_hat_preds: Any = None,
+        G_hat_preds: Any = None,
+        nested_g_hat_preds: Any = None,
+    ) -> tuple[float, np.ndarray]:
         if self._outcome == "factual":
             u_hat = y - g_hat_preds
             propensity_score = _normalize_propensity_med(
@@ -718,20 +729,22 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
 
     def _nuisance_tuning(
         self,
-        smpls,
-        param_grids,
-        scoring_methods,
-        n_folds_tune,
-        n_jobs_cv,
-        search_mode,
-        n_iter_randomized_search,
-    ):
+        smpls: list[tuple[np.ndarray, np.ndarray]],
+        param_grids: Any,
+        scoring_methods: Any,
+        n_folds_tune: int,
+        n_jobs_cv: Optional[int],
+        search_mode: str,
+        n_iter_randomized_search: int,
+    ) -> None:
         raise NotImplementedError(
             "Nuisance tuning using the 'tune' method is not implemented for DoubleMLMediation. "
             + "Please use the 'tune_ml_models' method instead."
         )
 
-    def _nuisance_tuning_optuna(self, optuna_params, scoring_methods, cv, optuna_settings):
+    def _nuisance_tuning_optuna(
+        self, optuna_params: Any, scoring_methods: Optional[dict[str, Any]], cv: Any, optuna_settings: Any
+    ) -> dict[str, Any]:
         x, y = check_X_y(self._dml_data.x, self._dml_data.y, ensure_all_finite=False)
         # see _nuisance_est: check_array avoids check_X_y's ensure_all_finite being a no-op for
         # the y-argument slot that d occupies here.
@@ -843,10 +856,16 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
 
         return results
 
-    def _sensitivity_element_est(self, preds):
+    def _sensitivity_element_est(self, preds: Any) -> None:
         raise NotImplementedError()
 
-    def set_sample_splitting(self, smpls, all_smpls_cluster=None, is_cluster_data=False, smpls_inner=None):
+    def set_sample_splitting(
+        self,
+        smpls: Any,
+        all_smpls_cluster: Optional[list] = None,
+        is_cluster_data: bool = False,
+        smpls_inner: Optional[list] = None,
+    ) -> "DoubleMLMED":
         """
         Set the sample splitting for the model.
 
@@ -907,7 +926,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
 
         return super().set_sample_splitting(all_smpls=smpls, all_smpls_cluster=all_smpls_cluster)
 
-    def _check_learners(self, ml_g, ml_m, ml_G, ml_M, ml_nested_g):
+    def _check_learners(self, ml_g: Any, ml_m: Any, ml_G: Any, ml_M: Any, ml_nested_g: Any) -> None:
         if self._outcome == "factual":
             self._learner = {"ml_g": ml_g, "ml_m": ml_m}
         else:
@@ -943,7 +962,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
             self._predict_method[learner_name] = "predict_proba" if is_classifier else "predict"
         self._initialize_ml_nuisance_params()
 
-    def _check_outcome(self, outcome):
+    def _check_outcome(self, outcome: str) -> str:
         if not isinstance(outcome, str):
             raise TypeError("Outcome must be a string." + f"{str(outcome)} of type {str(type(outcome))} provided instead.")
 
@@ -953,7 +972,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
 
         return outcome
 
-    def _check_levels(self, treatment_level):
+    def _check_levels(self, treatment_level: int) -> int:
         if not isinstance(treatment_level, Integral):
             raise TypeError(
                 "Treatment level must be an integer."

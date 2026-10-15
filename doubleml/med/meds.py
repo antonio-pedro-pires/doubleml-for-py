@@ -1,11 +1,15 @@
+"""causal mediation analysis binary treatment levels and continuous or discrete mediation variables
+computing total, direct and indirect effects."""
+
 import itertools
-from typing import Optional
+from typing import Any, Optional
 
 import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
 from sklearn import clone
 
+from doubleml.data import DoubleMLMEDData
 from doubleml.double_ml_framework import concat
 from doubleml.double_ml_sampling_mixins import SampleSplittingMixin
 from doubleml.med.med import DoubleMLMED
@@ -15,8 +19,6 @@ from doubleml.utils import PSProcessorConfig
 from doubleml.utils._checks import _check_score
 from doubleml.utils._descriptive import generate_summary
 from doubleml.utils._tune_optuna import TUNE_ML_MODELS_DOC
-
-# Known limitations: sensitivity analysis is not implemented for DoubleMLMEDS.
 
 
 class DoubleMLMEDS(SampleSplittingMixin):
@@ -150,23 +152,25 @@ class DoubleMLMEDS(SampleSplittingMixin):
     INDIR_CONTROL  0.166631  0.041467   4.018419  0.000059  0.085358  0.247905
     """
 
+    _dml_data: DoubleMLMEDData
+
     def __init__(
         self,
-        obj_dml_data,
-        ml_m,
-        ml_g,
-        ml_G,
-        ml_M,
-        ml_nested_g,
-        n_folds=5,
-        n_rep=1,
-        score="efficient-alt",
-        n_folds_inner=5,
-        normalize_ipw=True,
-        draw_sample_splitting=True,
-        double_sample_splitting=True,
+        obj_dml_data: DoubleMLMEDData,
+        ml_m: Any,
+        ml_g: Any,
+        ml_G: Any,
+        ml_M: Any,
+        ml_nested_g: Any,
+        n_folds: int = 5,
+        n_rep: int = 1,
+        score: str = "efficient-alt",
+        n_folds_inner: int = 5,
+        normalize_ipw: bool = True,
+        draw_sample_splitting: bool = True,
+        double_sample_splitting: bool = True,
         ps_processor_config: Optional[PSProcessorConfig] = None,
-    ):
+    ) -> None:
 
         self._dml_data = _check_med_data(obj_dml_data)
         self._is_cluster_data = self._dml_data.is_cluster_data
@@ -193,35 +197,32 @@ class DoubleMLMEDS(SampleSplittingMixin):
             "ml_M": clone(ml_M),
             "ml_nested_g": clone(ml_nested_g),
         }
-        self._params = None
+        self._params: Any = None
 
         # Initialize framework constructed after the fit method is called.
-        self._framework = None
-
-        # Set labels for returns
-        self._results_labels = ["ATE", "dir.treat", "dir.control", "indir.treat", "indir.control", "Y(0, M(0))"]
+        self._framework: Any = None
 
         # Initialize all properties to None
-        self._se = None
-        self._pvalues = None
-        self._coef = None
-        self._ci = None
+        self._se: Any = None
+        self._pvalues: Any = None
+        self._coef: Any = None
+        self._ci: Any = None
 
         # perform sample splitting
-        self._smpls = None
-        self._modeldict = None
-        self._smpls_inner = None
+        self._smpls: Any = None
+        self._modeldict: Any = None
+        self._smpls_inner: Any = None
         self._n_obs_sample_splitting = self._dml_data.n_obs
-        self._strata = None
+        self._strata: Any = None
 
         self._ps_processor_config = ps_processor_config if ps_processor_config is not None else PSProcessorConfig()
 
         if draw_sample_splitting:
             self.draw_sample_splitting()
 
-        self._effects = None
+        self._effects: Any = None
 
-    def __str__(self):
+    def __str__(self) -> str:
         class_name = self.__class__.__name__
         header = f"================== {class_name} Object ==================\n"
         fit_summary = str(self.summary)
@@ -231,71 +232,77 @@ class DoubleMLMEDS(SampleSplittingMixin):
         return res
 
     @property
-    def score(self):
+    def score(self) -> str:
         """
         The score function.
         """
         return self._score
 
     @property
-    def smpls_inner(self):
+    def smpls_inner(self) -> Optional[list]:
+        """
+        The inner sample splitting used for the estimation of the nested parameter.
+        """
         return self._smpls_inner
 
     @property
-    def n_folds(self):
+    def n_folds(self) -> int:
         """
         Specifies the number of folds to be used for cross-validation
         """
         return self._n_folds
 
     @property
-    def n_rep(self):
+    def n_rep(self) -> int:
         """
         Number of repetitions for the sample splitting.
         """
         return self._n_rep
 
     @property
-    def n_folds_inner(self):
+    def n_folds_inner(self) -> int:
         """
         Number of folds to be used for cross-validation of the inner models.
         """
         return self._n_folds_inner
 
     @property
-    def normalize_ipw(self):
+    def normalize_ipw(self) -> bool:
         """
         Indicates whether the inverse probability weights are normalised.
         """
         return self._normalize_ipw
 
     @property
-    def models_ids(self):
+    def models_ids(self) -> list[str]:
+        """
+        The identifiers ``'<outcome>_<treatment level>'`` of the models, e.g. ``'factual_1'``.
+        """
         return self._models_ids
 
     @property
-    def double_sample_splitting(self):
+    def double_sample_splitting(self) -> bool:
         """
         Indicates whether the data is resampled for the estimation of the nested parameter.
         """
         return self._double_sample_splitting
 
     @property
-    def treatments(self):
+    def treatments(self) -> np.ndarray:
         """
         Describes the different treatment levels
         """
         return np.unique(self._dml_data.d)
 
     @property
-    def ps_processor_config(self):
+    def ps_processor_config(self) -> PSProcessorConfig:
         """
         Configuration for propensity score processing (clipping, calibration, etc.).
         """
         return self._ps_processor_config
 
     @property
-    def effects(self):
+    def effects(self) -> Optional[dict[str, Any]]:
         """
         Estimates for the ATE and the combination of the direct/indirect, treatment/control groups effects after calling
         :meth:`evaluate-effects`
@@ -307,7 +314,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
         return effects
 
     @property
-    def coef(self):
+    def coef(self) -> Optional[np.ndarray]:
         """
         Estimates for the causal parameter(s) after calling :meth:`fit` (shape(4,)).
         """
@@ -318,7 +325,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
         return coef
 
     @property
-    def all_coef(self):
+    def all_coef(self) -> Optional[np.ndarray]:
         """
         Estimates of the causal parameter(s) for the ``n_rep`` different sample splits after calling :meth: `fit`
         (shape (4, ``n_rep``))
@@ -330,7 +337,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
         return all_coef
 
     @property
-    def se(self):
+    def se(self) -> Optional[np.ndarray]:
         """
         Standard errors for the causal parameter(s) after calling :meth:`fit` (shape (4,)).
         """
@@ -341,7 +348,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
         return se
 
     @property
-    def all_se(self):
+    def all_se(self) -> Optional[np.ndarray]:
         """
         Standard errors for the causal parameter(s) of interest :meth:`fit` (shape (4,)).
         """
@@ -352,7 +359,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
         return all_se
 
     @property
-    def t_stat(self):
+    def t_stat(self) -> Optional[np.ndarray]:
         """
         t-statistics for the causal parameter(s) after calling :meth:`fit` (shape (``n_treatment_levels``,)).
         """
@@ -363,7 +370,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
         return t_stats
 
     @property
-    def pval(self):
+    def pval(self) -> Optional[np.ndarray]:
         """
         p-values for the causal parameter(s) (shape (``n_treatment_levels``,)).
         """
@@ -374,7 +381,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
         return pvals
 
     @property
-    def smpls(self):
+    def smpls(self) -> list:
         """
         The partition used for cross-fitting.
         """
@@ -387,14 +394,14 @@ class DoubleMLMEDS(SampleSplittingMixin):
         return self._smpls
 
     @property
-    def framework(self):
+    def framework(self) -> Any:
         """
         The corresponding :class:`doubleml.DoubleMLFramework` object.
         """
         return self._framework
 
     @property
-    def n_rep_boot(self):
+    def n_rep_boot(self) -> Optional[int]:
         """
         The number of bootstrap replications.
         """
@@ -405,7 +412,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
         return n_rep_boot
 
     @property
-    def boot_method(self):
+    def boot_method(self) -> Optional[str]:
         """
         The method to construct the bootstrap replications.
         """
@@ -416,7 +423,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
         return method
 
     @property
-    def boot_t_stat(self):
+    def boot_t_stat(self) -> Optional[np.ndarray]:
         """
         Bootstrapped t-statistics for the causal parameter(s) after calling :meth:`fit` and :meth:`bootstrap`
          (shape (``n_rep_boot``, ``n_treatment_levels``, ``n_rep``)).
@@ -428,7 +435,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
         return boot_t_stat
 
     @property
-    def modeldict(self):
+    def modeldict(self) -> dict[str, DoubleMLMED]:
         """
         The list of models for each level.
         """
@@ -440,7 +447,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
         return self._modeldict
 
     @property
-    def summary(self):
+    def summary(self) -> pd.DataFrame:
         """
         A summary for the estimated potential outcomes after calling :meth:`fit`.
         """
@@ -457,7 +464,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
         return df_summary
 
     @property
-    def effects_summary(self):
+    def effects_summary(self) -> pd.DataFrame:
         """
         A summary for the estimated effects. The effects are computed automatically
         (via :meth:`evaluate_effects`) on first access once :meth:`fit` has been called.
@@ -471,7 +478,14 @@ class DoubleMLMEDS(SampleSplittingMixin):
             df_effects_summary = generate_effects_summary(self._effects)
         return df_effects_summary
 
-    def fit(self, n_jobs_models=None, n_jobs_cv=None, store_predictions=True, store_models=False, external_predictions=None):
+    def fit(
+        self,
+        n_jobs_models: Optional[int] = None,
+        n_jobs_cv: Optional[int] = None,
+        store_predictions: bool = True,
+        store_models: bool = False,
+        external_predictions: Optional[dict[str, Any]] = None,
+    ) -> "DoubleMLMEDS":
         """
         Estimates DoubleMLMEDS objects.
 
@@ -540,7 +554,14 @@ class DoubleMLMEDS(SampleSplittingMixin):
 
         return self
 
-    def _fit_model(self, score, n_jobs_cv=None, store_predictions=True, store_models=False, external_predictions_dict=None):
+    def _fit_model(
+        self,
+        score: str,
+        n_jobs_cv: Optional[int] = None,
+        store_predictions: bool = True,
+        store_models: bool = False,
+        external_predictions_dict: Optional[dict[str, Any]] = None,
+    ) -> DoubleMLMED:
         model = self.modeldict[score]
         if external_predictions_dict is not None:
             # models without entry in external_predictions are estimated as usual
@@ -557,7 +578,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
 
         return model
 
-    def confint(self, level=0.95):
+    def confint(self, level: float = 0.95) -> pd.DataFrame:
         """
         Confidence intervals for DoubleMLMEDS objects.
 
@@ -597,7 +618,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
         df_ci.set_index(pd.Index(self.models_ids), inplace=True)
         return df_ci
 
-    def evaluate_effects(self):
+    def evaluate_effects(self) -> "DoubleMLMEDS":
         """
         Evaluate the effects of the DoubleMLMEDS object after calling :meth:`fit`.
 
@@ -646,7 +667,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
 
         return self
 
-    def draw_sample_splitting(self):
+    def draw_sample_splitting(self) -> "DoubleMLMEDS":
         """
         Draw sample splitting for DoubleMLMEDS models.
 
@@ -672,15 +693,15 @@ class DoubleMLMEDS(SampleSplittingMixin):
         self._initialize_dml_model()
         return self
 
-    def _initialize_dml_model(self):
+    def _initialize_dml_model(self) -> "DoubleMLMEDS":
         self._modeldict = self._initialize_models()
         # results of a previous fit belong to the models that have just been replaced
         self._framework = None
         self._effects = None
         return self
 
-    def _initialize_models(self):
-        modeldict = {score: None for score in self.models_ids}
+    def _initialize_models(self) -> dict[str, DoubleMLMED]:
+        modeldict: dict[str, Any] = {score: None for score in self.models_ids}
 
         pot_learners = {
             "ml_m": self._learner["ml_m"],
@@ -717,17 +738,17 @@ class DoubleMLMEDS(SampleSplittingMixin):
 
         return modeldict
 
-    def _initialize_models_ids(self):
+    def _initialize_models_ids(self) -> list[str]:
         return [f"{outcome}_{treatment}" for outcome, treatment in self._id_pairs]
 
-    def _valid_id_pairs(self):
+    def _valid_id_pairs(self) -> list[tuple[str, int]]:
         if all(self._dml_data.binary_treats):
             treatment_levels = self.treatments
             self.valid_outcomes = ["factual", "counterfactual"]
             valid_id_pairs = list(itertools.product(self.valid_outcomes, map(int, treatment_levels)))
         return valid_id_pairs
 
-    def _check_external_predictions(self, external_predictions_dict):
+    def _check_external_predictions(self, external_predictions_dict: dict[str, Any]) -> None:
         if not isinstance(external_predictions_dict, dict):
             raise TypeError(
                 "external_predictions must be a dictionary. " + f"Object of type {type(external_predictions_dict)} passed."
@@ -776,13 +797,13 @@ class DoubleMLMEDS(SampleSplittingMixin):
 
     def tune_ml_models(
         self,
-        ml_param_space,
-        scoring_methods=None,
-        cv=5,
-        set_as_params=True,
-        return_tune_res=False,
-        optuna_settings=None,
-    ):
+        ml_param_space: dict[str, Any],
+        scoring_methods: Optional[dict[str, Any]] = None,
+        cv: Any = 5,
+        set_as_params: bool = True,
+        return_tune_res: bool = False,
+        optuna_settings: Optional[dict[str, Any]] = None,
+    ) -> Any:
         """Hyperparameter-tuning for DoubleML models using Optuna."""
         tuning_kwargs = {
             "scoring_methods": scoring_methods,
@@ -801,20 +822,20 @@ class DoubleMLMEDS(SampleSplittingMixin):
                 f"Valid keys are: {', '.join(valid_learners)}."
             )
 
-        tune_res = {} if return_tune_res else None
+        tune_res: Optional[dict[str, Any]] = {} if return_tune_res else None
         for key, model in self.modeldict.items():
             # each model tunes the learners it has, a model without a learner in ml_param_space is skipped
             model_param_space = {name: ml_param_space[name] for name in model.learner_names if name in ml_param_space}
             if len(model_param_space) == 0:
                 continue
             res = model.tune_ml_models(ml_param_space=model_param_space, **tuning_kwargs)
-            if return_tune_res:
+            if tune_res is not None:
                 tune_res[key] = res
         return tune_res if return_tune_res else None
 
     tune_ml_models.__doc__ = TUNE_ML_MODELS_DOC
 
-    def bootstrap(self, method="normal", n_rep_boot=500):
+    def bootstrap(self, method: str = "normal", n_rep_boot: int = 500) -> "DoubleMLMEDS":
         """
         Multiplier bootstrap for DoubleML models.
 

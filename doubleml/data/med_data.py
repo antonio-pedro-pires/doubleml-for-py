@@ -1,4 +1,7 @@
+"""Data container for causal mediation analysis with mediators."""
+
 import io
+from typing import Any, Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -79,17 +82,17 @@ class DoubleMLMEDData(DoubleMLData):
 
     def __init__(
         self,
-        data,
-        y_col,
-        d_cols,
-        m_cols,
-        x_cols=None,
-        z_cols=None,
-        use_other_treat_as_covariate=True,
-        force_all_x_finite=True,
-        force_all_d_finite=True,
-        force_all_m_finite=True,
-    ):
+        data: pd.DataFrame,
+        y_col: str,
+        d_cols: Union[str, list[str]],
+        m_cols: Union[str, list[str]],
+        x_cols: Optional[Union[str, list[str]]] = None,
+        z_cols: Optional[Union[str, list[str]]] = None,
+        use_other_treat_as_covariate: bool = True,
+        force_all_x_finite: Union[bool, str] = True,
+        force_all_d_finite: Union[bool, str] = True,
+        force_all_m_finite: Union[bool, str] = True,
+    ) -> None:
 
         DoubleMLBaseData.__init__(self, data)
 
@@ -115,7 +118,7 @@ class DoubleMLMEDData(DoubleMLData):
         self._check_disjoint_sets_m_cols()
         self._binary_meds = self._check_binary_mediators()
 
-    def __str__(self):
+    def __str__(self) -> str:
         data_summary = self._data_summary_str()
         buf = io.StringIO()
         self.data.info(verbose=False, buf=buf)
@@ -129,7 +132,7 @@ class DoubleMLMEDData(DoubleMLData):
         )
         return res
 
-    def _data_summary_str(self):
+    def _data_summary_str(self) -> str:
         data_summary = (
             f"Outcome variable: {self.y_col}\n"
             f"Treatment variable(s): {self.d_cols}\n"
@@ -142,18 +145,18 @@ class DoubleMLMEDData(DoubleMLData):
         return data_summary
 
     @classmethod
-    def from_arrays(
+    def from_arrays(  # type: ignore[override]  # med adds the mediators m, so the signature differs from the base class
         cls,
-        x,
-        y,
-        d,
-        m,
-        z=None,
-        use_other_treat_as_covariate=False,
-        force_all_x_finite=True,
-        force_all_d_finite=True,
-        force_all_m_finite=True,
-    ):
+        x: np.ndarray,
+        y: np.ndarray,
+        d: np.ndarray,
+        m: np.ndarray,
+        z: Optional[np.ndarray] = None,
+        use_other_treat_as_covariate: bool = False,
+        force_all_x_finite: Union[bool, str] = True,
+        force_all_d_finite: Union[bool, str] = True,
+        force_all_m_finite: Union[bool, str] = True,
+    ) -> "DoubleMLMEDData":
         """
         Initialize :class:`DoubleMLMEDData` from :class:`numpy.ndarray` objects.
 
@@ -266,7 +269,7 @@ class DoubleMLMEDData(DoubleMLData):
         )
 
     @property
-    def m(self):
+    def m(self) -> Optional[np.ndarray]:
         """
         Array of mediation variables.
         """
@@ -276,14 +279,14 @@ class DoubleMLMEDData(DoubleMLData):
             return None
 
     @property
-    def m_cols(self):
+    def m_cols(self) -> list[str]:
         """
         The mediation variable(s).
         """
         return self._m_cols
 
     @m_cols.setter
-    def m_cols(self, value):
+    def m_cols(self, value: Union[str, list[str]]) -> None:
         reset_value = hasattr(self, "_m_cols")
         if isinstance(value, str):
             value = [value]
@@ -302,14 +305,14 @@ class DoubleMLMEDData(DoubleMLData):
             self._set_m()
 
     @property
-    def force_all_m_finite(self):
+    def force_all_m_finite(self) -> Any:
         """
         Indicates whether to raise an error on infinite values and / or missings in the mediators ``m``.
         """
         return self._force_all_m_finite
 
     @force_all_m_finite.setter
-    def force_all_m_finite(self, value):
+    def force_all_m_finite(self, value: Union[bool, str]) -> None:
         reset_value = hasattr(self, "_force_all_m_finite")
         if isinstance(value, str):
             if value != "allow-nan":
@@ -323,25 +326,25 @@ class DoubleMLMEDData(DoubleMLData):
             self._set_m()
 
     @property
-    def n_meds(self):
+    def n_meds(self) -> int:
         """
         The number of mediator variables
         """
         return len(self.m_cols)
 
     @property
-    def binary_meds(self):
+    def binary_meds(self) -> pd.Series:
         """
         Series with logical(s) indicating whether the mediator variable(s) are binary with values 0 and 1.
         """
         return self._binary_meds
 
-    def _get_optional_col_sets(self):
+    def _get_optional_col_sets(self) -> list[set[str]]:
         base_optional_col_sets = super()._get_optional_col_sets()
         m_cols_set = set(self.m_cols)
         return [m_cols_set] + base_optional_col_sets
 
-    def _check_binary_mediators(self):
+    def _check_binary_mediators(self) -> pd.Series:
         is_binary = pd.Series(dtype=bool, index=self.m_cols)
         if self._force_all_m_finite is False:
             # missing and infinite values may be present, so the mediators are not checked
@@ -355,11 +358,11 @@ class DoubleMLMEDData(DoubleMLData):
                 is_binary[m_var] = bool(binary_m and zero_one_treat)
         return is_binary
 
-    def _check_disjoint_sets(self):
+    def _check_disjoint_sets(self) -> None:
         super()._check_disjoint_sets()
         self._check_disjoint_sets_m_cols()
 
-    def _check_disjoint_sets_m_cols(self):
+    def _check_disjoint_sets_m_cols(self) -> None:
         # Disjointedness check for mediator variables.
         m_cols_set = set(self.m_cols)
         y_col_set = {self.y_col}
@@ -384,7 +387,7 @@ class DoubleMLMEDData(DoubleMLData):
                 arg2="``m_cols``",
             )
 
-    def _set_m(self):
+    def _set_m(self) -> None:
         if self._force_all_m_finite:
             assert_all_finite(self.data.loc[:, self.m_cols], allow_nan=self._force_all_m_finite == "allow-nan")
         self._m = self.data.loc[:, self.m_cols]

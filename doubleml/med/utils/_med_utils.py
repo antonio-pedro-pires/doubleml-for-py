@@ -1,3 +1,7 @@
+"""Helpers for the mediation estimators: propensity normalization, inner sample splitting and external predictions."""
+
+from typing import Any, Optional
+
 import numpy as np
 
 from doubleml.data import DoubleMLMEDData
@@ -6,17 +10,18 @@ from doubleml.utils._estimation import _double_dml_cv_predict
 
 
 def _normalize_propensity_med(
-    normalize_ipw,
-    outcome,
-    d,
-    treatment_level,
-    m_preds,
-    M_preds=None,
-):
+    normalize_ipw: bool,
+    outcome: str,
+    d: np.ndarray,
+    treatment_level: int,
+    m_preds: np.ndarray,
+    M_preds: Any = None,
+) -> Any:
     """
     Normalizes propensity scores for causal mediation analysis. Normalizes both factual and counterfactual scores.
     """
     n_obs = len(d)
+    result: Any
     if outcome == "factual":
         result = _normalize_factual(normalize_ipw, d, treatment_level, m_preds, n_obs)
     elif outcome == "counterfactual":
@@ -24,7 +29,9 @@ def _normalize_propensity_med(
     return result
 
 
-def _normalize_factual(normalize_ipw, d, treatment_level, m_preds, n_obs):
+def _normalize_factual(
+    normalize_ipw: bool, d: np.ndarray, treatment_level: int, m_preds: np.ndarray, n_obs: int
+) -> np.ndarray:
     """
     Normalizes factual scores in the context of causal mediation analysis.
     """
@@ -43,7 +50,9 @@ def _normalize_factual(normalize_ipw, d, treatment_level, m_preds, n_obs):
     return result
 
 
-def _normalize_counterfactual(normalize_ipw, d, treatment_level, m_preds, M_preds, n_obs):
+def _normalize_counterfactual(
+    normalize_ipw: bool, d: np.ndarray, treatment_level: int, m_preds: np.ndarray, M_preds: np.ndarray, n_obs: int
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Normalizes counterfactual scores in the context of causal mediation analysis.
     """
@@ -88,7 +97,7 @@ def _normalize_counterfactual(normalize_ipw, d, treatment_level, m_preds, M_pred
     return result
 
 
-def _check_inner_sample_splitting(smpls_inner, smpls, n_obs):
+def _check_inner_sample_splitting(smpls_inner: list, smpls: list, n_obs: int) -> tuple[list, int]:
     """
     Check that each repetition is a list of lists of tuples.
     :param smpls_inner:
@@ -122,7 +131,7 @@ def _check_inner_sample_splitting(smpls_inner, smpls, n_obs):
     return smpls_inner, n_folds_inner
 
 
-def _check_reps_smpls_inner(index, rep_inner, rep, n_obs):
+def _check_reps_smpls_inner(index: int, rep_inner: list, rep: list, n_obs: int) -> int:
     if not isinstance(rep_inner, list):
         raise TypeError(
             "smpls_inner must be a list of lists." + f"At least an element of smpls_inner is of type {str(type(rep_inner))}"
@@ -145,7 +154,7 @@ def _check_reps_smpls_inner(index, rep_inner, rep, n_obs):
     return n_inner_folds[0]
 
 
-def _check_fold_smpls_inner(fold_smpls_inner, n_obs):
+def _check_fold_smpls_inner(fold_smpls_inner: list, n_obs: int) -> None:
     if not isinstance(fold_smpls_inner, list):
         raise TypeError(
             "smpls_inner must be a list of lists of lists."
@@ -164,7 +173,7 @@ def _check_fold_smpls_inner(fold_smpls_inner, n_obs):
         _check_smpl_split_tpl(inner_fold, n_obs, check_intersect=True)
 
 
-def _check_is_inner_partition(fold, train_smpls):
+def _check_is_inner_partition(fold: list, train_smpls: tuple) -> None:
     """
     Checks whether the inner smpls form a valid partition of the outer training fold.
 
@@ -185,7 +194,7 @@ def _check_is_inner_partition(fold, train_smpls):
                 "the outer training fold."
             )
         return
-    test_set = set()
+    test_set: set[int] = set()
     for inner_train, test_index in fold:
         if not set(inner_train).issubset(parent_train):
             raise ValueError("Invalid smpls_inner. Inner train indices must be a subset of the outer training fold.")
@@ -206,7 +215,7 @@ def _check_is_inner_partition(fold, train_smpls):
 _SUBSAMPLE_ARM_HINT = " Redraw the sample splitting, use fewer folds or pass a stratified smpls_inner to set_sample_splitting."
 
 
-def _check_subsample_arms(smpls_inner_rep, treated, treatment_level):
+def _check_subsample_arms(smpls_inner_rep: list, treated: np.ndarray, treatment_level: int) -> None:
     """Checks that ml_G finds treated units in subsample A and ml_nested_g untreated units in subsample B."""
     for i_fold, inner_fold in enumerate(smpls_inner_rep):
         subsample_a, subsample_b = inner_fold[0]
@@ -224,7 +233,17 @@ def _check_subsample_arms(smpls_inner_rep, treated, treatment_level):
             )
 
 
-def _double_dml_cv_predict_by_fold(estimator, estimator_name, x, y, smpls, smpls_inner, n_jobs, est_params, method):
+def _double_dml_cv_predict_by_fold(
+    estimator: Any,
+    estimator_name: str,
+    x: np.ndarray,
+    y: np.ndarray,
+    smpls: list,
+    smpls_inner: list,
+    n_jobs: Optional[int],
+    est_params: Optional[list],
+    method: str,
+) -> dict[str, Any]:
     """
     Calls ``_double_dml_cv_predict`` with the parameters of each outer fold.
 
@@ -236,7 +255,7 @@ def _double_dml_cv_predict_by_fold(estimator, estimator_name, x, y, smpls, smpls
             estimator, estimator_name, x, y, smpls=smpls, smpls_inner=smpls_inner, n_jobs=n_jobs, method=method
         )
 
-    res = {
+    res: dict[str, Any] = {
         "preds": np.zeros(y.shape, dtype=float),
         "preds_inner": [],
         "targets_inner": [],
@@ -262,7 +281,7 @@ def _double_dml_cv_predict_by_fold(estimator, estimator_name, x, y, smpls, smpls
     return res
 
 
-def _check_med_data(dml_data):
+def _check_med_data(dml_data: DoubleMLMEDData) -> DoubleMLMEDData:
     if not isinstance(dml_data, DoubleMLMEDData):
         raise TypeError(
             "Mediation analysis requires data of type DoubleMLMEDData."
@@ -279,22 +298,22 @@ def _check_med_data(dml_data):
     return dml_data
 
 
-def _first_inner_split(smpls_inner):
+def _first_inner_split(smpls_inner: list) -> list:
     """Keep only the first inner tuple, the (A, B) pair, of every outer fold."""
     return [[[inner_fold[0]] for inner_fold in rep] for rep in smpls_inner]
 
 
-def _inner_g_learner_name(i_fold):
+def _inner_g_learner_name(i_fold: int) -> str:
     """Name of the entry holding the inner predictions of ml_G for the outer fold ``i_fold``."""
     return f"ml_G_inner_{i_fold}"
 
 
-def _inner_g_learner_names(n_folds):
+def _inner_g_learner_names(n_folds: int) -> list[str]:
     """Names of the entries holding the inner predictions of ml_G, one for each outer fold."""
     return [_inner_g_learner_name(i_fold) for i_fold in range(n_folds)]
 
 
-def _check_inner_g_external_predictions(external_predictions, n_folds):
+def _check_inner_g_external_predictions(external_predictions: dict[str, Any], n_folds: int) -> None:
     missing = [
         i
         for i in range(n_folds)
@@ -308,7 +327,7 @@ def _check_inner_g_external_predictions(external_predictions, n_folds):
         )
 
 
-def _check_inner_g_external_values(inner_predictions, nested_smpls):
+def _check_inner_g_external_values(inner_predictions: list, nested_smpls: list) -> None:
     """Checks that the external entries ml_G_inner_i are finite on the observations where ml_nested_g is fitted."""
     for i_fold, (preds, (nested_train, _)) in enumerate(zip(inner_predictions, nested_smpls)):
         n_not_finite = int(np.sum(~np.isfinite(preds[nested_train])))
@@ -320,7 +339,8 @@ def _check_inner_g_external_values(inner_predictions, nested_smpls):
             )
 
 
-def _predict_with_method(model, x, method):
+def _predict_with_method(model: Any, x: np.ndarray, method: str) -> np.ndarray:
+    """Predict with ``method``, returning the probability of the positive class for ``predict_proba``."""
     if method == "predict_proba":
         return model.predict_proba(x)[:, 1]
     return getattr(model, method)(x)

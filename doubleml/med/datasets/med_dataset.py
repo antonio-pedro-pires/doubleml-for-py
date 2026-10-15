@@ -1,3 +1,7 @@
+"""Data generating process for causal mediation analysis."""
+
+from typing import Any
+
 import numpy as np
 import pandas as pd
 from scipy.linalg import toeplitz
@@ -10,7 +14,7 @@ _data_frame_alias = _get_data_frame_alias()
 _dml_mediation_data_alias = _get_dml_mediation_data_alias()
 
 
-def make_med_data(n_obs=1000, dim_x=20, return_type="DoubleMLMEDData", b=0.3):
+def make_med_data(n_obs: int = 1000, dim_x: int = 20, return_type: Any = "DoubleMLMEDData", b: float = 0.3) -> Any:
     """
     Generates data from a mediation analysis model used in  Helmut Farbmacher et al. (2022) for Table 1.
     The data generating process is defined as
