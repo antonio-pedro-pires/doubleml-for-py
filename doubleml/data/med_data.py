@@ -305,6 +305,21 @@ class DoubleMLMEDData(DoubleMLData):
             self._set_m()
 
     @property
+    def cluster_cols(self) -> Optional[list[str]]:
+        """
+        The cluster variable(s). Always ``None``, cluster data is not supported for mediation analysis.
+        """
+        return self._cluster_cols
+
+    @cluster_cols.setter
+    def cluster_cols(self, value: Optional[Union[str, list[str]]]) -> None:
+        if value is not None:
+            raise NotImplementedError(
+                f"Cluster variables are not supported for mediation analysis. Expected cluster_cols=None, got {value!r}."
+            )
+        getattr(DoubleMLData, "cluster_cols").fset(self, value)
+
+    @property
     def force_all_m_finite(self) -> Any:
         """
         Indicates whether to raise an error on infinite values and / or missings in the mediators ``m``.
