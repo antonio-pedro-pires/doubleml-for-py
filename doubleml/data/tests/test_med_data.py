@@ -1,3 +1,5 @@
+"""Test the data container DoubleMLMEDData."""
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -9,6 +11,7 @@ from doubleml.med.datasets import make_med_data
 
 @pytest.mark.ci
 def test_obj_vs_from_arrays():
+    """Test that a data object built from arrays equals the data object it was built from."""
     # data created from obj
     med_data = make_med_data()
 
@@ -24,6 +27,7 @@ def test_obj_vs_from_arrays():
 
 @pytest.mark.ci
 def test_from_arrays():
+    """Test that from_arrays passes the DoubleMLData arguments on to DoubleMLMEDData."""
     # create dataset of type DoubleMLMEDData
     med_data = make_med_data()
 
@@ -47,155 +51,121 @@ def test_from_arrays():
     assert data_from_array.force_all_d_finite is False
     assert data_from_array.force_all_m_finite == "allow-nan"
 
-    # --- Negative tests for invalid inputs ---
-    # Only testing force_all_m_finite as it is specific to DoubleMLMEDData.
-    # The other parameters are tested in the test_double_ml_data.py.
-    msg = r"Invalid force_all_m_finite " r"nope" r". " r"force_all_m_finite must be True, False or 'allow-nan'."
-    with pytest.raises(ValueError, match=msg):
-        _ = DoubleMLMEDData.from_arrays(
-            med_data.data[med_data.x_cols],
-            med_data.data[med_data.y_col],
-            med_data.data[med_data.d_cols],
-            med_data.data[med_data.m_cols],
-            force_all_m_finite="nope",
-        )
 
-    msg = (
-        r"Invalid force_all_m_finite. "
-        r"force_all_m_finite must be True, False or 'allow-nan'. "
-        r"5 of type <class 'int'> was passed."
-    )
-    with pytest.raises(TypeError, match=msg):
+@pytest.mark.ci
+@pytest.mark.parametrize(
+    "force_all_m_finite, exception, msg",
+    [
+        ("nope", ValueError, r"Invalid force_all_m_finite nope. force_all_m_finite must be True, False or 'allow-nan'."),
+        (
+            5,
+            TypeError,
+            r"Invalid force_all_m_finite. force_all_m_finite must be True, False or 'allow-nan'. "
+            r"5 of type <class 'int'> was passed.",
+        ),
+    ],
+    ids=["invalid_string", "invalid_type"],
+)
+def test_from_arrays_force_all_m_finite_raises(force_all_m_finite, exception, msg):
+    """Test that from_arrays raises an error for an invalid force_all_m_finite."""
+    med_data = make_med_data()
+    # The other parameters are tested with the data containers in test_dml_data.py.
+    with pytest.raises(exception, match=msg):
         _ = DoubleMLMEDData.from_arrays(
             med_data.data[med_data.x_cols],
             med_data.data[med_data.y_col],
             med_data.data[med_data.d_cols],
             med_data.data[med_data.m_cols],
-            force_all_m_finite=5,
+            force_all_m_finite=force_all_m_finite,
         )
 
 
 @pytest.mark.ci
-def test_check_disjoint_sets():
-    np.random.seed(3141)
-    df = pd.DataFrame(
-        np.tile(np.arange(6), (4, 1)),
-        columns=[
+@pytest.mark.parametrize(
+    "d_cols, m_cols, z_cols, msg",
+    [
+        (
             "yy",
+            ["mm1"],
+            "zz",
+            r"yy cannot be set as outcome variable ``y_col`` and treatment variable in ``d_cols``.",
+        ),
+        (
             "dd1",
-            "xx1",
-            "xx2",
-            "mm1",
+            ["yy"],
             "zz1",
-        ],
-    )
-
-    # Verify that base class checks (e.g., y vs d) are still active in mediation objects
-    df_base = pd.DataFrame(np.tile(np.arange(6), (4, 1)), columns=["yy", "dd1", "xx1", "xx2", "mm1", "zz"])
-    msg = r"yy cannot be set as outcome variable ``y_col`` and treatment variable in ``d_cols``."
+            r"At least one variable/column is set as outcome variable \(``y_col``\) "
+            r"and mediation variable\(s\) \(``m_cols``\).",
+        ),
+        (
+            "dd1",
+            ["dd1"],
+            "zz1",
+            r"At least one variable/column is set as treatment variable \(``d_cols``\) "
+            r"and mediation variable\(s\) \(``m_cols``\).",
+        ),
+        (
+            "dd1",
+            ["xx1"],
+            "zz1",
+            r"At least one variable/column is set as covariate \(``x_cols``\) and mediation variable\(s\) \(``m_cols``\).",
+        ),
+        (
+            "dd1",
+            ["zz1"],
+            "zz1",
+            r"At least one variable/column is set as instrumental variable \(``z_cols``\) "
+            r"and mediation variable\(s\) \(``m_cols``\).",
+        ),
+    ],
+    ids=["base_y_and_d", "y_and_m", "d_and_m", "x_and_m", "z_and_m"],
+)
+def test_check_disjoint_sets_raises(d_cols, m_cols, z_cols, msg):
+    """Test that overlapping columns raise a ValueError, including the checks of the base class."""
+    df = pd.DataFrame(np.tile(np.arange(7), (4, 1)), columns=["yy", "dd1", "xx1", "xx2", "mm1", "zz1", "zz"])
     with pytest.raises(ValueError, match=msg):
-        _ = DoubleMLMEDData(
-            df_base,
-            y_col="yy",
-            d_cols="yy",  # Overlap with y_col
-            x_cols=["xx1", "xx2"],
-            m_cols=["mm1"],
-            z_cols="zz",
-        )
+        _ = DoubleMLMEDData(df, y_col="yy", d_cols=d_cols, x_cols=["xx1", "xx2"], m_cols=m_cols, z_cols=z_cols)
 
-    msg = (
-        r"At least one variable/column is set as outcome variable \(``y_col``\) "
-        r"and mediation variable\(s\) \(``m_cols``\)."
-    )
-    with pytest.raises(ValueError, match=msg):
-        _ = DoubleMLMEDData(
-            df,
-            y_col="yy",
-            d_cols="dd1",
-            x_cols=["xx1", "xx2"],
-            m_cols=["yy"],
-            z_cols="zz1",
-        )
 
-    msg = (
-        r"At least one variable/column is set as treatment variable \(``d_cols``\) "
-        r"and mediation variable\(s\) \(``m_cols``\)."
-    )
-    with pytest.raises(ValueError, match=msg):
-        _ = DoubleMLMEDData(
-            df,
-            y_col="yy",
-            d_cols="dd1",
-            x_cols=["xx1", "xx2"],
-            m_cols=["dd1"],
-            z_cols="zz1",
-        )
-
-    msg = r"At least one variable/column is set as covariate \(``x_cols``\) " r"and mediation variable\(s\) \(``m_cols``\)."
-    with pytest.raises(ValueError, match=msg):
-        _ = DoubleMLMEDData(
-            df,
-            y_col="yy",
-            d_cols="dd1",
-            x_cols=["xx1", "xx2"],
-            m_cols=["xx1"],
-            z_cols="zz1",
-        )
-
-    msg = (
-        r"At least one variable/column is set as instrumental variable \(``z_cols``\) "
-        r"and mediation variable\(s\) \(``m_cols``\)."
-    )
-    with pytest.raises(ValueError, match=msg):
-        _ = DoubleMLMEDData(
-            df,
-            y_col="yy",
-            d_cols="dd1",
-            x_cols=["xx1", "xx2"],
-            m_cols=["zz1"],
-            z_cols="zz1",
-        )
+@pytest.fixture
+def med_data_many_mediators():
+    df = pd.DataFrame(np.tile(np.arange(10), (4, 1)), columns=["y", "d", "x1", "x2", "m1", "m2", "m3", "z1", "t1", "s1"])
+    return DoubleMLMEDData(df, y_col="y", d_cols="d", x_cols=["x1", "x2"], m_cols=["m1", "m2", "m3"], z_cols="z1")
 
 
 @pytest.mark.ci
-def test_m_cols_setter():
-    np.random.seed(3141)
-    df = pd.DataFrame(np.tile(np.arange(10), (4, 1)), columns=["y", "d", "x1", "x2", "m1", "m2", "m3", "z1", "t1", "s1"])
-
-    med_data = DoubleMLMEDData(
-        df,
-        y_col="y",
-        d_cols="d",
-        x_cols=["x1", "x2"],
-        m_cols=["m1", "m2", "m3"],
-        z_cols="z1",
-    )
-
-    # check that after changing m_cols, the m array gets updated
+def test_m_cols_setter_updates_m(med_data_many_mediators):
+    """Test that setting m_cols updates the array of mediators."""
+    med_data = med_data_many_mediators
     m_comp = med_data.data[["m2", "m1"]].values
     med_data.m_cols = ["m2", "m1"]
     assert np.array_equal(med_data.m, m_comp)
 
-    msg = r"The mediation variable\(s\) m_cols must be of str or list type. " r"1 of type <class 'int'> was passed."
-    with pytest.raises(TypeError, match=msg):
-        med_data.m_cols = 1
 
-    msg = r"Invalid mediation variable\(s\) m_cols: Contains duplicate values."
-    with pytest.raises(ValueError, match=msg):
-        med_data.m_cols = ["m1", "m1"]
-
-    msg = r"Invalid mediation variable\(s\) m_cols. At least one mediation variable is no data column."
-    with pytest.raises(ValueError, match=msg):
-        med_data.m_cols = "not-m"
-
-    msg = r"Invalid mediation variable\(s\) m_cols. At least one mediation variable is no data column."
-    with pytest.raises(ValueError, match=msg):
-        med_data.m_cols = ["m1", "not-m"]
-    pass
+@pytest.mark.ci
+@pytest.mark.parametrize(
+    "value, exception, msg",
+    [
+        (1, TypeError, r"The mediation variable\(s\) m_cols must be of str or list type. 1 of type <class 'int'> was passed."),
+        (["m1", "m1"], ValueError, r"Invalid mediation variable\(s\) m_cols: Contains duplicate values."),
+        ("not-m", ValueError, r"Invalid mediation variable\(s\) m_cols. At least one mediation variable is no data column."),
+        (
+            ["m1", "not-m"],
+            ValueError,
+            r"Invalid mediation variable\(s\) m_cols. At least one mediation variable is no data column.",
+        ),
+    ],
+    ids=["not_str_or_list", "duplicates", "unknown_column", "unknown_column_in_list"],
+)
+def test_m_cols_setter_raises(med_data_many_mediators, value, exception, msg):
+    """Test that setting m_cols to an invalid value raises an error."""
+    with pytest.raises(exception, match=msg):
+        med_data_many_mediators.m_cols = value
 
 
 @pytest.mark.ci
 def test_data_summary_str():
+    """Test that the string representation lists the variables of the data."""
     np.random.seed(3141)
     med_data = make_med_data()
 
@@ -223,6 +193,7 @@ def test_data_summary_str():
 
 @pytest.mark.ci
 def test_get_optional_col_sets():
+    """Test that the optional column sets include the mediators."""
     np.random.seed(3141)
     df = pd.DataFrame(np.tile(np.arange(10), (4, 1)), columns=["y", "d", "x1", "x2", "m1", "m2", "m3", "z", "t", "s"])
     med_data = DoubleMLMEDData(
@@ -250,72 +221,91 @@ def test_get_optional_col_sets():
     assert "m3" in med_data.x_cols
 
 
-@pytest.mark.ci
-def test_check_binary_mediators():
+@pytest.fixture
+def med_data_binary_mediators():
     np.random.seed(3141)
-
-    # Prepare the data with binary mediation variables.
     df = pd.DataFrame(
         np.concat((np.tile(np.arange(7), (4, 1)), np.random.randint(0, 2, size=(4, 3))), axis=1),
         columns=["y", "d", "x1", "x2", "z1", "t1", "s1", "m1", "m2", "m3"],
     )
-    med_data = DoubleMLMEDData(
-        df,
-        y_col="y",
-        d_cols="d",
-        x_cols=["x1", "x2"],
-        m_cols=["m1", "m2", "m3"],
-        z_cols="z1",
-    )
+    return DoubleMLMEDData(df, y_col="y", d_cols="d", x_cols=["x1", "x2"], m_cols=["m1", "m2", "m3"], z_cols="z1")
 
-    # The mediation variables are forced to be finite and only contain 0s or 1s. Therefore, binary_meds should return True.
+
+@pytest.mark.ci
+def test_check_binary_mediators_with_values_0_and_1(med_data_binary_mediators):
+    """Test that mediators with the values 0 and 1 are identified as binary."""
+    med_data = med_data_binary_mediators
     for m in med_data.m_cols:
         assert type_of_target(med_data.data[m]) == "binary"
     assert med_data._check_binary_mediators().all()
 
-    # The mediation variables contain 0s and 2s. Although technically binary, binary mediators only accept values 0 and 1.
-    # Therefore, binary_meds should return False.
+
+@pytest.mark.ci
+def test_check_binary_mediators_with_values_0_and_2(med_data_binary_mediators):
+    """Test that a mediator with the values 0 and 2 is not identified as binary, as only 0 and 1 are accepted."""
+    med_data = med_data_binary_mediators
     med_data.data["m1"] *= 2
-    for m in med_data.m_cols:
-        assert type_of_target(med_data.data[m]) == "binary"
-    assert not med_data._check_binary_mediators().all()
+    assert type_of_target(med_data.data["m1"]) == "binary"
+    assert not med_data._check_binary_mediators()["m1"]
 
-    med_data.data["m1"] /= 2  # reset m1 data to binary.
-    # The mediation variables are not forced to be finite. Therefore, binary_meds should return False.
+
+@pytest.mark.ci
+def test_check_binary_mediators_without_finite_check(med_data_binary_mediators):
+    """Test that no mediator is identified as binary if force_all_m_finite is False."""
+    med_data = med_data_binary_mediators
     med_data.force_all_m_finite = False
-    for m in med_data.m_cols:
-        assert type_of_target(med_data.data[m]) == "binary"
-    assert not med_data._check_binary_mediators().all()
+    assert not med_data._check_binary_mediators().any()
 
-    # The mediation variables allow Nans but have no actual Nan. The observed values are checked, so binary_meds
-    # should return True.
+
+@pytest.mark.ci
+def test_check_binary_mediators_allow_nan_without_nan(med_data_binary_mediators):
+    """Test that mediators are identified by their observed values if force_all_m_finite is 'allow-nan'."""
+    med_data = med_data_binary_mediators
     med_data.force_all_m_finite = "allow-nan"
-    for m in med_data.m_cols:
-        assert type_of_target(med_data.data[m]) == "binary"
     assert med_data._check_binary_mediators().all()
 
-    # The mediation variables contains Nans, binary_meds should return False.
+
+@pytest.mark.ci
+def test_check_binary_mediators_nan_raises(med_data_binary_mediators):
+    """Test that setting force_all_m_finite to True raises a ValueError if a mediator contains NaN."""
+    med_data = med_data_binary_mediators
     med_data.data["m1"] = np.nan
-    msg = r"Input contains NaN."
-    with pytest.raises(ValueError, match=msg):
+    with pytest.raises(ValueError, match=r"Input contains NaN."):
         med_data.force_all_m_finite = True
-        assert type_of_target(med_data.data.loc["m1"]) != "binary"
-        assert not med_data._check_binary_mediators().all()
 
-    # The mediation variables contain 0s 1s and 2s. The mediators are not binary. Therefore, binary_meds should return False.
-    np.random.randint(0, 3, size=(3, 4))
-    med_data.data["m1"], med_data.data["m2"], med_data.data["m3"] = np.random.randint(0, 3, size=(3, 4))
-    med_data.force_all_m_finite = True
 
-    for m in med_data.m_cols:
-        if np.unique(m).size > 2:
-            assert type_of_target(med_data.data[m]) != "binary"
+@pytest.mark.ci
+def test_check_binary_mediators_with_values_0_1_and_2(med_data_binary_mediators):
+    """Test that a mediator with the values 0, 1 and 2 is not identified as binary."""
+    med_data = med_data_binary_mediators
+    med_data.data["m1"] = [0, 1, 2, 0]
+    assert type_of_target(med_data.data["m1"]) != "binary"
+    assert not med_data._check_binary_mediators()["m1"]
 
-    assert not med_data._check_binary_mediators().all()
+
+@pytest.mark.ci
+def test_cluster_cols_not_supported():
+    """Test that setting cluster variables raises a NotImplementedError and cluster_cols stays None."""
+    np.random.seed(3141)
+    med_data = make_med_data()
+    med_data.data["cluster"] = np.arange(med_data.n_obs) % 10
+
+    assert med_data.cluster_cols is None
+    assert not med_data.is_cluster_data
+
+    msg = r"Cluster variables are not supported for mediation analysis\. Expected cluster_cols=None, got \['cluster'\]\."
+    with pytest.raises(NotImplementedError, match=msg):
+        med_data.cluster_cols = ["cluster"]
+    assert med_data.cluster_cols is None
+    assert not med_data.is_cluster_data
+
+    med_data.cluster_cols = None
+    assert med_data.cluster_cols is None
 
 
 @pytest.mark.ci
 def test_dml_datatype():
+    """Test that data that is not a DataFrame raises a TypeError."""
     data_array = np.zeros((100, 10))
     with pytest.raises(TypeError):
         _ = DoubleMLMEDData(data_array, y_col="y", d_cols=["d"], m_cols=["m"])
@@ -323,6 +313,7 @@ def test_dml_datatype():
 
 @pytest.mark.ci
 def test_duplicates():
+    """Test that duplicate mediator columns raise a ValueError."""
     np.random.seed(3141)
     dml_med_data = make_med_data()
 
@@ -339,31 +330,39 @@ def test_duplicates():
         )
 
 
-@pytest.mark.ci
-def test_force_all_m_finite_setter():
+@pytest.fixture
+def med_data_binary_mediator():
     n = 10
+    np.random.seed(3141)
     df = pd.DataFrame(
         {"y": np.random.randn(n), "d": np.random.randint(0, 2, n), "m1": np.random.randint(0, 2, n), "x1": np.random.randn(n)}
     )
-    med_data = DoubleMLMEDData(df, "y", "d", ["m1"], "x1")
+    return DoubleMLMEDData(df, "y", "d", ["m1"], "x1")
 
-    # Check that valid values are set correctly.
-    med_data.force_all_m_finite = False
-    assert not med_data.force_all_m_finite
-    med_data.force_all_m_finite = True
-    assert med_data.force_all_m_finite
-    med_data.force_all_m_finite = "allow-nan"
-    assert med_data.force_all_m_finite == "allow-nan"
 
-    # Check that invalid values raise appropriate errors.
-    with pytest.raises(TypeError, match="Invalid force_all_m_finite."):
-        med_data.force_all_m_finite = 123
-    with pytest.raises(ValueError, match="Invalid force_all_m_finite:"):
-        med_data.force_all_m_finite = "string"
+@pytest.mark.ci
+@pytest.mark.parametrize("value", [False, True, "allow-nan"])
+def test_force_all_m_finite_setter(med_data_binary_mediator, value):
+    """Test that the force_all_m_finite setter accepts True, False and 'allow-nan'."""
+    med_data_binary_mediator.force_all_m_finite = value
+    assert med_data_binary_mediator.force_all_m_finite == value
+
+
+@pytest.mark.ci
+@pytest.mark.parametrize(
+    "value, exception, msg",
+    [(123, TypeError, "Invalid force_all_m_finite."), ("string", ValueError, "Invalid force_all_m_finite:")],
+    ids=["invalid_type", "invalid_string"],
+)
+def test_force_all_m_finite_setter_raises(med_data_binary_mediator, value, exception, msg):
+    """Test that the force_all_m_finite setter raises an error for an invalid value."""
+    with pytest.raises(exception, match=msg):
+        med_data_binary_mediator.force_all_m_finite = value
 
 
 @pytest.mark.ci
 def test_from_arrays_multiple_mediators():
+    """Test that from_arrays names the columns of several mediators."""
     np.random.seed(42)
     n = 50
     x = np.random.randn(n, 3)
@@ -385,6 +384,7 @@ def test_from_arrays_multiple_mediators():
 
 @pytest.mark.ci
 def test_binary_meds_property():
+    """Test that binary_meds is False for a mediator with values other than 0 and 1."""
     np.random.seed(3141)
     n = 50
     df = pd.DataFrame(
@@ -405,7 +405,7 @@ def test_binary_meds_property():
 
 @pytest.mark.ci
 def test_binary_meds_allow_nan_checks_observed_values():
-    """With force_all_m_finite='allow-nan', a mediator is binary if its observed values are 0 and 1."""
+    """Test that with force_all_m_finite='allow-nan', a mediator is binary if its observed values are 0 and 1."""
     np.random.seed(3141)
     n = 60
     with_nan = np.random.randint(0, 2, n).astype(float)

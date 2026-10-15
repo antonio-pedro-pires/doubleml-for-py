@@ -1,3 +1,5 @@
+"""Test the input validation and error messages of DoubleMLMEDS."""
+
 import copy
 import re
 
@@ -34,12 +36,14 @@ def bad_data():
 
 @pytest.mark.ci
 def test_evaluate_effects_exception(meds_obj):
+    """Test that evaluate_effects raises a ValueError before fit."""
     with pytest.raises(ValueError, match=re.escape("Apply fit() before calling evaluate_effects()")):
         meds_obj.evaluate_effects()
 
 
 @pytest.mark.ci
 def test_meds_data_type_exception(learners, bad_data):
+    """Test that DoubleMLMEDS raises a TypeError for data that is not DoubleMLMEDData."""
     not_med_data, _, _ = bad_data
     with pytest.raises(TypeError, match="Mediation analysis requires data"):
         DoubleMLMEDS(obj_dml_data=not_med_data, **learners)
@@ -47,6 +51,7 @@ def test_meds_data_type_exception(learners, bad_data):
 
 @pytest.mark.ci
 def test_meds_non_binary_treatment_exception(learners, bad_data):
+    """Test that DoubleMLMEDS raises a ValueError for a non-binary treatment."""
     _, _, med_data_non_binary = bad_data
     msg = "Treatment variables for mediation analysis must be binary and take values 1 or 0."
     with pytest.raises(ValueError, match=re.escape(msg)):
@@ -55,6 +60,7 @@ def test_meds_non_binary_treatment_exception(learners, bad_data):
 
 @pytest.mark.ci
 def test_meds_multiple_treatments_exception(learners, med_data_two_treatments):
+    """Test that DoubleMLMEDS raises a ValueError for more than one treatment variable."""
     msg = re.escape("Mediation analysis supports exactly one treatment variable, got 2: ['d', 'd2'].")
     with pytest.raises(ValueError, match=msg):
         DoubleMLMEDS(obj_dml_data=med_data_two_treatments, **learners)
@@ -62,6 +68,7 @@ def test_meds_multiple_treatments_exception(learners, med_data_two_treatments):
 
 @pytest.mark.ci
 def test_meds_instrumental_variables_exception(learners, bad_data):
+    """Test that DoubleMLMEDS raises a NotImplementedError for instrumental variables."""
     _, med_data_iv, _ = bad_data
     with pytest.raises(NotImplementedError, match="instrumental variables for mediation analysis is not yet implemented."):
         DoubleMLMEDS(obj_dml_data=med_data_iv, **learners)
@@ -69,6 +76,7 @@ def test_meds_instrumental_variables_exception(learners, bad_data):
 
 @pytest.mark.ci
 def test_meds_smpls_not_set_exception(dml_data, learners):
+    """Test that accessing smpls without a sample splitting raises a ValueError."""
     msg = "Sample splitting not specified. Draw samples via .draw_sample splitting(). External samples not implemented yet."
     meds_obj_no_smpls = DoubleMLMEDS(obj_dml_data=dml_data, draw_sample_splitting=False, **learners)
     with pytest.raises(ValueError, match=re.escape(msg)):
@@ -77,18 +85,21 @@ def test_meds_smpls_not_set_exception(dml_data, learners):
 
 @pytest.mark.ci
 def test_meds_confint_before_fit_exception(meds_obj):
+    """Test that confint raises a ValueError before fit."""
     with pytest.raises(ValueError, match=re.escape("Apply fit() before confint().")):
         meds_obj.confint()
 
 
 @pytest.mark.ci
 def test_meds_bootstrap_before_fit_exception(meds_obj):
+    """Test that bootstrap raises a ValueError before fit."""
     with pytest.raises(ValueError, match=re.escape("Apply fit() before bootstrap().")):
         meds_obj.bootstrap()
 
 
 @pytest.mark.ci
-def test_meds_external_predictions_invalid_keys_exception(dml_data, learner_linear):
+def test_meds_external_invalid_model_id_raises(dml_data, learner_linear):
+    """Test that external predictions with keys that are no model id raise a ValueError."""
     meds_obj = DoubleMLMEDS(obj_dml_data=dml_data, **learner_linear)
     invalid_ext_preds = {"invalid_key": {}}
     expected_keys = set(meds_obj.models_ids)
@@ -103,7 +114,8 @@ def test_meds_external_predictions_invalid_keys_exception(dml_data, learner_line
 
 
 @pytest.mark.ci
-def test_meds_external_predictions_not_dict_exception(dml_data, learner_linear):
+def test_meds_external_model_not_dict_raises(dml_data, learner_linear):
+    """Test that external predictions of a model that are not a dictionary raise a TypeError."""
     meds_obj = DoubleMLMEDS(obj_dml_data=dml_data, **learner_linear)
     model_id = meds_obj.models_ids[0]
     invalid_ext_preds = {model_id: "not_a_dict"}
@@ -116,7 +128,8 @@ def test_meds_external_predictions_not_dict_exception(dml_data, learner_linear):
 
 
 @pytest.mark.ci
-def test_meds_external_predictions_invalid_learner_keys_exception(dml_data, learner_linear):
+def test_meds_external_invalid_learner_raises(dml_data, learner_linear):
+    """Test that external predictions with unknown learner names raise a ValueError."""
     meds_obj = DoubleMLMEDS(obj_dml_data=dml_data, **learner_linear)
     model_id = meds_obj.models_ids[0]
     d_col = meds_obj._dml_data.d_cols[0]
@@ -127,7 +140,8 @@ def test_meds_external_predictions_invalid_learner_keys_exception(dml_data, lear
 
 
 @pytest.mark.ci
-def test_meds_external_predictions_invalid_treatment_variable_exception(dml_data, learner_linear):
+def test_meds_external_invalid_treatment_raises(dml_data, learner_linear):
+    """Test that external predictions keyed by a column that is no treatment variable raise a ValueError."""
     meds_obj = DoubleMLMEDS(obj_dml_data=dml_data, **learner_linear)
     model_id = meds_obj.models_ids[0]
     d_cols = meds_obj._dml_data.d_cols
@@ -141,7 +155,8 @@ def test_meds_external_predictions_invalid_treatment_variable_exception(dml_data
 
 
 @pytest.mark.ci
-def test_meds_external_predictions_treatment_variable_not_dict_exception(dml_data, learner_linear):
+def test_meds_external_treatment_not_dict_raises(dml_data, learner_linear):
+    """Test that external predictions of a treatment variable that are not a dictionary raise a TypeError."""
     meds_obj = DoubleMLMEDS(obj_dml_data=dml_data, **learner_linear)
     model_id = meds_obj.models_ids[0]
     d_col = meds_obj._dml_data.d_cols[0]
@@ -152,7 +167,8 @@ def test_meds_external_predictions_treatment_variable_not_dict_exception(dml_dat
 
 
 @pytest.mark.ci
-def test_meds_external_predictions_inner_key_out_of_range_exception(dml_data, learner_linear):
+def test_meds_external_inner_key_out_of_range_raises(dml_data, learner_linear):
+    """Test that external inner predictions for a fold that does not exist raise a ValueError."""
     n_folds = 2
     meds_obj = DoubleMLMEDS(obj_dml_data=dml_data, n_folds=n_folds, n_folds_inner=2, **learner_linear)
     model_id = "counterfactual_1"
@@ -165,24 +181,34 @@ def test_meds_external_predictions_inner_key_out_of_range_exception(dml_data, le
 
 
 @pytest.mark.ci
-def test_methods_need_a_sample_splitting(dml_data, learner_linear):
-    """Without a drawn sample splitting there are no models yet, which is reported like a missing smpls."""
+@pytest.mark.parametrize(
+    "method",
+    [
+        lambda meds_obj: meds_obj.modeldict,
+        lambda meds_obj: meds_obj.fit(),
+        lambda meds_obj: meds_obj.tune_ml_models({"ml_g": None}),
+    ],
+    ids=["modeldict", "fit", "tune_ml_models"],
+)
+def test_methods_need_a_sample_splitting(dml_data, learner_linear, method):
+    """Test that methods that need models report a missing sample splitting like a missing smpls."""
     meds_obj = DoubleMLMEDS(obj_dml_data=dml_data, draw_sample_splitting=False, **learner_linear)
     msg = "Sample splitting not specified. Draw samples via .draw_sample splitting()"
+    with pytest.raises(ValueError, match=re.escape(msg)):
+        method(meds_obj)
 
-    with pytest.raises(ValueError, match=re.escape(msg)):
-        meds_obj.modeldict
-    with pytest.raises(ValueError, match=re.escape(msg)):
-        meds_obj.fit()
-    with pytest.raises(ValueError, match=re.escape(msg)):
-        meds_obj.tune_ml_models({"ml_g": None})
 
+@pytest.mark.ci
+def test_draw_sample_splitting_creates_the_models(dml_data, learner_linear):
+    """Test that drawing a sample splitting after construction creates the four models."""
+    meds_obj = DoubleMLMEDS(obj_dml_data=dml_data, draw_sample_splitting=False, **learner_linear)
     meds_obj.draw_sample_splitting()
     assert len(meds_obj.modeldict) == 4
 
 
 @pytest.mark.ci
 def test_external_predictions_must_be_a_dictionary(meds_obj):
+    """Test that fit raises a TypeError if external_predictions is not a dictionary."""
     msg = "external_predictions must be a dictionary. Object of type <class 'list'> passed."
     with pytest.raises(TypeError, match=re.escape(msg)):
         meds_obj.fit(external_predictions=[1])
