@@ -1,3 +1,5 @@
+"""Test the two-subsample (A/B) scheme of DoubleMLMED with n_folds_inner=1."""
+
 import numpy as np
 import pytest
 from sklearn.linear_model import LinearRegression, LogisticRegression
@@ -5,8 +7,6 @@ from sklearn.linear_model import LinearRegression, LogisticRegression
 from doubleml import DoubleMLMED, DoubleMLMEDData
 from doubleml.med import DoubleMLMEDS
 from doubleml.med.datasets import make_med_data
-
-pytestmark = pytest.mark.filterwarnings("ignore: l1_ratio parameter is only used when penalty ")
 
 N_FOLDS = 3
 
@@ -39,7 +39,7 @@ def _med_obj(data, n_folds_inner, n_rep=1, outcome="counterfactual", **kwargs):
 @pytest.mark.ci
 @pytest.mark.parametrize("n_rep", [1, 2])
 def test_single_pair_draw_structure(small_data, n_rep):
-    """n_folds_inner=1 draws one (A, B) pair per outer fold, disjoint and covering the outer training sample."""
+    """Test that n_folds_inner=1 draws one disjoint (A, B) pair per outer fold that covers the outer training sample."""
     med_obj = _med_obj(small_data, n_folds_inner=1, n_rep=n_rep)
 
     assert med_obj.n_folds_inner == 1
@@ -55,7 +55,7 @@ def test_single_pair_draw_structure(small_data, n_rep):
 
 @pytest.mark.ci
 def test_single_pair_draw_keeps_outer_folds(small_data):
-    """The outer folds are the same as with two inner folds, and the pair is the first inner tuple."""
+    """Test that the outer folds equal those with two inner folds and the pair is the first inner tuple."""
     single = _med_obj(small_data, n_folds_inner=1)
     two = _med_obj(small_data, n_folds_inner=2)
 
@@ -66,12 +66,14 @@ def test_single_pair_draw_keeps_outer_folds(small_data):
 
 @pytest.mark.ci
 def test_zero_inner_folds_raises(small_data):
+    """Test that n_folds_inner=0 raises a ValueError."""
     with pytest.raises(ValueError, match="n_folds_inner"):
         _med_obj(small_data, n_folds_inner=0)
 
 
 @pytest.mark.ci
 def test_set_sample_splitting_accepts_single_pair(small_data):
+    """Test that set_sample_splitting accepts a single inner pair (A, B) and sets n_folds_inner to 1."""
     drawn = _med_obj(small_data, n_folds_inner=1)
     ext = _med_obj(small_data, n_folds_inner=5, draw_sample_splitting=False)
 
@@ -97,6 +99,7 @@ def _single_pair_with(drawn, replace):
     ids=["pair_not_covering_train", "overlapping_pair"],
 )
 def test_set_sample_splitting_rejects_invalid_pair(small_data, replace, match):
+    """Test that set_sample_splitting rejects a single inner pair that does not cover the outer training fold."""
     drawn = _med_obj(small_data, n_folds_inner=1)
     ext = _med_obj(small_data, n_folds_inner=1, draw_sample_splitting=False)
 
@@ -156,7 +159,7 @@ def _logged_ids(values):
 
 @pytest.mark.ci
 def test_single_pair_models_use_subsamples(small_data, spied_fit):
-    """ml_G learns on A (treated), predicts B and the test fold; ml_nested_g learns on B (untreated)."""
+    """Test that ml_G learns on the treated units of A, predicts B and the test fold, and ml_nested_g learns on untreated B."""
     drawn, _ = spied_fit
     treated = small_data.d == 1
     log_G, log_nested = _SpyRegressor.LOG["ml_G"], _SpyRegressor.LOG["ml_nested_g"]
@@ -175,7 +178,8 @@ def test_single_pair_models_use_subsamples(small_data, spied_fit):
 
 
 @pytest.mark.ci
-def test_single_pair_nested_targets_are_ml_g_predictions_on_b(small_data, spied_fit):
+def test_single_pair_nested_targets_from_b(small_data, spied_fit):
+    """Test that the targets of ml_nested_g are the predictions of ml_G on subsample B."""
     drawn, _ = spied_fit
     treated = small_data.d == 1
     xm = np.column_stack((small_data.x, small_data.m))
@@ -198,6 +202,7 @@ def _fit_with_pair(data, drawn, pair_builder):
 
 @pytest.mark.ci
 def test_single_pair_requires_treated_units_in_a(small_data):
+    """Test that a subsample A without treated units raises a ValueError."""
     drawn = _med_obj(small_data, n_folds_inner=1)
     with pytest.raises(
         ValueError,
@@ -211,6 +216,7 @@ def test_single_pair_requires_treated_units_in_a(small_data):
 
 @pytest.mark.ci
 def test_single_pair_requires_untreated_units_in_b(small_data):
+    """Test that a subsample B without untreated units raises a ValueError."""
     drawn = _med_obj(small_data, n_folds_inner=1)
 
     def treated_only_b(train, is_treated):
@@ -245,6 +251,7 @@ def _meds_obj(data, n_folds_inner=1, **kwargs):
 
 @pytest.mark.ci
 def test_meds_single_pair_draw_and_forwarding(small_data):
+    """Test that DoubleMLMEDS draws one pair per outer fold and forwards it to its models."""
     meds_obj = _meds_obj(small_data)
 
     assert meds_obj.n_folds_inner == 1
@@ -259,6 +266,7 @@ def test_meds_single_pair_draw_and_forwarding(small_data):
 
 @pytest.mark.ci
 def test_meds_single_pair_fit_and_redraw(small_data):
+    """Test that DoubleMLMEDS with a single pair fits to finite estimates and keeps n_folds_inner=1 after redrawing."""
     meds_obj = _meds_obj(small_data)
     meds_obj.fit()
     assert np.all(np.isfinite(meds_obj.coef))
@@ -270,8 +278,8 @@ def test_meds_single_pair_fit_and_redraw(small_data):
 
 @pytest.mark.ci
 @pytest.mark.parametrize("n_folds", [2, 3])
-def test_single_pair_nested_predictions_do_not_depend_on_own_fold_outcomes(n_folds):
-    """Cross-fitting: changing the outcomes of the held-out fold leaves its nested predictions unchanged."""
+def test_single_pair_predictions_ignore_own_fold(n_folds):
+    """Test that changing the outcomes of the held-out fold leaves its nested predictions unchanged."""
 
     def build(frame, x_cols):
         data = DoubleMLMEDData(frame, y_col="y", d_cols="d", m_cols="m", x_cols=x_cols)
@@ -311,6 +319,7 @@ def test_single_pair_nested_predictions_do_not_depend_on_own_fold_outcomes(n_fol
 
 @pytest.mark.ci
 def test_single_pair_stored_predictions_and_models(small_data):
+    """Test that the stored inner predictions and models match the subsamples."""
     med_obj = _med_obj(small_data, n_folds_inner=1)
     med_obj.fit(store_models=True)
 
@@ -323,6 +332,7 @@ def test_single_pair_stored_predictions_and_models(small_data):
 
 @pytest.mark.ci
 def test_single_pair_external_predictions_round_trip(small_data):
+    """Test that external predictions of a fit with a single pair reproduce its estimates."""
     med_obj = _med_obj(small_data, n_folds_inner=1)
     med_obj.fit()
     external = {"d": {name: med_obj.predictions[name][:, :, 0] for name in med_obj.params_names if name != "ml_g"}}

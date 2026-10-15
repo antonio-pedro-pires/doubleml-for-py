@@ -1,11 +1,11 @@
+"""Test the stored predictions and models of DoubleMLMED."""
+
 import numpy as np
 import pytest
 from sklearn.linear_model import LinearRegression, LogisticRegression
 
 from doubleml import DoubleMLMED
 from doubleml.med.datasets import make_med_data
-
-pytestmark = pytest.mark.filterwarnings("ignore: l1_ratio parameter is only used when penalty ")
 
 N_FOLDS = 3
 N_FOLDS_INNER = 2
@@ -51,7 +51,7 @@ def _expected_n_models(learner, double_sample_splitting, n_folds_inner):
 @pytest.mark.parametrize("outcome", ["factual", "counterfactual"])
 @pytest.mark.parametrize("double_sample_splitting, n_folds_inner", SPLITTING_CASES, ids=SPLITTING_IDS)
 def test_med_store_models_true(small_data, outcome, double_sample_splitting, n_folds_inner):
-    """fit(store_models=True) succeeds and stores the fitted models of every nuisance learner."""
+    """Test that fit(store_models=True) stores the fitted models of every nuisance learner."""
     dml_obj = _med_obj(small_data, outcome, double_sample_splitting, n_folds_inner)
     dml_obj.fit(store_models=True)
 
@@ -72,7 +72,7 @@ def test_med_store_models_true(small_data, outcome, double_sample_splitting, n_f
 @pytest.mark.ci
 @pytest.mark.parametrize("outcome", ["factual", "counterfactual"])
 def test_med_store_models_false(small_data, outcome):
-    """fit(store_models=False) keeps no models."""
+    """Test that fit(store_models=False) keeps no models."""
     dml_obj = _med_obj(small_data, outcome, double_sample_splitting=True)
     dml_obj.fit(store_models=False)
 
@@ -82,7 +82,7 @@ def test_med_store_models_false(small_data, outcome):
 @pytest.mark.ci
 @pytest.mark.parametrize("outcome", ["factual", "counterfactual"])
 def test_med_store_predictions_false(small_data, outcome):
-    """fit(store_predictions=False) keeps no predictions."""
+    """Test that fit(store_predictions=False) keeps no predictions."""
     dml_obj = _med_obj(small_data, outcome, double_sample_splitting=True)
     dml_obj.fit(store_predictions=False)
 

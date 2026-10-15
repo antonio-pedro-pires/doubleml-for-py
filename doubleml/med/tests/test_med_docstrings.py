@@ -1,3 +1,5 @@
+"""Test the format and completeness of the docstrings of the mediation classes."""
+
 import inspect
 import re
 
@@ -23,7 +25,7 @@ def _public_docstrings():
 @pytest.mark.ci
 @pytest.mark.parametrize("label, docstring", list(_public_docstrings().items()), ids=list(_public_docstrings()))
 def test_docstring_sections_are_consistently_indented(label, docstring):
-    """After removing the common indentation, headings, underlines, parameter entries and doctests start at column 0."""
+    """Test that headings, parameter entries and doctests start at column 0 after removing the common indentation."""
     lines = docstring.split("\n")
     misindented = []
     for i, line in enumerate(lines):
@@ -44,7 +46,7 @@ def test_docstring_sections_are_consistently_indented(label, docstring):
 @pytest.mark.ci
 @pytest.mark.parametrize("model_class", [DoubleMLMED, DoubleMLMEDS])
 def test_every_constructor_parameter_is_documented(model_class):
-    """The class docstring documents all parameters of the constructor."""
+    """Test that the class docstring documents every parameter of the constructor."""
     documented = set(re.findall(r"^(\w+) : ", inspect.getdoc(model_class), flags=re.MULTILINE))
     parameters = set(inspect.signature(model_class).parameters)
 

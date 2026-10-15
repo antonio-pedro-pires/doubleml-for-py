@@ -1,3 +1,5 @@
+"""Test the propensity score processing of DoubleMLMED."""
+
 import numpy as np
 import pytest
 from sklearn.isotonic import IsotonicRegression
@@ -8,12 +10,10 @@ from doubleml import DoubleMLMED
 from doubleml.med.datasets import make_med_data
 from doubleml.utils import PSProcessorConfig
 
-# TODO: Remove warning filter once sklearn gets to version 1.10
-pytestmark = pytest.mark.filterwarnings("ignore: l1_ratio parameter is only used when penalty ")
-
 
 @pytest.mark.ci
-def test_factual_propensity_independent_of_treatment_level():
+def test_factual_propensity_ignores_level():
+    """Test that the factual propensity predictions do not depend on the treatment level."""
     # ml_m is meant to estimate the propensity score P(D=1|X). Because ml_m was fit on
     # self.treated (d == treatment_level), for treatment_level=0 it instead estimated
     # P(D=0|X), which caused a small but persistent bias in the estimate of E[Y(0,M(0))].
@@ -40,7 +40,8 @@ def test_factual_propensity_independent_of_treatment_level():
 
 
 @pytest.mark.ci
-def test_counterfactual_propensities_independent_of_treatment_level():
+def test_counterfactual_propensity_ignores_level():
+    """Test that the counterfactual propensity predictions do not depend on the treatment level."""
     # ml_M estimates P(D=1|M,X) and ml_m estimates P(D=1|X); both are fit on d and so must
     # not depend on treatment_level. This guards the counterfactual against the mistake fixed
     # for the factual ml_m (fitting on self.treated), by checking that the two treatment
@@ -72,7 +73,7 @@ def test_counterfactual_propensities_independent_of_treatment_level():
 @pytest.mark.ci
 @pytest.mark.parametrize("outcome", ["factual", "counterfactual"])
 def test_ps_calibration_uses_dml_folds(outcome, learner_linear):
-    """Cross-validated isotonic calibration of the propensity scores uses the sample splitting of the model."""
+    """Test that cross-validated isotonic calibration of the propensity scores uses the sample splitting of the model."""
     data = make_med_data(n_obs=300, dim_x=5)
     ps_processor_config = PSProcessorConfig(calibration_method="isotonic", cv_calibration=True)
     med_obj = DoubleMLMED(

@@ -1,3 +1,5 @@
+"""Compare the nuisance predictions of DoubleMLMED with causalweight medDML in R."""
+
 from pathlib import Path
 
 import numpy as np
@@ -23,8 +25,8 @@ def reference():
 
 @pytest.mark.ci
 @pytest.mark.parametrize("treatment_level", [1, 0])
-def test_two_subsample_nuisance_predictions_match_hdmedalt(reference, treatment_level):
-    """With the folds and subsamples of hdmedalt, ml_G and ml_nested_g reproduce its predictions on the test folds."""
+def test_two_subsample_predictions_match_hdmedalt(reference, treatment_level):
+    """Test that ml_G and ml_nested_g reproduce the hdmedalt predictions on its test folds given its folds and subsamples."""
     frame, r_preds, r_folds = reference
     x_cols = [column for column in frame.columns if column.startswith("X")]
     data = DoubleMLMEDData(frame, y_col="y", d_cols="d", m_cols="m", x_cols=x_cols)

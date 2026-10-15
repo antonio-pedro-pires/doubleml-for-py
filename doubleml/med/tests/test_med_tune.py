@@ -1,3 +1,5 @@
+"""Test hyperparameter tuning of DoubleMLMED."""
+
 import re
 
 import numpy as np
@@ -83,6 +85,7 @@ def untuned_tuned_scores(
 
 @pytest.mark.ci
 def test_tune_ml_models(untuned_tuned_scores):
+    """Test that tuning returns results for the learners of the model and improves the tuning score."""
     dml_med_obj = untuned_tuned_scores["med_obj"]
     untuned_score = untuned_tuned_scores["untuned_score"]
     tuned_score = untuned_tuned_scores["tuned_score"]
@@ -146,7 +149,7 @@ def nested_g_tuning_and_fit_calls(dml_data):
 
 @pytest.mark.ci
 def test_tune_nested_g_uses_same_features_as_fit(dml_data, nested_g_tuning_and_fit_calls):
-    """ml_nested_g is tuned on the covariates X only, i.e. on the features it is fitted on during estimation."""
+    """Test that ml_nested_g is tuned on the covariates X only, the features it is fitted on during estimation."""
     tuning_calls, fit_calls = nested_g_tuning_and_fit_calls
     n_covariates = dml_data.x.shape[1]
 
@@ -157,7 +160,7 @@ def test_tune_nested_g_uses_same_features_as_fit(dml_data, nested_g_tuning_and_f
 
 @pytest.mark.ci
 def test_tune_nested_g_target_is_ml_G_predictions(nested_g_tuning_and_fit_calls):
-    """ml_nested_g is tuned on predictions of ml_G (constant here), not on the outcome or on its own predictions."""
+    """Test that ml_nested_g is tuned on the predictions of ml_G, not on the outcome or on its own predictions."""
     tuning_calls, _ = nested_g_tuning_and_fit_calls
 
     assert len(tuning_calls) > 0

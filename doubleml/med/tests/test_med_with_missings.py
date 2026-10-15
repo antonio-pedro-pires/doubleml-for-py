@@ -54,6 +54,7 @@ def learner_sklearn():
 
 @pytest.mark.ci
 def test_med_data_x_missing_strict_raises(raw_med_arrays):
+    """Test that missing values in X raise a ValueError by default."""
     x, y, d, m = raw_med_arrays
     x_nan = _inject_nan(x)
     with pytest.raises(ValueError, match="(?i)nan"):
@@ -62,6 +63,7 @@ def test_med_data_x_missing_strict_raises(raw_med_arrays):
 
 @pytest.mark.ci
 def test_med_data_x_missing_allow_nan_constructs(raw_med_arrays):
+    """Test that missing values in X are allowed with force_all_x_finite='allow-nan'."""
     x, y, d, m = raw_med_arrays
     x_nan = _inject_nan(x)
     dml_data = DoubleMLMEDData.from_arrays(x_nan, y, d, m, force_all_x_finite="allow-nan")
@@ -69,7 +71,8 @@ def test_med_data_x_missing_allow_nan_constructs(raw_med_arrays):
 
 
 @pytest.mark.ci
-def test_med_fit_with_missing_x_tolerant_learner(raw_med_arrays, learner_xgboost):
+def test_med_fit_missing_x_tolerant(raw_med_arrays, learner_xgboost):
+    """Test that a learner that handles missing values fits data with missing X."""
     x, y, d, m = raw_med_arrays
     x_nan = _inject_nan(x)
     dml_data = DoubleMLMEDData.from_arrays(x_nan, y, d, m, force_all_x_finite="allow-nan")
@@ -91,7 +94,8 @@ def test_med_fit_with_missing_x_tolerant_learner(raw_med_arrays, learner_xgboost
 
 
 @pytest.mark.ci
-def test_med_fit_with_missing_x_intolerant_learner_raises(raw_med_arrays, learner_sklearn):
+def test_med_fit_missing_x_intolerant_raises(raw_med_arrays, learner_sklearn):
+    """Test that a learner that cannot handle missing values raises for data with missing X."""
     x, y, d, m = raw_med_arrays
     x_nan = _inject_nan(x)
     dml_data = DoubleMLMEDData.from_arrays(x_nan, y, d, m, force_all_x_finite="allow-nan")
@@ -117,6 +121,7 @@ def test_med_fit_with_missing_x_intolerant_learner_raises(raw_med_arrays, learne
 
 @pytest.mark.ci
 def test_med_data_m_missing_strict_raises(raw_med_arrays):
+    """Test that missing values in M raise a ValueError by default."""
     x, y, d, m = raw_med_arrays
     m_nan = _inject_nan(m if m.ndim > 1 else m.reshape(-1, 1))
     with pytest.raises(ValueError, match="(?i)nan"):
@@ -125,6 +130,7 @@ def test_med_data_m_missing_strict_raises(raw_med_arrays):
 
 @pytest.mark.ci
 def test_med_data_m_missing_allow_nan_constructs(raw_med_arrays):
+    """Test that missing values in M are allowed with force_all_m_finite='allow-nan'."""
     x, y, d, m = raw_med_arrays
     m_nan = _inject_nan(m if m.ndim > 1 else m.reshape(-1, 1))
     dml_data = DoubleMLMEDData.from_arrays(x, y, d, m_nan, force_all_m_finite="allow-nan")
@@ -132,7 +138,8 @@ def test_med_data_m_missing_allow_nan_constructs(raw_med_arrays):
 
 
 @pytest.mark.ci
-def test_med_fit_with_missing_m_tolerant_learner(raw_med_arrays, learner_xgboost):
+def test_med_fit_missing_m_tolerant(raw_med_arrays, learner_xgboost):
+    """Test that a learner that handles missing values fits data with missing M."""
     x, y, d, m = raw_med_arrays
     m_nan = _inject_nan(m if m.ndim > 1 else m.reshape(-1, 1))
     dml_data = DoubleMLMEDData.from_arrays(x, y, d, m_nan, force_all_m_finite="allow-nan")
@@ -154,7 +161,8 @@ def test_med_fit_with_missing_m_tolerant_learner(raw_med_arrays, learner_xgboost
 
 
 @pytest.mark.ci
-def test_med_fit_with_missing_m_intolerant_learner_raises(raw_med_arrays, learner_sklearn):
+def test_med_fit_missing_m_intolerant_raises(raw_med_arrays, learner_sklearn):
+    """Test that a learner that cannot handle missing values raises for data with missing M."""
     x, y, d, m = raw_med_arrays
     m_nan = _inject_nan(m if m.ndim > 1 else m.reshape(-1, 1))
     dml_data = DoubleMLMEDData.from_arrays(x, y, d, m_nan, force_all_m_finite="allow-nan")
@@ -185,6 +193,7 @@ def test_med_fit_with_missing_m_intolerant_learner_raises(raw_med_arrays, learne
 
 @pytest.mark.ci
 def test_med_data_d_missing_strict_raises(raw_med_arrays):
+    """Test that missing values in D raise a ValueError by default."""
     x, y, d, m = raw_med_arrays
     d_nan = _inject_nan(d.reshape(-1, 1)).reshape(-1)
     with pytest.raises(ValueError, match="(?i)nan"):
@@ -193,6 +202,7 @@ def test_med_data_d_missing_strict_raises(raw_med_arrays):
 
 @pytest.mark.ci
 def test_med_data_d_missing_allow_nan_still_raises(raw_med_arrays):
+    """Test that missing values in D raise a ValueError also with force_all_d_finite='allow-nan'."""
     x, y, d, m = raw_med_arrays
     d_nan = _inject_nan(d.reshape(-1, 1)).reshape(-1)
     with pytest.raises(ValueError, match="(?i)nan"):
@@ -216,6 +226,7 @@ def test_med_data_d_missing_allow_nan_still_raises(raw_med_arrays):
 @pytest.mark.ci
 @pytest.mark.parametrize("learner_fixture_name", ["learner_xgboost", "learner_sklearn"])
 def test_med_fit_with_missing_d_always_raises(raw_med_arrays, learner_fixture_name, request):
+    """Test that fitting with missing values in D raises a ValueError for every learner."""
     learners = request.getfixturevalue(learner_fixture_name)
     x, y, d, m = raw_med_arrays
     dml_data = DoubleMLMEDData.from_arrays(x, y, d, m)

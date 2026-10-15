@@ -1,3 +1,5 @@
+"""Test that external predictions reproduce the estimates of DoubleMLMED."""
+
 import copy
 import math
 import re
@@ -6,9 +8,6 @@ import numpy as np
 import pytest
 
 from doubleml import DoubleMLMED
-
-# TODO: Remove warning filter once sklearn gets to version 1.10
-pytestmark = pytest.mark.filterwarnings("ignore: l1_ratio parameter is only used when penalty ")
 
 
 @pytest.fixture(scope="module")
@@ -73,18 +72,21 @@ def dml_med_fixture(
 
 @pytest.mark.ci
 def test_dml_med_coef(dml_med_fixture):
+    """Test that the coefficient with external predictions matches the reference fit."""
     res_dict = dml_med_fixture
     assert math.isclose(res_dict["coef"], res_dict["coef_ext"], rel_tol=1e-9, abs_tol=1e-4)
 
 
 @pytest.mark.ci
 def test_dml_med_se(dml_med_fixture):
+    """Test that the standard error with external predictions matches the reference fit."""
     res_dict = dml_med_fixture
     assert math.isclose(res_dict["se"], res_dict["se_ext"], rel_tol=1e-9, abs_tol=1e-4)
 
 
 @pytest.mark.ci
 def test_dml_med_boot(dml_med_fixture):
+    """Test that the bootstrapped t-statistics with external predictions match the reference fit."""
     res_dict = dml_med_fixture
 
     for bootstrap in res_dict["boot_methods"]:
@@ -116,6 +118,7 @@ def external_predictions_exceptions_fixture(dml_data, learner_linear, ps_process
 
 @pytest.mark.ci
 def test_external_predictions_exceptions(external_predictions_exceptions_fixture):
+    """Test that external predictions of ml_G without the inner predictions raise a ValueError."""
     prediction_dict, med_obj_ext = external_predictions_exceptions_fixture
     with pytest.raises(
         ValueError,
@@ -153,7 +156,7 @@ def _get_res(obj, obj_ext, boot_methods, n_rep_boot):
 @pytest.mark.parametrize("n_outer_folds", [2, 3])
 @pytest.mark.parametrize("double_sample_splitting", [True, False], ids=["double_split", "single_split"])
 def test_med_inner_learner_names(dml_data, learner_linear, n_outer_folds, double_sample_splitting):
-    """The counterfactual model has one ml_G_inner entry per outer fold, for single and double sample splitting."""
+    """Test that the counterfactual model has one ml_G_inner entry per outer fold, with single and double sample splitting."""
     med_obj = DoubleMLMED(
         obj_dml_data=dml_data,
         outcome="counterfactual",
@@ -168,7 +171,8 @@ def test_med_inner_learner_names(dml_data, learner_linear, n_outer_folds, double
 
 
 @pytest.mark.ci
-def test_med_external_predictions_for_ml_G_require_the_per_fold_predictions_single_split(dml_data, learner_linear):
+def test_external_ml_G_needs_inner_preds_single_split(dml_data, learner_linear):
+    """Test that external predictions of ml_G also require the per-fold inner predictions without double sample splitting."""
     med_obj = DoubleMLMED(
         obj_dml_data=dml_data,
         outcome="counterfactual",

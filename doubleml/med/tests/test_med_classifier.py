@@ -1,3 +1,5 @@
+"""Test the checks of the learner types (classifier or regressor) of DoubleMLMED."""
+
 import numpy as np
 import pytest
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
@@ -62,14 +64,17 @@ def med_classifier_obj(binary_y_data, classifier_learners, binary_outcomes, bina
 # not if they are equal to specific values.
 @pytest.mark.ci
 def test_med_classifier_coef(med_classifier_obj):
+    """Test that the coefficient is finite when ml_g and ml_G are classifiers."""
     assert np.all(np.isfinite(med_classifier_obj.coef))
 
 
 @pytest.mark.ci
 def test_med_classifier_se(med_classifier_obj):
+    """Test that the standard error is finite when ml_g and ml_G are classifiers."""
     assert np.all(np.isfinite(med_classifier_obj.se))
 
 
 @pytest.mark.ci
 def test_med_classifier_boot(med_classifier_obj):
+    """Test that the bootstrapped t-statistics are finite when ml_g and ml_G are classifiers."""
     assert np.all(np.isfinite(med_classifier_obj.boot_t_stat))

@@ -1,11 +1,11 @@
+"""Test external inner predictions of ml_G passed to DoubleMLMED."""
+
 import numpy as np
 import pytest
 from sklearn.linear_model import LinearRegression, LogisticRegression
 
 from doubleml import DoubleMLMED
 from doubleml.med.datasets import make_med_data
-
-pytestmark = pytest.mark.filterwarnings("ignore: l1_ratio parameter is only used when penalty ")
 
 N_FOLDS = 3
 SPLITTING_CASES = [(True, 2), (True, 1), (False, 2)]
@@ -62,14 +62,16 @@ def _nested_training_units(data, med_ref, setting, i_fold):
 
 
 @pytest.mark.ci
-def test_external_inner_predictions_reproduce_the_fit(small_data, reference):
+def test_inner_predictions_reproduce_the_fit(small_data, reference):
+    """Test that passing the stored inner predictions of ml_G reproduces the coefficient of the reference fit."""
     med_ref, external, setting = reference
     med_ext = _fit_external(small_data, med_ref, external, setting)
     np.testing.assert_allclose(med_ext.coef, med_ref.coef)
 
 
 @pytest.mark.ci
-def test_external_inner_predictions_must_be_finite_where_ml_nested_g_is_fitted(small_data, reference):
+def test_inner_predictions_must_be_finite_in_nested_fit(small_data, reference):
+    """Test that non-finite inner predictions on the observations used to fit ml_nested_g raise a ValueError."""
     med_ref, external, setting = reference
     needed = _nested_training_units(small_data, med_ref, setting, i_fold=1)
     broken = {name: values.copy() for name, values in external.items()}
@@ -81,8 +83,8 @@ def test_external_inner_predictions_must_be_finite_where_ml_nested_g_is_fitted(s
 
 
 @pytest.mark.ci
-def test_external_inner_predictions_may_be_missing_where_ml_nested_g_is_not_fitted(small_data, reference):
-    """Only the observations on which ml_nested_g is fitted are used, the other entries can be nan."""
+def test_inner_predictions_may_be_nan_outside_nested_fit(small_data, reference):
+    """Test that inner predictions may be nan outside the observations on which ml_nested_g is fitted."""
     med_ref, external, setting = reference
     needed = _nested_training_units(small_data, med_ref, setting, i_fold=1)
     not_needed = np.setdiff1d(np.arange(small_data.n_obs), needed)

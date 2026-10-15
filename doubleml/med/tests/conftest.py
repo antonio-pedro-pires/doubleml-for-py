@@ -1,3 +1,7 @@
+"""Shared fixtures for the mediation tests."""
+
+import warnings
+
 import numpy as np
 import pytest
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
@@ -14,12 +18,22 @@ from doubleml.tests._utils_tune_optuna import (
 from doubleml.utils import DMLDummyClassifier, DMLDummyRegressor, PSProcessorConfig
 
 
-@pytest.fixture(scope="module", params=[True, False])
+# Fixtures that only return plain values (bools, ints) use the "session" scope, as there is no state to reset between modules.
+@pytest.fixture(autouse=True)
+def _ignore_l1_ratio_warning():
+    # scikit-learn < 1.8 warns about l1_ratio without penalty="elasticnet" when LogisticRegression(l1_ratio=1) is fitted.
+    # Remove this fixture once the minimum supported scikit-learn version is 1.8, which does not warn.
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message="l1_ratio parameter is only used when penalty")
+        yield
+
+
+@pytest.fixture(scope="session", params=[True, False])
 def double_sample_splitting(request):
     return request.param
 
 
-@pytest.fixture(scope="module", params=[False, True], ids=["normalize_ipw=False", "normalize_ipw=True"])
+@pytest.fixture(scope="session", params=[False, True], ids=["normalize_ipw=False", "normalize_ipw=True"])
 def normalize_ipw(request):
     return request.param
 
@@ -29,12 +43,12 @@ def dml_data():
     return make_med_data()
 
 
-@pytest.fixture(scope="module", params=[1, 2], ids=["n_rep=1", "n_rep=2"])
+@pytest.fixture(scope="session", params=[1, 2], ids=["n_rep=1", "n_rep=2"])
 def n_rep(request):
     return request.param
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="session")
 def n_rep_boot():
     return 499
 
@@ -62,12 +76,12 @@ def learner_dummy():
     }
 
 
-@pytest.fixture(scope="module", params=[2, 3], ids=["n_folds=1", "n_folds=2"])
+@pytest.fixture(scope="session", params=[2, 3], ids=["n_folds=2", "n_folds=3"])
 def n_folds(request):
     return request.param
 
 
-@pytest.fixture(scope="module", params=[2, 3], ids=["n_folds_inner=1", "n_folds_inner=2"])
+@pytest.fixture(scope="session", params=[2, 3], ids=["n_folds_inner=2", "n_folds_inner=3"])
 def n_folds_inner(request):
     return request.param
 

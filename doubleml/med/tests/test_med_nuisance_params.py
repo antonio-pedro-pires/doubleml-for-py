@@ -1,3 +1,5 @@
+"""Test that nuisance parameters reach the learners of DoubleMLMED."""
+
 import numpy as np
 import pytest
 from sklearn.linear_model import Lasso, LinearRegression, LogisticRegression
@@ -5,8 +7,6 @@ from sklearn.linear_model import Lasso, LinearRegression, LogisticRegression
 from doubleml import DoubleMLMED
 from doubleml.med.datasets import make_med_data
 from doubleml.tests._utils_tune_optuna import _basic_optuna_settings
-
-pytestmark = pytest.mark.filterwarnings("ignore: l1_ratio parameter is only used when penalty ")
 
 N_FOLDS = 3
 SPLITTING_CASES = [(True, 2), (True, 1), (False, 2)]
@@ -58,6 +58,7 @@ def _med_obj(data, outcome, double_sample_splitting, n_folds_inner, params_in_co
 
 @pytest.mark.ci
 def test_set_ml_nuisance_params_stores_the_parameters(small_data):
+    """Test that set_ml_nuisance_params stores the parameters once for each outer fold."""
     med_obj = _med_obj(small_data, "counterfactual", True, 2)
     assert med_obj.params["ml_G"]["d"] == [None]
 
@@ -81,7 +82,7 @@ def test_set_ml_nuisance_params_stores_the_parameters(small_data):
     ],
 )
 def test_set_ml_nuisance_params_reach_the_learner(small_data, outcome, learner, double_sample_splitting, n_folds_inner):
-    """Parameters set with set_ml_nuisance_params give the same fit as parameters set on the learner itself."""
+    """Test that parameters set with set_ml_nuisance_params give the same fit as parameters set on the learner itself."""
     params = LEARNER_PARAMS[learner]
 
     in_constructor = _med_obj(small_data, outcome, double_sample_splitting, n_folds_inner, {learner: params}).fit()
@@ -97,6 +98,7 @@ def test_set_ml_nuisance_params_reach_the_learner(small_data, outcome, learner, 
 
 @pytest.mark.ci
 def test_set_ml_nuisance_params_exceptions(small_data):
+    """Test that set_ml_nuisance_params raises a ValueError for an unknown learner or treatment variable."""
     med_obj = _med_obj(small_data, "counterfactual", True, 2)
 
     with pytest.raises(ValueError, match="Invalid nuisance learner ml_g. Valid nuisance learner ml_m or ml_G or ml_M or"):
@@ -111,8 +113,8 @@ def test_set_ml_nuisance_params_exceptions(small_data):
 
 @pytest.mark.ci
 @pytest.mark.parametrize("n_folds_inner", [1, 2, 3], ids=["two_subsamples", "two_inner_folds", "n_folds_inner=n_folds"])
-def test_fold_specific_params_reach_the_models_of_their_fold(small_data, n_folds_inner):
-    """The parameters of an outer fold are used for all inner models of that fold, whatever n_folds_inner is."""
+def test_fold_params_reach_their_fold_models(small_data, n_folds_inner):
+    """Test that the parameters of an outer fold are used for all inner models of that fold, whatever n_folds_inner is."""
     med_obj = _med_obj(small_data, "counterfactual", True, n_folds_inner)
     fold_params = [{"fit_intercept": False}, {"fit_intercept": True}, {"fit_intercept": False}]
     med_obj.set_ml_nuisance_params("ml_G", "d", [fold_params])
@@ -130,7 +132,7 @@ def test_fold_specific_params_reach_the_models_of_their_fold(small_data, n_folds
 @pytest.mark.ci
 @pytest.mark.parametrize("n_folds_inner", [1, 2, 3], ids=["two_subsamples", "two_inner_folds", "n_folds_inner=n_folds"])
 def test_tuned_params_are_used_in_the_fit(small_data, n_folds_inner):
-    """After tune_ml_models(set_as_params=True), fit uses the tuned parameters, whatever n_folds_inner is."""
+    """Test that fit uses the tuned parameters after tune_ml_models(set_as_params=True), whatever n_folds_inner is."""
     np.random.seed(3141)
     med_obj = DoubleMLMED(
         obj_dml_data=small_data,

@@ -1,3 +1,5 @@
+"""Test the checks of the learner types of DoubleMLMEDS."""
+
 import numpy as np
 import pytest
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
@@ -59,16 +61,19 @@ def meds_classifier_obj(binary_y_data, classifier_learners, ps_processor_config)
 # not if they are equal to specific values.
 @pytest.mark.ci
 def test_meds_classifier_coef(meds_classifier_obj):
+    """Test that the coefficients are finite when ml_g and ml_G are classifiers."""
     assert np.all(np.isfinite(meds_classifier_obj.framework.all_thetas))
 
 
 @pytest.mark.ci
 def test_meds_classifier_se(meds_classifier_obj):
+    """Test that the standard errors are finite when ml_g and ml_G are classifiers."""
     assert np.all(np.isfinite(meds_classifier_obj.framework.all_ses))
 
 
 @pytest.mark.ci
 def test_meds_classifier_evaluate_effects(meds_classifier_obj):
+    """Test that the effects are finite when ml_g and ml_G are classifiers."""
     meds_classifier_obj.evaluate_effects()
     for effect_name, effect_obj in meds_classifier_obj._effects.items():
         assert np.all(np.isfinite(effect_obj.all_thetas)), f"Non-finite theta in effect {effect_name}"

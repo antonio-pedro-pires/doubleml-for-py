@@ -1,3 +1,5 @@
+"""Test hyperparameter tuning of DoubleMLMEDS."""
+
 import numpy as np
 import pytest
 from sklearn.linear_model import Lasso, LogisticRegression
@@ -26,6 +28,7 @@ def test_tune_meds(tuned_models, dml_meds_obj):
     # is correctly called. The tuning of a DoubleMLMEDS is correct when for each given "outcome" and "treatment" parameters,
     # the DoubleMLMED instance tunes the correct learners.
 
+    """Test that tuning DoubleMLMEDS tunes the learners of each model."""
     for (model_id, model), (tuned_id, tuned) in zip(dml_meds_obj.modeldict.items(), tuned_models.items()):
         assert model_id == tuned_id
         model_learners = model.learner_names
@@ -60,7 +63,7 @@ def _tuned_alpha(model, learner):
 
 @pytest.mark.ci
 def test_tune_meds_with_a_subset_of_the_learners(small_meds):
-    """Only the learners in ml_param_space are tuned, as in DoubleMLMED. The factual models have no ml_G."""
+    """Test that only the learners in ml_param_space are tuned, as in DoubleMLMED."""
     small_meds.tune_ml_models(
         {"ml_G": _alpha_space, "ml_nested_g": _alpha_space}, optuna_settings=_basic_optuna_settings({"n_trials": 3})
     )
@@ -74,8 +77,8 @@ def test_tune_meds_with_a_subset_of_the_learners(small_meds):
 
 
 @pytest.mark.ci
-def test_tune_meds_with_learners_of_the_factual_models_only(small_meds):
-    """The counterfactual models are skipped if no learner in ml_param_space belongs to them."""
+def test_tune_meds_factual_learners_only(small_meds):
+    """Test that the counterfactual models are skipped if no learner in ml_param_space belongs to them."""
     small_meds.tune_ml_models({"ml_g": _alpha_space}, optuna_settings=_basic_optuna_settings({"n_trials": 3}))
 
     for model in small_meds.modeldict.values():
@@ -87,7 +90,7 @@ def test_tune_meds_with_learners_of_the_factual_models_only(small_meds):
 
 @pytest.mark.ci
 def test_tune_meds_none_leaves_a_learner_untuned(small_meds):
-    """A learner set to None keeps the parameters of the learner passed to the constructor."""
+    """Test that a learner set to None in ml_param_space keeps the parameters of the learner passed to the constructor."""
     small_meds.tune_ml_models(
         {"ml_G": _alpha_space, "ml_nested_g": None}, optuna_settings=_basic_optuna_settings({"n_trials": 3})
     )
@@ -99,6 +102,7 @@ def test_tune_meds_none_leaves_a_learner_untuned(small_meds):
 
 @pytest.mark.ci
 def test_tune_meds_exceptions(small_meds):
+    """Test that tune_ml_models raises a ValueError for an empty parameter space or unknown learners."""
     with pytest.raises(ValueError, match="ml_param_space must be a non-empty dictionary."):
         small_meds.tune_ml_models({})
     with pytest.raises(

@@ -1,3 +1,5 @@
+"""Test the default arguments and attributes of DoubleMLMED and DoubleMLMEDS."""
+
 import warnings
 
 import pandas as pd
@@ -6,9 +8,6 @@ import pytest
 from doubleml import DoubleMLMED, DoubleMLMEDS
 from doubleml.utils import PSProcessorConfig
 from doubleml.utils._check_defaults import _check_basic_defaults_after_fit, _check_basic_defaults_before_fit, _fit_bootstrap
-
-# TODO: Remove warning filter once sklearn gets to version 1.10
-pytestmark = pytest.mark.filterwarnings("ignore: l1_ratio parameter is only used when penalty ")
 
 
 @pytest.fixture(scope="module")
@@ -48,6 +47,7 @@ def dml_meds_fixture(dml_data, learner_linear, ps_processor_config):
 
 @pytest.mark.ci
 def test_med_defaults(dml_med_fixture):
+    """Test that DoubleMLMED has the expected default attributes before and after fit."""
     _check_basic_defaults_before_fit(dml_med_fixture)
 
     _fit_bootstrap(dml_med_fixture)
@@ -57,6 +57,7 @@ def test_med_defaults(dml_med_fixture):
 
 @pytest.mark.ci
 def test_meds_defaults(dml_meds_fixture):
+    """Test that DoubleMLMEDS has the expected default attributes before and after fit."""
     assert dml_meds_fixture.n_folds == 5
     assert dml_meds_fixture.n_rep == 1
     assert dml_meds_fixture.framework is None
@@ -75,7 +76,7 @@ def test_meds_defaults(dml_meds_fixture):
 
 @pytest.mark.ci
 def test_med_default_ps_config(dml_data, learner_linear):
-    """Without ps_processor_config the default configuration is used silently, as in the other models."""
+    """Test that the default propensity score configuration is used silently when ps_processor_config is not given."""
     with warnings.catch_warnings(record=True) as caught_warnings:
         warnings.simplefilter("always")
         obj = DoubleMLMED(

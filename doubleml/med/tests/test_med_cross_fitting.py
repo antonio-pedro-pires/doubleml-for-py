@@ -1,3 +1,5 @@
+"""Test that DoubleMLMED estimates the nuisance functions by cross-fitting on held-out folds."""
+
 import numpy as np
 import pytest
 from sklearn.linear_model import LinearRegression, LogisticRegression
@@ -28,8 +30,8 @@ def _med_obj(frame, x_cols, n_folds, double_sample_splitting):
 @pytest.mark.ci
 @pytest.mark.parametrize("n_folds", [2, 3])
 @pytest.mark.parametrize("double_sample_splitting", [True, False], ids=["double_split", "single_split"])
-def test_nested_predictions_do_not_depend_on_the_outcomes_of_their_own_fold(n_folds, double_sample_splitting):
-    """Cross-fitting: changing the outcomes of the held-out fold leaves its nested predictions unchanged."""
+def test_nested_predictions_ignore_own_fold_outcomes(n_folds, double_sample_splitting):
+    """Test that changing the outcomes of the held-out fold leaves its nested predictions unchanged."""
     np.random.seed(3141)
     frame = make_med_data(n_obs=400, dim_x=5).data
     x_cols = [column for column in frame.columns if column.startswith("X")]

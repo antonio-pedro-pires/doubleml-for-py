@@ -1,12 +1,11 @@
+"""Test that external predictions reproduce the estimates of DoubleMLMEDS."""
+
 import copy
 
 import numpy as np
 import pytest
 
 from doubleml.med import DoubleMLMEDS
-
-# TODO: Remove warning filter once sklearn gets to version 1.10
-pytestmark = pytest.mark.filterwarnings("ignore: l1_ratio parameter is only used when penalty ")
 
 
 @pytest.fixture(scope="module")
@@ -40,6 +39,7 @@ def meds_fixture_binary_treat(meds_obj):
 
 @pytest.mark.ci
 def test_external_predictions_binary_treat(meds_fixture_binary_treat):
+    """Test that estimates with external predictions match the reference fit for a binary treatment."""
     values_of_interest = [
         "all_pvals",
         "all_ses",
@@ -53,8 +53,8 @@ def test_external_predictions_binary_treat(meds_fixture_binary_treat):
 
 
 @pytest.mark.ci
-def test_meds_external_predictions_for_subset_of_models(dml_data, learner_linear):
-    """External predictions can be given for only some of the models, the others are estimated as usual."""
+def test_meds_external_for_subset_of_models(dml_data, learner_linear):
+    """Test that external predictions for only some of the models are used and the other models are estimated as usual."""
     meds_obj = DoubleMLMEDS(obj_dml_data=dml_data, n_folds=2, n_folds_inner=2, **learner_linear)
     constant_propensity = 0.5
     external_predictions = {"factual_1": {"d": {"ml_m": np.full((dml_data.n_obs, 1), constant_propensity)}}}

@@ -1,3 +1,5 @@
+"""Test the return types of the properties and methods of DoubleMLMED and DoubleMLMEDS."""
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -22,9 +24,6 @@ dml_args = {
     "n_folds": N_FOLDS,
 }
 
-# TODO: Remove warning filter once sklearn gets to version 1.10
-pytestmark = pytest.mark.filterwarnings("ignore: l1_ratio parameter is only used when penalty ")
-
 
 @pytest.fixture(scope="module")
 def dml_med_fixture(binary_outcomes, binary_treats, dml_data, learner_linear, ps_processor_config):
@@ -43,6 +42,7 @@ def dml_med_fixture(binary_outcomes, binary_treats, dml_data, learner_linear, ps
 
 @pytest.mark.ci
 def test_return_types(dml_med_fixture):
+    """Test that DoubleMLMED returns the expected basic types."""
     dml_obj, cls = dml_med_fixture
     check_basic_return_types(dml_obj, cls)
 
@@ -60,6 +60,7 @@ def fitted_dml_obj(request, dml_med_fixture):
 
 @pytest.mark.ci
 def test_property_types_and_shapes(fitted_dml_obj):
+    """Test that the properties of a fitted DoubleMLMED have the expected types and shapes."""
     check_basic_property_types_and_shapes(fitted_dml_obj, N_OBS, N_TREAT, N_REP, N_FOLDS, N_REP_BOOT)
     check_basic_predictions_and_targets(fitted_dml_obj, N_OBS, N_TREAT, N_REP)
 
@@ -79,6 +80,7 @@ def fitted_meds_obj(dml_data, learner_linear, ps_processor_config):
 
 @pytest.mark.ci
 def test_meds_properties_lifecycle(dml_data, learner_linear):
+    """Test that the result properties of DoubleMLMEDS are None before fit and set after fit."""
     meds_obj = DoubleMLMEDS(obj_dml_data=dml_data, n_folds=2, n_rep=1, **learner_linear)
 
     # Before fit: every result-related property is None and the effects summary is empty.
@@ -109,6 +111,7 @@ def test_meds_properties_lifecycle(dml_data, learner_linear):
 def test_meds_return_types(fitted_meds_obj):
 
     # Basic return types
+    """Test that the properties and methods of a fitted DoubleMLMEDS return the expected types."""
     assert isinstance(fitted_meds_obj.__str__(), str)
     assert isinstance(fitted_meds_obj.summary, pd.DataFrame)
     assert isinstance(fitted_meds_obj.effects_summary, pd.DataFrame)
@@ -139,6 +142,7 @@ def test_meds_return_types(fitted_meds_obj):
 
 @pytest.mark.ci
 def test_med_tune_not_implemented(dml_med_fixture):
+    """Test that the grid and randomized search tune method raises a NotImplementedError."""
     dml_obj, _ = dml_med_fixture
 
     param_grids = {k: {"dummy": [1]} for k in dml_obj.learner_names}
@@ -149,4 +153,5 @@ def test_med_tune_not_implemented(dml_med_fixture):
 
 @pytest.mark.ci
 def test_meds_boot_t_stat(fitted_meds_obj):
+    """Test that boot_t_stat of DoubleMLMEDS is None before bootstrap."""
     assert fitted_meds_obj.boot_t_stat is None
