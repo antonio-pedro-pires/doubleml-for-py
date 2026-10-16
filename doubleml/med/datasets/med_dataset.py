@@ -65,7 +65,7 @@ def make_med_data(n_obs: int = 1000, dim_x: int = 20, return_type: Any = "Double
     >>> x, y, d, m = make_med_data(n_obs=500, dim_x=5, return_type="array")
     """
 
-    # Draw beta vector
+    # Coefficient vector beta, the i-th entry is b / i^2
     beta = [b / (i**2) for i in range(1, dim_x + 1)]
 
     # Draw covariates X.
@@ -73,21 +73,9 @@ def make_med_data(n_obs: int = 1000, dim_x: int = 20, return_type: Any = "Double
     covmat = toeplitz([np.power(0.5, k) for k in range(dim_x)])
     x = np.random.multivariate_normal(mean=np.zeros(dim_x), cov=covmat, size=[n_obs])
     # Draw errors
-    u = np.random.standard_normal(
-        size=[
-            n_obs,
-        ]
-    )
-    v = np.random.standard_normal(
-        size=[
-            n_obs,
-        ]
-    )
-    w = np.random.standard_normal(
-        size=[
-            n_obs,
-        ]
-    )
+    u = np.random.standard_normal(size=n_obs)
+    v = np.random.standard_normal(size=n_obs)
+    w = np.random.standard_normal(size=n_obs)
 
     # Generate d, m, y vectors
     d = 1.0 * (x.dot(beta) + w > 0)

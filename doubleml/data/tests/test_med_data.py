@@ -436,3 +436,20 @@ def test_binary_meds_allow_nan_checks_observed_values():
         "m_zero_two_with_nan": False,
         "m_all_nan": False,
     }
+
+
+@pytest.mark.ci
+def test_data_summary_str_exact():
+    """Test that the data summary lists every variable group and the number of observations in the expected format."""
+    np.random.seed(3141)
+    med_data = make_med_data(n_obs=6, dim_x=3)
+
+    expected = (
+        "Outcome variable: y\n"
+        "Treatment variable(s): ['d']\n"
+        "Mediation variable(s): ['m']\n"
+        "Covariates: ['X1', 'X2', 'X3']\n"
+        "Instrument variable(s): None\n"
+        "No. Observations: 6\n"
+    )
+    assert med_data._data_summary_str() == expected

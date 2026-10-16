@@ -13,7 +13,13 @@ from doubleml.data import DoubleMLMEDData
 from doubleml.double_ml_framework import concat
 from doubleml.double_ml_sampling_mixins import SampleSplittingMixin
 from doubleml.med.med import DoubleMLMED
-from doubleml.med.utils._med_utils import _check_med_data, _first_inner_split, _inner_g_learner_names
+from doubleml.med.utils._med_utils import (
+    VALID_OUTCOMES,
+    VALID_SCORES,
+    _check_med_data,
+    _first_inner_split,
+    _inner_g_learner_names,
+)
 from doubleml.med.utils._meds_utils import generate_effects_summary
 from doubleml.utils import PSProcessorConfig
 from doubleml.utils._checks import _check_score
@@ -177,12 +183,10 @@ class DoubleMLMEDS(SampleSplittingMixin):
 
         # Check score
         self._score = score
-        valid_scores = ["efficient-alt"]
-        _check_score(self._score, valid_scores, allow_callable=False)
+        _check_score(self._score, list(VALID_SCORES), allow_callable=False)
 
         self._normalize_ipw = normalize_ipw
         self._double_sample_splitting = double_sample_splitting
-        # _check_resampling_specifications(n_folds, n_rep)
         self._n_folds = n_folds
         self._n_rep = n_rep
         self._n_folds_inner = n_folds_inner
@@ -307,11 +311,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
         Estimates for the ATE and the combination of the direct/indirect, treatment/control groups effects after calling
         :meth:`evaluate-effects`
         """
-        if self._effects is None:
-            effects = None
-        else:
-            effects = self._effects
-        return effects
+        return self._effects
 
     @property
     def coef(self) -> Optional[np.ndarray]:
@@ -525,14 +525,11 @@ class DoubleMLMEDS(SampleSplittingMixin):
         """
         if external_predictions is not None:
             self._check_external_predictions(external_predictions)
-            ext_pred_dict = external_predictions
-        else:
-            ext_pred_dict = None
 
         # parallel estimation of the models
         parallel = Parallel(n_jobs=n_jobs_models, verbose=0, pre_dispatch="2*n_jobs")
         fitted_models = parallel(
-            delayed(self._fit_model)(model_id, n_jobs_cv, store_predictions, store_models, ext_pred_dict)
+            delayed(self._fit_model)(model_id, n_jobs_cv, store_predictions, store_models, external_predictions)
             for model_id in self.models_ids
         )
 
@@ -742,11 +739,9 @@ class DoubleMLMEDS(SampleSplittingMixin):
         return [f"{outcome}_{treatment}" for outcome, treatment in self._id_pairs]
 
     def _valid_id_pairs(self) -> list[tuple[str, int]]:
-        if all(self._dml_data.binary_treats):
-            treatment_levels = self.treatments
-            self.valid_outcomes = ["factual", "counterfactual"]
-            valid_id_pairs = list(itertools.product(self.valid_outcomes, map(int, treatment_levels)))
-        return valid_id_pairs
+        # the treatments are binary, which is guaranteed by _check_med_data
+        self.valid_outcomes = list(VALID_OUTCOMES)
+        return list(itertools.product(self.valid_outcomes, map(int, self.treatments)))
 
     def _check_external_predictions(self, external_predictions_dict: dict[str, Any]) -> None:
         if not isinstance(external_predictions_dict, dict):

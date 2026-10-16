@@ -302,3 +302,11 @@ def test_confint_matches_manual_computation(meds_ci_obj, level):
     ci = meds_ci_obj.confint(level=level)
     ci_manual = confint_manual(meds_ci_obj.coef, meds_ci_obj.se, meds_ci_obj.models_ids, joint=False, level=level)
     pd.testing.assert_frame_equal(ci, ci_manual)
+
+
+@pytest.mark.ci
+def test_meds_models_ids_and_valid_outcomes(meds_obj):
+    """Test that the model ids are ordered by outcome and treatment level and valid_outcomes is a plain list."""
+    assert meds_obj.models_ids == ["factual_0", "factual_1", "counterfactual_0", "counterfactual_1"]
+    assert meds_obj.valid_outcomes == ["factual", "counterfactual"]
+    assert type(meds_obj.valid_outcomes) is list

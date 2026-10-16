@@ -139,9 +139,8 @@ class DoubleMLMEDData(DoubleMLData):
             f"Mediation variable(s): {self.m_cols}\n"
             f"Covariates: {self.x_cols}\n"
             f"Instrument variable(s): {self.z_cols}\n"
+            f"No. Observations: {self.n_obs}\n"
         )
-
-        data_summary += f"No. Observations: {self.n_obs}\n"
         return data_summary
 
     @classmethod

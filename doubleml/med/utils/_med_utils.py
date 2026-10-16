@@ -1,12 +1,15 @@
 """Helpers for the mediation estimators: propensity normalization, inner sample splitting and external predictions."""
 
-from typing import Any, Optional
+from typing import Any, Optional, Union, cast
 
 import numpy as np
 
 from doubleml.data import DoubleMLMEDData
 from doubleml.utils._checks import _check_smpl_split_tpl
 from doubleml.utils._estimation import _double_dml_cv_predict
+
+VALID_OUTCOMES = ("factual", "counterfactual")
+VALID_SCORES = ("efficient-alt",)
 
 
 def _normalize_propensity_med(
@@ -15,95 +18,133 @@ def _normalize_propensity_med(
     d: np.ndarray,
     treatment_level: int,
     m_preds: np.ndarray,
-    M_preds: Any = None,
-) -> Any:
+    M_preds: Optional[np.ndarray] = None,
+) -> Union[np.ndarray, tuple[np.ndarray, np.ndarray]]:
     """
-    Normalizes propensity scores for causal mediation analysis. Normalizes both factual and counterfactual scores.
+    Compute the (optionally normalized) inverse probability weights of the factual and the counterfactual score.
+
+    Parameters
+    ----------
+    normalize_ipw : bool
+        Indicates whether the weights are normalized to add up to the number of observations.
+    outcome : str
+        ``'factual'`` or ``'counterfactual'``.
+    d : np.ndarray
+        Treatment indicator of shape ``(n_obs,)``.
+    treatment_level : int
+        The treatment level :math:`d`, 0 or 1.
+    m_preds : np.ndarray
+        Predictions of :math:`P(D=1|X)` of shape ``(n_obs,)``.
+    M_preds : np.ndarray or None
+        Predictions of :math:`P(D=1|M,X)` of shape ``(n_obs,)``. Only used if ``outcome`` is ``'counterfactual'``.
+
+    Returns
+    -------
+    np.ndarray or tuple of np.ndarray
+        The weights of shape ``(n_obs,)`` for ``'factual'``, the two weights of the counterfactual score for
+        ``'counterfactual'``.
     """
     n_obs = len(d)
-    result: Any
     if outcome == "factual":
-        result = _normalize_factual(normalize_ipw, d, treatment_level, m_preds, n_obs)
-    elif outcome == "counterfactual":
-        result = _normalize_counterfactual(normalize_ipw, d, treatment_level, m_preds, M_preds, n_obs)
-    return result
+        return _normalize_factual(normalize_ipw, d, treatment_level, m_preds, n_obs)
+    # M_preds is required for the counterfactual score, which is guaranteed by DoubleMLMED
+    return _normalize_counterfactual(normalize_ipw, d, treatment_level, m_preds, cast(np.ndarray, M_preds), n_obs)
+
+
+def _scale_to_n_obs(weights: np.ndarray, n_obs: int) -> np.ndarray:
+    """Scale the weights by ``n_obs / sum(weights)``, so that they add up to the number of observations."""
+    return np.multiply(weights, np.divide(n_obs, np.sum(weights)))
 
 
 def _normalize_factual(
     normalize_ipw: bool, d: np.ndarray, treatment_level: int, m_preds: np.ndarray, n_obs: int
 ) -> np.ndarray:
     """
-    Normalizes factual scores in the context of causal mediation analysis.
+    Compute the weight of the factual score, :math:`D / P(D=1|X)` or :math:`(1-D) / (1-P(D=1|X))`.
+
+    Parameters
+    ----------
+    normalize_ipw : bool
+        Indicates whether the weights are normalized to add up to ``n_obs``.
+    d : np.ndarray
+        Treatment indicator of shape ``(n_obs,)``.
+    treatment_level : int
+        The treatment level, 0 or 1.
+    m_preds : np.ndarray
+        Predictions of :math:`P(D=1|X)` of shape ``(n_obs,)``.
+    n_obs : int
+        The number of observations.
+
+    Returns
+    -------
+    np.ndarray
+        The weights of shape ``(n_obs,)``.
     """
-    if normalize_ipw:
-        if treatment_level == 0:
-            sumscore = np.sum(np.divide(1.0 - d, 1.0 - m_preds))
-            result = np.multiply(np.divide(1.0 - d, 1.0 - m_preds), np.divide(n_obs, sumscore))
-        elif treatment_level == 1:
-            sumscore = np.sum(np.divide(d, m_preds))
-            result = np.multiply(np.divide(d, m_preds), np.divide(n_obs, sumscore))
+    if treatment_level == 0:
+        weights = np.divide(1.0 - d, 1.0 - m_preds)
     else:
-        if treatment_level == 0:
-            result = np.divide(1.0 - d, 1.0 - m_preds)
-        if treatment_level == 1:
-            result = np.divide(d, m_preds)
-    return result
+        weights = np.divide(d, m_preds)
+    return _scale_to_n_obs(weights, n_obs) if normalize_ipw else weights
 
 
 def _normalize_counterfactual(
     normalize_ipw: bool, d: np.ndarray, treatment_level: int, m_preds: np.ndarray, M_preds: np.ndarray, n_obs: int
 ) -> tuple[np.ndarray, np.ndarray]:
     """
-    Normalizes counterfactual scores in the context of causal mediation analysis.
+    Compute the two weights of the counterfactual score.
+
+    The first weight multiplies the residual of ``ml_G``, the second weight the residual of ``ml_nested_g``. Each of the
+    weights is normalized with its own sum.
+
+    Parameters
+    ----------
+    normalize_ipw : bool
+        Indicates whether the weights are normalized to add up to ``n_obs``.
+    d : np.ndarray
+        Treatment indicator of shape ``(n_obs,)``.
+    treatment_level : int
+        The treatment level, 0 or 1.
+    m_preds : np.ndarray
+        Predictions of :math:`P(D=1|X)` of shape ``(n_obs,)``.
+    M_preds : np.ndarray
+        Predictions of :math:`P(D=1|M,X)` of shape ``(n_obs,)``.
+    n_obs : int
+        The number of observations.
+
+    Returns
+    -------
+    tuple of np.ndarray
+        The two weights, each of shape ``(n_obs,)``.
     """
+    if treatment_level == 0:
+        ps1 = np.divide(np.multiply(1.0 - d, M_preds), np.multiply(1.0 - M_preds, m_preds))
+        ps2 = np.divide(d, m_preds)
+    else:
+        ps1 = np.divide(np.multiply(d, 1.0 - M_preds), np.multiply(M_preds, 1.0 - m_preds))
+        ps2 = np.divide(1.0 - d, 1.0 - m_preds)
 
     if normalize_ipw:
-        if treatment_level == 0:
-            sumscore1 = np.sum(np.divide(np.multiply(1.0 - d, M_preds), np.multiply(1.0 - M_preds, m_preds)))
-            sumscore2 = np.sum(np.divide(d, m_preds))
-
-            ps1 = np.multiply(
-                np.divide(np.multiply(1.0 - d, M_preds), np.multiply(1.0 - M_preds, m_preds)), np.divide(n_obs, sumscore1)
-            )
-
-            ps2 = np.multiply(np.divide(d, m_preds), np.divide(n_obs, sumscore2))
-
-            result = (ps1, ps2)
-
-        elif treatment_level == 1:
-            sumscore1 = np.sum(np.divide(np.multiply(d, 1.0 - M_preds), np.multiply(M_preds, 1.0 - m_preds)))
-            sumscore2 = np.sum(np.divide(1.0 - d, 1.0 - m_preds))
-
-            ps1 = np.multiply(
-                np.divide(np.multiply(d, 1.0 - M_preds), np.multiply(M_preds, 1.0 - m_preds)), np.divide(n_obs, sumscore1)
-            )
-
-            ps2 = np.multiply(np.divide(1.0 - d, 1.0 - m_preds), np.divide(n_obs, sumscore2))
-
-            result = (ps1, ps2)
-
-    else:
-        if treatment_level == 0:
-            ps1 = np.divide(np.multiply(1.0 - d, M_preds), np.multiply(1.0 - M_preds, m_preds))
-            ps2 = np.divide(d, m_preds)
-
-            result = (ps1, ps2)
-        elif treatment_level == 1:
-            ps1 = np.divide(np.multiply(d, 1.0 - M_preds), np.multiply(M_preds, 1.0 - m_preds))
-            ps2 = np.divide(1.0 - d, 1.0 - m_preds)
-
-            result = (ps1, ps2)
-
-    return result
+        return _scale_to_n_obs(ps1, n_obs), _scale_to_n_obs(ps2, n_obs)
+    return ps1, ps2
 
 
 def _check_inner_sample_splitting(smpls_inner: list, smpls: list, n_obs: int) -> tuple[list, int]:
     """
     Check that each repetition is a list of lists of tuples.
-    :param smpls_inner:
-    :param smpls:
-    :param n_obs: total number of observations, used for index-level validation.
-    :return:
+
+    Parameters
+    ----------
+    smpls_inner : list
+        The inner sample splitting, one list of inner folds for each outer fold of each repetition.
+    smpls : list
+        The outer sample splitting.
+    n_obs : int
+        Total number of observations, used for index-level validation.
+
+    Returns
+    -------
+    tuple of (list, int)
+        The validated ``smpls_inner`` and the number of inner folds.
     """
 
     if not isinstance(smpls_inner, list):

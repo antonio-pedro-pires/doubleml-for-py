@@ -47,3 +47,25 @@ def test_make_med_data_unknown_keyword_raises():
     """Test that misspelled or unsupported keyword arguments raise an error instead of being ignored."""
     with pytest.raises(TypeError, match=r"unexpected keyword argument 'dim_X'"):
         make_med_data(n_obs=100, dim_X=5)
+
+
+@pytest.mark.ci
+def test_make_med_data_seeded_values():
+    """Test that make_med_data reproduces the pinned draws for a fixed seed (guard against changes of the random stream)."""
+    np.random.seed(3141)
+    x, y, d, m = make_med_data(n_obs=6, dim_x=3, return_type="array")
+    np.testing.assert_allclose(
+        y,
+        [
+            0.7040243784972408,
+            2.3443582828637792,
+            -0.38598121016730597,
+            1.0911192616609977,
+            1.0480812292385708,
+            2.0233670090658693,
+        ],
+        rtol=1e-9,
+    )
+    np.testing.assert_array_equal(d, [1.0, 1.0, 0.0, 1.0, 1.0, 1.0])
+    np.testing.assert_array_equal(m, [0.0, 1.0, 0.0, 0.0, 0.0, 1.0])
+    np.testing.assert_allclose(x[0], [-0.2983095564004948, -0.7583107991551773, 0.6270209162547371], rtol=1e-9)

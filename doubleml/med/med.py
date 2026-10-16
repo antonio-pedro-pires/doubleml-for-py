@@ -10,6 +10,8 @@ from doubleml.data import DoubleMLMEDData
 from doubleml.double_ml import DoubleML
 from doubleml.double_ml_score_mixins import LinearScoreMixin
 from doubleml.med.utils._med_utils import (
+    VALID_OUTCOMES,
+    VALID_SCORES,
     _check_inner_g_external_predictions,
     _check_inner_g_external_values,
     _check_inner_sample_splitting,
@@ -213,6 +215,9 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
     d  0.995196  0.059411  16.75092  5.575699e-63  0.878752  1.11164
     """
 
+    _dml_data: DoubleMLMEDData
+    _learner: dict[str, Any]
+
     def __init__(
         self,
         obj_dml_data: DoubleMLMEDData,
@@ -241,8 +246,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
             obj_dml_data, n_folds, n_rep, score, draw_sample_splitting, double_sample_splitting=self.double_sample_splitting
         )
 
-        valid_scores = ["efficient-alt"]
-        _check_score(self.score, valid_scores, allow_callable=False)
+        _check_score(self.score, list(VALID_SCORES), allow_callable=False)
 
         self._outcome = self._check_outcome(outcome)
         self._treatment_level = self._check_levels(treatment_level)
@@ -258,9 +262,6 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
 
         self._ps_processor_config = ps_processor_config if ps_processor_config is not None else PSProcessorConfig()
         self._ps_processor = PSProcessor.from_config(self._ps_processor_config)
-
-    _dml_data: DoubleMLMEDData
-    _learner: dict[str, Any]
 
     @property
     def outcome(self) -> str:
@@ -510,10 +511,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
             if self.n_folds_inner == 1:
                 _check_subsample_arms(self._smpls_inner[self._i_rep], self.treated, self.treatment_level)
             # Get inner samples conditional on treatment:
-            smpls_inner_d1 = []
-            for fold in self._smpls_inner[self._i_rep]:
-                _, inner_smpls_d1 = _get_cond_smpls(fold, self.treated)
-                smpls_inner_d1.append(inner_smpls_d1)
+            smpls_inner_d1 = [_get_cond_smpls(fold, self.treated)[1] for fold in self._smpls_inner[self._i_rep]]
 
             if G_external:
                 # expect per-inner-fold keys ml_G_inner_i
@@ -526,7 +524,6 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
                     "models": None,
                 }
             else:
-
                 G_hat = _double_dml_cv_predict_by_fold(
                     estimator=self._learner["ml_G"],
                     estimator_name="ml_G",
@@ -542,7 +539,6 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
             if nested_g_external:
                 nested_g_hat = {"preds": external_predictions["ml_nested_g"], "targets": None, "models": None}
             else:
-
                 # _dml_cv_predict perceives the fitting of the nested estimator as a case where there are multiple
                 # fold specific targets because of the shape of G_hat["preds"]. The method throws a
                 # 'ValueError: shape mismatch' when setting xx[train_index]=y[idx]
@@ -970,9 +966,8 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         if not isinstance(outcome, str):
             raise TypeError("Outcome must be a string." + f"{str(outcome)} of type {str(type(outcome))} provided instead.")
 
-        valid_outcomes = ["factual", "counterfactual"]
-        if outcome not in valid_outcomes:
-            raise ValueError(f"Invalid outcome {outcome}. " + "Valid outcomes " + " or ".join(valid_outcomes) + ".")
+        if outcome not in VALID_OUTCOMES:
+            raise ValueError(f"Invalid outcome {outcome}. " + "Valid outcomes " + " or ".join(VALID_OUTCOMES) + ".")
 
         return outcome
 
