@@ -242,7 +242,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         return_models,
     ):
         x, y = check_X_y(self._dml_data.x, self._dml_data.y, ensure_all_finite=True)
-        x, d = check_X_y(x, self._dml_data.d, ensure_all_finite=True)
+        x, d = check_X_y(x, self._dml_data.d, ensure_all_finite=False)
 
         # Check whether there are external predictions for each parameter.
         m_external = external_predictions["ml_m"] is not None
@@ -314,10 +314,10 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         external_predictions,
         return_models=False,
     ):
-        x, y = check_X_y(self._dml_data.x, self._dml_data.y, ensure_all_finite=True)
-        x, d = check_X_y(x, self._dml_data.d, ensure_all_finite=True)
+        x, y = check_X_y(self._dml_data.x, self._dml_data.y, ensure_all_finite=False)
+        x, d = check_X_y(x, self._dml_data.d, ensure_all_finite=False)
 
-        x, m = check_X_y(x, self._dml_data.m, ensure_all_finite=True, multi_output=True)
+        x, m = check_X_y(x, self._dml_data.m, ensure_all_finite=False, multi_output=True)
         xm = np.column_stack((x, m))
 
         # Check whether there are external predictions for each parameter.
@@ -545,8 +545,8 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         )
 
     def _nuisance_tuning_optuna(self, optuna_params, scoring_methods, cv, optuna_settings):
-        x, y = check_X_y(self._dml_data.x, self._dml_data.y, ensure_all_finite=True)
-        x, d = check_X_y(x, self._dml_data.d, ensure_all_finite=True)
+        x, y = check_X_y(self._dml_data.x, self._dml_data.y, ensure_all_finite=False)
+        x, d = check_X_y(x, self._dml_data.d, ensure_all_finite=False)
 
         if scoring_methods is None:
             scoring_methods = {"ml_g": None, "ml_m": None, "ml_G": None, "ml_M": None, "ml_nested_g": None}
