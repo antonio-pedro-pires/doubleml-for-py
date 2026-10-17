@@ -53,14 +53,14 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         The outcome parameter to estimate.
         - 'factual': Estimate the factual outcome :math:`E[Y(d, M(d))]`.
         - 'counterfactual': Estimate the counterfactual outcome :math:`E[Y(d, M(d'))]`.
-        where :math:`d' \neq d
+        where :math:`d' \\neq d`.
 
     treatment_level : int
         The treatment level :math:`d`.
 
     score : str
         A str (``'efficient-alt'``)  specifying the score function to use.
-        Default is 'efficient-alt'.
+        The only option currently available is 'efficient-alt'.
 
     n_folds : int
         Number of folds.
