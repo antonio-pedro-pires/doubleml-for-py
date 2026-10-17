@@ -38,16 +38,25 @@ class DoubleMLMEDData(DoubleMLData):
          treatment variables should be added as covariates.
          Default is ``True``.
      force_all_x_finite : bool, optional
-         Indicates whether to force there are missing or infinite
+         Indicates whether to raise an error if there are missing or infinite
          values in the covariates :math:`X`.
+         Possible values are: ``True`` (neither missings np.nan, pd.NA nor
+         infinite values np.inf are allowed), ``False`` (missings and infinite
+         values are allowed), ``allow-nan`` (only missings are allowed).
          Default is ``True``.
      force_all_d_finite : bool, optional
          Indicates whether to raise an error if there are missing or infinite
          values in the treatment variable :math:`D`.
+         Possible values are: ``True`` (neither missings np.nan, pd.NA nor
+         infinite values np.inf are allowed), ``False`` (missings and infinite
+         values are allowed), ``allow-nan`` (only missings are allowed).
          Default is ``True``.
      force_all_m_finite : bool, optional
          Indicates whether to raise an error if there are missing or infinite
          values in the mediators :math:`M`.
+         Possible values are: ``True`` (neither missings np.nan, pd.NA nor
+         infinite values np.inf are allowed), ``False`` (missings and infinite
+         values are allowed), ``allow-nan`` (only missings are allowed).
          Default is ``True``.
 
     Examples
@@ -171,14 +180,23 @@ class DoubleMLMEDData(DoubleMLData):
         force_all_x_finite : bool, optional
             Indicates whether to raise an error if there are missing or
             infinite values in the covariates :math:`X`.
+            Possible values are: ``True`` (neither missings np.nan, pd.NA nor
+            infinite values np.inf are allowed), ``False`` (missings and infinite
+            values are allowed), ``allow-nan`` (only missings are allowed).
             Default is ``True``.
         force_all_d_finite : bool, optional
             Indicates whether to raise an error if there are missing or
             infinite values in the treatment variable :math:`D`.
+            Possible values are: ``True`` (neither missings np.nan, pd.NA nor
+            infinite values np.inf are allowed), ``False`` (missings and infinite
+            values are allowed), ``allow-nan`` (only missings are allowed).
             Default is ``True``.
         force_all_m_finite : bool, optional
             Indicates whether to raise an error if there are missing or
             infinite values in the mediators :math:`M`.
+            Possible values are: ``True`` (neither missings np.nan, pd.NA nor
+            infinite values np.inf are allowed), ``False`` (missings and infinite
+            values are allowed), ``allow-nan`` (only missings are allowed).
             Default is ``True``.
 
         Returns
