@@ -248,7 +248,7 @@ class DoubleMLMEDData(DoubleMLData):
             force_all_x_finite=force_all_x_finite,
             force_all_d_finite=force_all_d_finite,
         )
-        m = check_array(m, ensure_2d=False, allow_nd=False, ensure_all_finite=force_all_m_finite)
+        m = check_array(m, ensure_2d=False, allow_nd=False, ensure_all_finite=force_all_m_finite, input_name="m")
         m = _assure_2d_array(m)
 
         if m.shape[1] == 1:
