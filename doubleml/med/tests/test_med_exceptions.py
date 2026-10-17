@@ -358,3 +358,18 @@ def test_non_finite_inner_predictions_name_learner(dml_data, learner_linear):
     msg = r"Predictions from learner _NanRegressor\(\) for ml_G are not finite\."
     with pytest.raises(ValueError, match=msg):
         med_obj.fit()
+
+
+@pytest.mark.ci
+def test_med_callable_score_exception(dml_data, learner_linear):
+    """Test that DoubleMLMED rejects a callable score."""
+    msg = r"score should be a string"
+    with pytest.raises(TypeError, match=msg):
+        DoubleMLMED(
+            obj_dml_data=dml_data,
+            outcome="factual",
+            treatment_level=1,
+            ml_m=learner_linear["ml_m"],
+            ml_g=learner_linear["ml_g"],
+            score=lambda y, d, g_hat, m_hat, smpls: (y, d),
+        )

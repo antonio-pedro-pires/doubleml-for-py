@@ -466,8 +466,6 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         # Check whether there are external predictions for each parameter.
         m_external = external_predictions["ml_m"] is not None
         M_external = external_predictions["ml_M"] is not None
-        G_external = external_predictions["ml_G"] is not None
-        nested_g_external = external_predictions["ml_nested_g"] is not None
 
         # Get samples conditional on treatment:
         smpls_d0, smpls_d1 = _get_cond_smpls(smpls, self.treated)
@@ -504,147 +502,14 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
             )
         M_hat["preds"] = self._ps_processor.adjust_ps(M_hat["preds"], d, cv=smpls, learner_name="ml_M")
 
-        inner_predictions = {}
-        inner_targets = {}
-        inner_models = {}
         if self.double_sample_splitting:
-            if self.n_folds_inner == 1:
-                _check_subsample_arms(self._smpls_inner[self._i_rep], self.treated, self.treatment_level)
-            # Get inner samples conditional on treatment:
-            smpls_inner_d1 = [_get_cond_smpls(fold, self.treated)[1] for fold in self._smpls_inner[self._i_rep]]
-
-            if G_external:
-                # expect per-inner-fold keys ml_G_inner_i
-                _check_inner_g_external_predictions(external_predictions, self.n_folds)
-                G_hat_inner = [external_predictions[name] for name in _inner_g_learner_names(self.n_folds)]
-                G_hat = {
-                    "preds": external_predictions["ml_G"],
-                    "preds_inner": G_hat_inner,
-                    "targets": self._dml_data.y,
-                    "models": None,
-                }
-            else:
-                G_hat = _double_dml_cv_predict_by_fold(
-                    estimator=self._learner["ml_G"],
-                    estimator_name="ml_G",
-                    x=xm,
-                    y=y,
-                    smpls=smpls_d1,
-                    smpls_inner=smpls_inner_d1,
-                    n_jobs=n_jobs_cv,
-                    est_params=self._get_params("ml_G"),
-                    method=self._predict_method["ml_G"],
-                )
-
-            if nested_g_external:
-                nested_g_hat = {"preds": external_predictions["ml_nested_g"], "targets": None, "models": None}
-            else:
-                # _dml_cv_predict perceives the fitting of the nested estimator as a case where there are multiple
-                # fold specific targets because of the shape of G_hat["preds"]. The method throws a
-                # 'ValueError: shape mismatch' when setting xx[train_index]=y[idx]
-                # (line 120 in doubleml/utils/_estimation.py). In order to avoid this error, it's necessary to
-                # feed the method a 'y' parameter whose subarrays match the 'smpls' parameter's subarrays shapes,
-                # which is exactly what the following line does.
-                if self.n_folds_inner == 1:
-                    # the nested estimator is fitted on subsample B only, the units ml_G has predictions for
-                    smpls_nested = [
-                        (np.intersect1d(train_d0, inner_fold[0][1]), test)
-                        for (train_d0, test), inner_fold in zip(smpls_d0, self._smpls_inner[self._i_rep])
-                    ]
-                else:
-                    smpls_nested = smpls_d0
-                if G_external:
-                    _check_inner_g_external_values(G_hat["preds_inner"], smpls_nested)
-                G_hat_inner_preds = [G_hat_preds[train] for (train, _), G_hat_preds in zip(smpls_nested, G_hat["preds_inner"])]
-
-                nested_g_hat = _dml_cv_predict(
-                    self._learner["ml_nested_g"],
-                    x,
-                    G_hat_inner_preds,
-                    smpls=smpls_nested,
-                    n_jobs=n_jobs_cv,
-                    est_params=self._get_params("ml_nested_g"),
-                    method=self._predict_method["ml_nested_g"],
-                    return_models=return_models,
-                )
-            # store inner predictions as separate keys per inner fold
-            inner_predictions = {_inner_g_learner_name(i): G_hat["preds_inner"][i] for i in range(len(G_hat["preds_inner"]))}
-            targets_inner = G_hat.get("targets_inner")
-            inner_targets = {
-                _inner_g_learner_name(i): targets_inner[i] if targets_inner is not None and i < len(targets_inner) else None
-                for i in range(len(G_hat.get("preds_inner", [])))
-            }
-            # the flat list of inner models is ordered by outer fold, with one model per inner fold
-            n_inner = len(G_hat["models"]) // self.n_folds if G_hat["models"] is not None else None
-            inner_models = {
-                _inner_g_learner_name(i): G_hat["models"][i * n_inner : (i + 1) * n_inner] if n_inner is not None else None
-                for i in range(len(G_hat.get("preds_inner", [])))
-            }
-
+            estimate_G = self._estimate_G_double_split
         else:
-            # The model of each fold is fitted on the training sample of the fold only. It predicts the observations of the
-            # fold (used in the score) and the observations of its training sample with D = 1-d (the targets of
-            # ml_nested_g). Cross-fitted predictions of ml_G cannot serve as targets, because the target of an observation
-            # of another fold is predicted by a model that has been fitted on the observations of this fold.
-            if G_external:
-                _check_inner_g_external_predictions(external_predictions, self.n_folds)
-                G_hat = {
-                    "preds": external_predictions["ml_G"],
-                    "preds_inner": [external_predictions[name] for name in _inner_g_learner_names(self.n_folds)],
-                    "targets": None,
-                    "models": None,
-                }
-            else:
-                G_hat = _dml_cv_predict(
-                    self.learner["ml_G"],
-                    x=xm,
-                    y=y,
-                    smpls=smpls_d1,
-                    n_jobs=n_jobs_cv,
-                    est_params=self._get_params("ml_G"),
-                    method=self._predict_method["ml_G"],
-                    return_models=True,
-                )
-                n_obs = x.shape[0]
-                G_hat["preds_inner"] = []
-                G_hat["targets_inner"] = []
-                for (train_d0, _), fold_model in zip(smpls_d0, G_hat["models"]):
-                    preds_fold = np.full(n_obs, np.nan)
-                    preds_fold[train_d0] = _predict_with_method(fold_model, xm[train_d0], self._predict_method["ml_G"])
-                    targets_fold = np.full(n_obs, np.nan)
-                    targets_fold[train_d0] = y[train_d0]
-                    G_hat["preds_inner"].append(preds_fold)
-                    G_hat["targets_inner"].append(targets_fold)
-                if not return_models:
-                    G_hat["models"] = None
+            estimate_G = self._estimate_G_single_split
+        G_hat, nested_g_hat, inner_predictions, inner_targets, inner_models = estimate_G(
+            x, xm, y, smpls_d0, smpls_d1, n_jobs_cv, external_predictions, return_models
+        )
 
-            if nested_g_external:
-                nested_g_hat = {"preds": external_predictions["ml_nested_g"], "targets": None, "models": None}
-            else:
-                # fold specific targets, see the comment of the double sample splitting
-                if G_external:
-                    _check_inner_g_external_values(G_hat["preds_inner"], smpls_d0)
-                G_hat_inner_preds = [G_hat["preds_inner"][i][train] for i, (train, _) in enumerate(smpls_d0)]
-                nested_g_hat = _dml_cv_predict(
-                    self.learner["ml_nested_g"],
-                    x=x,
-                    y=G_hat_inner_preds,
-                    smpls=smpls_d0,
-                    n_jobs=n_jobs_cv,
-                    est_params=self._get_params("ml_nested_g"),
-                    method=self._predict_method["ml_nested_g"],
-                    return_models=return_models,
-                )
-            # the entries ml_G_inner_i hold the predictions of the model of the fold i for its training sample
-            inner_predictions = {_inner_g_learner_name(i): G_hat["preds_inner"][i] for i in range(self.n_folds)}
-            inner_targets = {
-                _inner_g_learner_name(i): G_hat["targets_inner"][i] if "targets_inner" in G_hat else None
-                for i in range(self.n_folds)
-            }
-            inner_models = {
-                _inner_g_learner_name(i): [G_hat["models"][i]] if G_hat["models"] is not None else None
-                for i in range(self.n_folds)
-            }
         # ml_G estimates E[Y|D=d,M,X], so its predictions are compared with the outcome of the observations with D = d. The
         # nested estimator has no observed outcome: its predictions are compared with the predictions of ml_G for the
         # observations with D = 1-d, which are the targets of the nested estimation.
@@ -686,6 +551,222 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         psi_elements = {"psi_a": psi_a, "psi_b": psi_b}
 
         return psi_elements, preds
+
+    def _estimate_G_double_split(
+        self,
+        x: np.ndarray,
+        xm: np.ndarray,
+        y: np.ndarray,
+        smpls_d0: list[tuple[np.ndarray, np.ndarray]],
+        smpls_d1: list[tuple[np.ndarray, np.ndarray]],
+        n_jobs_cv: Optional[int],
+        external_predictions: dict[str, Any],
+        return_models: bool,
+    ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
+        """
+        Estimate ml_G and ml_nested_g with double sample splitting (Algorithm 2 of Farbmacher et al., 2022).
+
+        Parameters
+        ----------
+        x : np.ndarray
+            Covariates of shape ``(n_obs, n_covariates)``.
+        xm : np.ndarray
+            Covariates and mediator of shape ``(n_obs, n_covariates + 1)``.
+        y : np.ndarray
+            Outcome of shape ``(n_obs,)``.
+        smpls_d0, smpls_d1 : list of tuple
+            Outer folds with the training sample restricted to the observations with D != d and D = d.
+        n_jobs_cv : int or None
+            Number of jobs for the cross-fitting.
+        external_predictions : dict
+            External predictions per learner (``None`` for learners that are estimated).
+        return_models : bool
+            Whether the fitted models are returned.
+
+        Returns
+        -------
+        tuple
+            ``(G_hat, nested_g_hat, inner_predictions, inner_targets, inner_models)``, where the last three are
+            dictionaries keyed by the names of the inner entries ``ml_G_inner_i``.
+        """
+        G_external = external_predictions["ml_G"] is not None
+        nested_g_external = external_predictions["ml_nested_g"] is not None
+
+        if self.n_folds_inner == 1:
+            _check_subsample_arms(self._smpls_inner[self._i_rep], self.treated, self.treatment_level)
+        # Get inner samples conditional on treatment:
+        smpls_inner_d1 = [_get_cond_smpls(fold, self.treated)[1] for fold in self._smpls_inner[self._i_rep]]
+
+        if G_external:
+            # expect per-inner-fold keys ml_G_inner_i
+            _check_inner_g_external_predictions(external_predictions, self.n_folds)
+            G_hat_inner = [external_predictions[name] for name in _inner_g_learner_names(self.n_folds)]
+            G_hat = {
+                "preds": external_predictions["ml_G"],
+                "preds_inner": G_hat_inner,
+                "targets": self._dml_data.y,
+                "models": None,
+            }
+        else:
+            G_hat = _double_dml_cv_predict_by_fold(
+                estimator=self._learner["ml_G"],
+                estimator_name="ml_G",
+                x=xm,
+                y=y,
+                smpls=smpls_d1,
+                smpls_inner=smpls_inner_d1,
+                n_jobs=n_jobs_cv,
+                est_params=self._get_params("ml_G"),
+                method=self._predict_method["ml_G"],
+            )
+
+        if nested_g_external:
+            nested_g_hat = {"preds": external_predictions["ml_nested_g"], "targets": None, "models": None}
+        else:
+            # _dml_cv_predict perceives the fitting of the nested estimator as a case where there are multiple
+            # fold specific targets because of the shape of G_hat["preds"]. The method throws a
+            # 'ValueError: shape mismatch' when setting xx[train_index]=y[idx]
+            # (line 120 in doubleml/utils/_estimation.py). In order to avoid this error, it's necessary to
+            # feed the method a 'y' parameter whose subarrays match the 'smpls' parameter's subarrays shapes,
+            # which is exactly what the following line does.
+            if self.n_folds_inner == 1:
+                # the nested estimator is fitted on subsample B only, the units ml_G has predictions for
+                smpls_nested = [
+                    (np.intersect1d(train_d0, inner_fold[0][1]), test)
+                    for (train_d0, test), inner_fold in zip(smpls_d0, self._smpls_inner[self._i_rep])
+                ]
+            else:
+                smpls_nested = smpls_d0
+            if G_external:
+                _check_inner_g_external_values(G_hat["preds_inner"], smpls_nested)
+            G_hat_inner_preds = [G_hat_preds[train] for (train, _), G_hat_preds in zip(smpls_nested, G_hat["preds_inner"])]
+
+            nested_g_hat = _dml_cv_predict(
+                self._learner["ml_nested_g"],
+                x,
+                G_hat_inner_preds,
+                smpls=smpls_nested,
+                n_jobs=n_jobs_cv,
+                est_params=self._get_params("ml_nested_g"),
+                method=self._predict_method["ml_nested_g"],
+                return_models=return_models,
+            )
+        # store inner predictions as separate keys per inner fold
+        inner_predictions = {_inner_g_learner_name(i): G_hat["preds_inner"][i] for i in range(len(G_hat["preds_inner"]))}
+        targets_inner = G_hat.get("targets_inner")
+        inner_targets = {
+            _inner_g_learner_name(i): targets_inner[i] if targets_inner is not None and i < len(targets_inner) else None
+            for i in range(len(G_hat.get("preds_inner", [])))
+        }
+        # the flat list of inner models is ordered by outer fold, with one model per inner fold
+        n_inner = len(G_hat["models"]) // self.n_folds if G_hat["models"] is not None else None
+        inner_models = {
+            _inner_g_learner_name(i): G_hat["models"][i * n_inner : (i + 1) * n_inner] if n_inner is not None else None
+            for i in range(len(G_hat.get("preds_inner", [])))
+        }
+
+        return G_hat, nested_g_hat, inner_predictions, inner_targets, inner_models
+
+    def _estimate_G_single_split(
+        self,
+        x: np.ndarray,
+        xm: np.ndarray,
+        y: np.ndarray,
+        smpls_d0: list[tuple[np.ndarray, np.ndarray]],
+        smpls_d1: list[tuple[np.ndarray, np.ndarray]],
+        n_jobs_cv: Optional[int],
+        external_predictions: dict[str, Any],
+        return_models: bool,
+    ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
+        """
+        Estimate ml_G and ml_nested_g on the training sample of each fold, without a second sample split.
+
+        Parameters
+        ----------
+        x : np.ndarray
+            Covariates of shape ``(n_obs, n_covariates)``.
+        xm : np.ndarray
+            Covariates and mediator of shape ``(n_obs, n_covariates + 1)``.
+        y : np.ndarray
+            Outcome of shape ``(n_obs,)``.
+        smpls_d0, smpls_d1 : list of tuple
+            Outer folds with the training sample restricted to the observations with D != d and D = d.
+        n_jobs_cv : int or None
+            Number of jobs for the cross-fitting.
+        external_predictions : dict
+            External predictions per learner (``None`` for learners that are estimated).
+        return_models : bool
+            Whether the fitted models are returned.
+
+        Returns
+        -------
+        tuple
+            ``(G_hat, nested_g_hat, inner_predictions, inner_targets, inner_models)``, where the last three are
+            dictionaries keyed by the names of the inner entries ``ml_G_inner_i``.
+        """
+        G_external = external_predictions["ml_G"] is not None
+        nested_g_external = external_predictions["ml_nested_g"] is not None
+
+        # The model of each fold is fitted on the training sample of the fold only. It predicts the observations of the
+        # fold (used in the score) and the observations of its training sample with D = 1-d (the targets of
+        # ml_nested_g). Cross-fitted predictions of ml_G cannot serve as targets, because the target of an observation
+        # of another fold is predicted by a model that has been fitted on the observations of this fold.
+        if G_external:
+            _check_inner_g_external_predictions(external_predictions, self.n_folds)
+            G_hat = {
+                "preds": external_predictions["ml_G"],
+                "preds_inner": [external_predictions[name] for name in _inner_g_learner_names(self.n_folds)],
+                "targets": None,
+                "models": None,
+            }
+        else:
+            G_hat = _dml_cv_predict(
+                self._learner["ml_G"],
+                x=xm,
+                y=y,
+                smpls=smpls_d1,
+                n_jobs=n_jobs_cv,
+                est_params=self._get_params("ml_G"),
+                method=self._predict_method["ml_G"],
+                return_models=True,
+            )
+            n_obs = x.shape[0]
+            G_hat["preds_inner"] = []
+            for (train_d0, _), fold_model in zip(smpls_d0, G_hat["models"]):
+                preds_fold = np.full(n_obs, np.nan)
+                preds_fold[train_d0] = _predict_with_method(fold_model, xm[train_d0], self._predict_method["ml_G"])
+                G_hat["preds_inner"].append(preds_fold)
+            if not return_models:
+                G_hat["models"] = None
+
+        if nested_g_external:
+            nested_g_hat = {"preds": external_predictions["ml_nested_g"], "targets": None, "models": None}
+        else:
+            # fold specific targets, see the comment of the double sample splitting
+            if G_external:
+                _check_inner_g_external_values(G_hat["preds_inner"], smpls_d0)
+            G_hat_inner_preds = [G_hat["preds_inner"][i][train] for i, (train, _) in enumerate(smpls_d0)]
+            nested_g_hat = _dml_cv_predict(
+                self._learner["ml_nested_g"],
+                x=x,
+                y=G_hat_inner_preds,
+                smpls=smpls_d0,
+                n_jobs=n_jobs_cv,
+                est_params=self._get_params("ml_nested_g"),
+                method=self._predict_method["ml_nested_g"],
+                return_models=return_models,
+            )
+        # the entries ml_G_inner_i hold the predictions of the model of the fold i for its training sample
+        inner_predictions = {_inner_g_learner_name(i): G_hat["preds_inner"][i] for i in range(self.n_folds)}
+        # The inner entries have no targets: the model of fold i is evaluated on its training sample with D = 1-d, where
+        # the outcome is not the quantity ml_G estimates.
+        inner_targets = dict.fromkeys(_inner_g_learner_names(self.n_folds))
+        inner_models = {
+            _inner_g_learner_name(i): [G_hat["models"][i]] if G_hat["models"] is not None else None
+            for i in range(self.n_folds)
+        }
+
+        return G_hat, nested_g_hat, inner_predictions, inner_targets, inner_models
 
     def _score_elements(
         self,
@@ -807,7 +888,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
                 x=xm[treated_mask],
                 learner=self._learner["ml_G"],
                 param_grid_func=optuna_params["ml_G"],
-                scoring_method=scoring_methods.get("ml_G"),
+                scoring_method=scoring_methods["ml_G"],
                 cv=cv,
                 optuna_settings=optuna_settings,
                 learner_name="ml_G",

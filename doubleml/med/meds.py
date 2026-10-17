@@ -536,10 +536,7 @@ class DoubleMLMEDS(SampleSplittingMixin):
         # combine the estimates and model_ids
         framework_list = [None] * len(self.models_ids)
 
-        for idx, (model_id, (outcome, treatment)) in enumerate(zip(self.models_ids, self._id_pairs)):
-            assert fitted_models[idx].outcome == outcome
-            assert fitted_models[idx].treatment_level == treatment
-
+        for idx, model_id in enumerate(self.models_ids):
             self._modeldict[model_id] = fitted_models[idx]
             framework_list[idx] = self._modeldict[model_id].framework
 
@@ -712,7 +709,6 @@ class DoubleMLMEDS(SampleSplittingMixin):
         }
 
         for score, (outcome, treatment) in zip(self.models_ids, self._id_pairs):
-            assert f"{outcome}_{treatment}" == score
             learners = pot_learners if outcome == "factual" else counter_learners
 
             model = DoubleMLMED(

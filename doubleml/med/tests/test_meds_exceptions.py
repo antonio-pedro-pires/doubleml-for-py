@@ -212,3 +212,11 @@ def test_external_predictions_must_be_a_dictionary(meds_obj):
     msg = "external_predictions must be a dictionary. Object of type <class 'list'> passed."
     with pytest.raises(TypeError, match=re.escape(msg)):
         meds_obj.fit(external_predictions=[1])
+
+
+@pytest.mark.ci
+def test_meds_callable_score_exception(dml_data, learners):
+    """Test that DoubleMLMEDS rejects a callable score."""
+    msg = r"score should be a string"
+    with pytest.raises(TypeError, match=msg):
+        DoubleMLMEDS(obj_dml_data=dml_data, score=lambda y, d, g_hat, m_hat, smpls: (y, d), **learners)
