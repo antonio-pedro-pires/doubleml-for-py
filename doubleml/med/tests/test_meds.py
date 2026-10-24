@@ -1,4 +1,4 @@
-"""Test the estimates, effects and bootstrap of DoubleMLMEDS."""
+"""Test the estimates and effects of DoubleMLMEDS."""
 
 import numpy as np
 import pandas as pd
@@ -145,18 +145,6 @@ def test_effects_binary_treats(fit_objs, individual_med_objs):
 
 
 @pytest.mark.ci
-def test_bootstrap(fit_objs):
-    """Test that bootstrapping DoubleMLMEDS matches bootstrapping the individual models."""
-    meds_obj, individual_med_objs = fit_objs
-    np.random.seed(123)
-    meds_obj.bootstrap()
-    np.random.seed(123)
-    individual_med_objs.bootstrap()
-
-    assert np.allclose(meds_obj.boot_t_stat, individual_med_objs.boot_t_stat)
-
-
-@pytest.mark.ci
 def test_effects_summary_reflects_latest_fit():
     """Test that effects_summary is computed from the latest fit and not taken from a previous one."""
     np.random.seed(3141)
@@ -279,7 +267,6 @@ def test_confint_requires_fit(meds_ci_obj):
 def test_confint_has_no_joint_option(meds_ci_obj):
     """Test that confint offers no joint confidence intervals."""
     meds_ci_obj.fit()
-    meds_ci_obj.bootstrap(n_rep_boot=50)
     with pytest.raises(TypeError, match="joint"):
         meds_ci_obj.confint(joint=True)
 
@@ -310,3 +297,15 @@ def test_meds_models_ids_and_valid_outcomes(meds_obj):
     assert meds_obj.models_ids == ["factual_0", "factual_1", "counterfactual_0", "counterfactual_1"]
     assert meds_obj.valid_outcomes == ["factual", "counterfactual"]
     assert type(meds_obj.valid_outcomes) is list
+
+
+@pytest.mark.ci
+def test_med_bootstrap_still_available(learner_linear):
+    """Test that DoubleMLMED.bootstrap still yields finite t-statistics of the expected shape."""
+    np.random.seed(3141)
+    data = make_med_data(n_obs=200)
+    learners = {k: v for k, v in learner_linear.items() if k in ["ml_g", "ml_m"]}
+    med_obj = DoubleMLMED(data, outcome="factual", treatment_level=1, n_folds=3, n_rep=2, **learners)
+    med_obj.fit().bootstrap(n_rep_boot=50)
+    assert med_obj.boot_t_stat.shape == (50, 1, 2)
+    assert np.all(np.isfinite(med_obj.boot_t_stat))

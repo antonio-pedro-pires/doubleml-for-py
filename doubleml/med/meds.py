@@ -401,40 +401,6 @@ class DoubleMLMEDS(SampleSplittingMixin):
         return self._framework
 
     @property
-    def n_rep_boot(self) -> Optional[int]:
-        """
-        The number of bootstrap replications.
-        """
-        if self._framework is None:
-            n_rep_boot = None
-        else:
-            n_rep_boot = self._framework.n_rep_boot
-        return n_rep_boot
-
-    @property
-    def boot_method(self) -> Optional[str]:
-        """
-        The method to construct the bootstrap replications.
-        """
-        if self._framework is None:
-            method = None
-        else:
-            method = self._framework.boot_method
-        return method
-
-    @property
-    def boot_t_stat(self) -> Optional[np.ndarray]:
-        """
-        Bootstrapped t-statistics for the causal parameter(s) after calling :meth:`fit` and :meth:`bootstrap`
-         (shape (``n_rep_boot``, ``n_treatment_levels``, ``n_rep``)).
-        """
-        if self._framework is None:
-            boot_t_stat = None
-        else:
-            boot_t_stat = self._framework.boot_t_stat
-        return boot_t_stat
-
-    @property
     def modeldict(self) -> dict[str, DoubleMLMED]:
         """
         The list of models for each level.
@@ -825,42 +791,3 @@ class DoubleMLMEDS(SampleSplittingMixin):
         return tune_res if return_tune_res else None
 
     tune_ml_models.__doc__ = TUNE_ML_MODELS_DOC
-
-    def bootstrap(self, method: str = "normal", n_rep_boot: int = 500) -> "DoubleMLMEDS":
-        """
-        Multiplier bootstrap for DoubleML models.
-
-        Parameters
-        ----------
-        method : str
-            A str (``'Bayes'``, ``'normal'`` or ``'wild'``) specifying the multiplier bootstrap method.
-            Default is ``'normal'``
-
-        n_rep_boot : int
-            The number of bootstrap replications.
-
-        Returns
-        -------
-        self : object
-
-        Examples
-        --------
-        >>> import numpy as np
-        >>> import doubleml as dml
-        >>> from doubleml.med.datasets import make_med_data
-        >>> from sklearn.linear_model import LogisticRegression, Lasso
-        >>> np.random.seed(3141)
-        >>> ml_g = Lasso()
-        >>> ml_G = Lasso()
-        >>> ml_nested_g = Lasso()
-        >>> ml_m = LogisticRegression(l1_ratio=1, solver="liblinear", max_iter=1000)
-        >>> ml_M = LogisticRegression(l1_ratio=1, solver="liblinear", max_iter=1000)
-        >>> obj_dml_data = make_med_data()
-        >>> dml_meds_obj = dml.DoubleMLMEDS(obj_dml_data, ml_m, ml_g, ml_G, ml_M, ml_nested_g)
-        >>> dml_meds_obj.fit().bootstrap().boot_t_stat  # doctest: +SKIP
-        """
-        if self._framework is None:
-            raise ValueError("Apply fit() before bootstrap().")
-        self._framework.bootstrap(method=method, n_rep_boot=n_rep_boot)
-
-        return self

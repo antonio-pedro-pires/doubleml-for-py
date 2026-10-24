@@ -65,7 +65,6 @@ def test_meds_defaults(dml_meds_fixture):
     assert dml_meds_fixture.se is None
     assert dml_meds_fixture.all_coef is None
     assert dml_meds_fixture.all_se is None
-    assert dml_meds_fixture.boot_t_stat is None
     pd.testing.assert_frame_equal(dml_meds_fixture.summary, pd.DataFrame(columns=["coef", "std err", "t", "P>|t|"]))
 
     dml_meds_fixture.fit()

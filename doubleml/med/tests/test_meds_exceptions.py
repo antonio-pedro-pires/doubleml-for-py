@@ -91,13 +91,6 @@ def test_meds_confint_before_fit_exception(meds_obj):
 
 
 @pytest.mark.ci
-def test_meds_bootstrap_before_fit_exception(meds_obj):
-    """Test that bootstrap raises a ValueError before fit."""
-    with pytest.raises(ValueError, match=re.escape("Apply fit() before bootstrap().")):
-        meds_obj.bootstrap()
-
-
-@pytest.mark.ci
 def test_meds_external_invalid_model_id_raises(dml_data, learner_linear):
     """Test that external predictions with keys that are no model id raise a ValueError."""
     meds_obj = DoubleMLMEDS(obj_dml_data=dml_data, **learner_linear)

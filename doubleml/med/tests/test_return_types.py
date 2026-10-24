@@ -84,27 +84,18 @@ def test_meds_properties_lifecycle(dml_data, learner_linear):
     meds_obj = DoubleMLMEDS(obj_dml_data=dml_data, n_folds=2, n_rep=1, **learner_linear)
 
     # Before fit: every result-related property is None and the effects summary is empty.
-    for prop in ["coef", "all_coef", "se", "all_se", "t_stat", "pval", "n_rep_boot", "boot_method", "boot_t_stat", "effects"]:
+    for prop in ["coef", "all_coef", "se", "all_se", "t_stat", "pval", "effects"]:
         assert getattr(meds_obj, prop) is None
     assert meds_obj.effects_summary.empty
 
-    # After fit: estimates are populated; bootstrap-related properties remain None.
+    # After fit: estimates are populated.
     meds_obj.fit()
     for prop in ["coef", "all_coef", "se", "all_se", "t_stat", "pval"]:
         assert getattr(meds_obj, prop) is not None
-    assert meds_obj.n_rep_boot is None
-    assert meds_obj.boot_method is None
-    assert meds_obj.boot_t_stat is None
 
     # Accessing effects_summary computes the effects automatically.
     assert not meds_obj.effects_summary.empty
     assert meds_obj.effects is not None
-
-    # After bootstrap: bootstrap-related properties are populated.
-    meds_obj.bootstrap()
-    assert meds_obj.n_rep_boot is not None
-    assert meds_obj.boot_method is not None
-    assert meds_obj.boot_t_stat is not None
 
 
 @pytest.mark.ci
@@ -149,9 +140,3 @@ def test_med_tune_not_implemented(dml_med_fixture):
     with pytest.raises(NotImplementedError, match="Nuisance tuning using the 'tune' method is not implemented"):
         with pytest.warns(FutureWarning, match="The 'tune' method using grid search or randomized search"):
             dml_obj.tune(param_grids=param_grids)
-
-
-@pytest.mark.ci
-def test_meds_boot_t_stat(fitted_meds_obj):
-    """Test that boot_t_stat of DoubleMLMEDS is None before bootstrap."""
-    assert fitted_meds_obj.boot_t_stat is None
