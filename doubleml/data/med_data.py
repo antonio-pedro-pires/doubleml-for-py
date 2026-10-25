@@ -302,6 +302,7 @@ class DoubleMLMEDData(DoubleMLData):
         if reset_value:
             self._check_disjoint_sets()
             self._set_m()
+            self._binary_meds = self._check_binary_mediators()
 
     @property
     def cluster_cols(self) -> Optional[list[str]]:
@@ -338,6 +339,7 @@ class DoubleMLMEDData(DoubleMLData):
         self._force_all_m_finite = value
         if reset_value:
             self._set_m()
+            self._binary_meds = self._check_binary_mediators()
 
     @property
     def n_meds(self) -> int:

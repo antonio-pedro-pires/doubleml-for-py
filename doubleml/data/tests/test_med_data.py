@@ -453,3 +453,85 @@ def test_data_summary_str_exact():
         "No. Observations: 6\n"
     )
     assert med_data._data_summary_str() == expected
+
+
+@pytest.fixture
+def binary_meds_frame():
+    """
+    Hand-written frame for the binary_meds setter tests.
+
+    Function-scoped on purpose: the tests build a new object per test because the setters mutate it.
+    """
+    return pd.DataFrame(
+        {
+            "y": np.linspace(0.0, 1.0, 8),
+            "d": [0, 1] * 4,
+            "x": np.arange(8, dtype=float),
+            "mb": [0, 1] * 4,
+            "mc": [0.1, 0.5, 0.9, 1.3, 1.7, 2.1, 2.5, 2.9],
+            "m_nan": [np.nan, 1, 0, 1, 0, 1, 0, 1],
+            "m_zero": [0] * 8,
+        }
+    )
+
+
+@pytest.mark.ci
+def test_binary_meds_follows_m_cols(binary_meds_frame):
+    """Test that binary_meds is recomputed for the new mediator after the m_cols setter."""
+    obj = DoubleMLMEDData(binary_meds_frame, "y", "d", ["mb"], x_cols=["x"])
+    assert obj.binary_meds.to_dict() == {"mb": True}
+    obj.m_cols = ["mc"]
+    assert obj.binary_meds.to_dict() == {"mc": False}
+
+
+@pytest.mark.ci
+def test_binary_meds_index_follows_m_cols_order(binary_meds_frame):
+    """Test that the binary_meds index follows the order of m_cols after each setter call."""
+    obj = DoubleMLMEDData(binary_meds_frame, "y", "d", ["mb", "mc"], x_cols=["x"])
+    assert list(obj.binary_meds.index) == ["mb", "mc"]
+    obj.m_cols = ["mc", "mb"]
+    assert list(obj.binary_meds.index) == ["mc", "mb"]
+    assert obj.binary_meds.to_dict() == {"mc": False, "mb": True}
+    obj.m_cols = ["mb"]
+    assert list(obj.binary_meds.index) == ["mb"]
+    assert obj.binary_meds.to_dict() == {"mb": True}
+
+
+@pytest.mark.ci
+def test_binary_meds_follows_force_all_m_finite(binary_meds_frame):
+    """Test that binary_meds is recomputed after the force_all_m_finite setter."""
+    obj = DoubleMLMEDData(binary_meds_frame, "y", "d", ["mb"], x_cols=["x"])
+    assert obj.binary_meds.to_dict() == {"mb": True}
+    obj.force_all_m_finite = False
+    assert obj.binary_meds.to_dict() == {"mb": False}
+    obj.force_all_m_finite = True
+    assert obj.binary_meds.to_dict() == {"mb": True}
+
+
+@pytest.mark.ci
+def test_binary_meds_allow_nan_after_setter(binary_meds_frame):
+    """Test that binary_meds checks the observed values once force_all_m_finite is set to 'allow-nan'."""
+    obj = DoubleMLMEDData(binary_meds_frame, "y", "d", ["m_nan"], x_cols=["x"], force_all_m_finite=False)
+    assert obj.binary_meds.to_dict() == {"m_nan": False}
+    obj.force_all_m_finite = "allow-nan"
+    assert obj.binary_meds.to_dict() == {"m_nan": True}
+
+
+@pytest.mark.ci
+def test_binary_meds_same_value_twice(binary_meds_frame):
+    """Test that setting the same m_cols twice keeps binary_meds (smoke test, not evidence for the refresh)."""
+    obj = DoubleMLMEDData(binary_meds_frame, "y", "d", ["mb"], x_cols=["x"])
+    obj.m_cols = ["mb"]
+    assert obj.binary_meds.to_dict() == {"mb": True}
+    obj.m_cols = ["mb"]
+    assert obj.binary_meds.to_dict() == {"mb": True}
+
+
+# TODO: DATA-Q1 - should a constant mediator count as binary? This pins today's behaviour.
+@pytest.mark.ci
+def test_binary_meds_constant_mediator_is_binary(binary_meds_frame):
+    """Test that a constant all-zero mediator counts as binary after the m_cols setter."""
+    obj = DoubleMLMEDData(binary_meds_frame, "y", "d", ["mc"], x_cols=["x"])
+    assert obj.binary_meds.to_dict() == {"mc": False}
+    obj.m_cols = ["m_zero"]
+    assert obj.binary_meds.to_dict() == {"m_zero": True}
