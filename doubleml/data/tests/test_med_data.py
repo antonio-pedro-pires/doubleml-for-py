@@ -535,3 +535,102 @@ def test_binary_meds_constant_mediator_is_binary(binary_meds_frame):
     assert obj.binary_meds.to_dict() == {"mc": False}
     obj.m_cols = ["m_zero"]
     assert obj.binary_meds.to_dict() == {"m_zero": True}
+
+
+def _snapshot(obj):
+    """Copy of the four attributes that a failed setter must leave unchanged."""
+    return {
+        "m_cols": list(obj.m_cols),
+        "force_all_m_finite": obj.force_all_m_finite,
+        "m": obj.m.copy(),
+        "binary_meds": obj.binary_meds.copy(),
+    }
+
+
+def _assert_unchanged(obj, snapshot):
+    assert obj.m_cols == snapshot["m_cols"]
+    assert obj.force_all_m_finite == snapshot["force_all_m_finite"]
+    assert np.array_equal(obj.m, snapshot["m"])
+    assert obj.binary_meds.equals(snapshot["binary_meds"])
+
+
+@pytest.mark.ci
+@pytest.mark.parametrize("new_flag", [True, "allow-nan"])
+def test_force_all_m_finite_failure_leaves_object_unchanged(binary_meds_frame, new_flag):
+    """Test that a failed force_all_m_finite assignment (infinite mediator) leaves the object unchanged."""
+    df = binary_meds_frame.copy()
+    df["m_inf"] = [np.inf, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0]
+    obj = DoubleMLMEDData(df, "y", "d", ["m_inf"], x_cols=["x"], force_all_m_finite=False)
+    snapshot = _snapshot(obj)
+    with pytest.raises(ValueError, match="Input contains infinity"):
+        obj.force_all_m_finite = new_flag
+    _assert_unchanged(obj, snapshot)
+
+
+@pytest.mark.ci
+@pytest.mark.parametrize("new_flag", [True, "allow-nan"])
+def test_force_all_m_finite_type_error_leaves_object_unchanged(binary_meds_frame, new_flag):
+    """Test that a failed force_all_m_finite assignment (string mediator, TypeError) leaves the object unchanged."""
+    df = binary_meds_frame.copy()
+    df["m_str"] = ["a", "b"] * 4
+    obj = DoubleMLMEDData(df, "y", "d", ["m_str"], x_cols=["x"], force_all_m_finite=False)
+    snapshot = _snapshot(obj)
+    with pytest.raises(TypeError, match=r"unsupported operand type\(s\) for \*\* or pow\(\)"):
+        obj.force_all_m_finite = new_flag
+    _assert_unchanged(obj, snapshot)
+
+
+@pytest.mark.ci
+def test_m_cols_disjoint_failure_leaves_object_unchanged(binary_meds_frame):
+    """Test that a failed m_cols assignment (overlap with x_cols) leaves the object unchanged."""
+    obj = DoubleMLMEDData(binary_meds_frame, "y", "d", ["mb"], x_cols=["x"])
+    snapshot = _snapshot(obj)
+    with pytest.raises(ValueError, match=r"covariate \(``x_cols``\) and mediation variable"):
+        obj.m_cols = ["x"]
+    _assert_unchanged(obj, snapshot)
+
+
+@pytest.mark.ci
+def test_m_cols_infinite_failure_leaves_object_unchanged(binary_meds_frame):
+    """Test that a failed m_cols assignment (infinite mediator) leaves the object unchanged."""
+    df = binary_meds_frame.copy()
+    df["m_inf"] = [np.inf, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0]
+    obj = DoubleMLMEDData(df, "y", "d", ["mb"], x_cols=["x"], force_all_m_finite=True)
+    snapshot = _snapshot(obj)
+    with pytest.raises(ValueError, match="Input contains infinity"):
+        obj.m_cols = ["m_inf"]
+    _assert_unchanged(obj, snapshot)
+
+
+@pytest.mark.ci
+def test_m_cols_type_error_leaves_object_unchanged(binary_meds_frame):
+    """Test that a failed m_cols assignment (string mediator, TypeError) leaves the object unchanged."""
+    df = binary_meds_frame.copy()
+    df["m_str"] = ["a", "b"] * 4
+    obj = DoubleMLMEDData(df, "y", "d", ["mb"], x_cols=["x"], force_all_m_finite=True)
+    snapshot = _snapshot(obj)
+    with pytest.raises(TypeError, match=r"unsupported operand type\(s\) for \*\* or pow\(\)"):
+        obj.m_cols = ["m_str"]
+    _assert_unchanged(obj, snapshot)
+
+
+@pytest.mark.ci
+def test_setter_works_after_failed_assignment(binary_meds_frame):
+    """Test that the m_cols setter still works after a failed assignment."""
+    obj = DoubleMLMEDData(binary_meds_frame, "y", "d", ["mb"], x_cols=["x"])
+    with pytest.raises(ValueError, match=r"covariate \(``x_cols``\) and mediation variable"):
+        obj.m_cols = ["x"]
+    obj.m_cols = ["mc"]
+    assert obj.m_cols == ["mc"]
+    assert obj.binary_meds.to_dict() == {"mc": False}
+
+
+# TODO: DATA-W6 - should an empty m_cols be rejected? This pins today's behaviour.
+@pytest.mark.ci
+def test_m_cols_empty_list_characterization(binary_meds_frame):
+    """Test that an empty m_cols is accepted today and yields an empty m and an empty binary_meds."""
+    obj = DoubleMLMEDData(binary_meds_frame, "y", "d", ["mb"], x_cols=["x"])
+    obj.m_cols = []
+    assert obj.m_cols == []
+    assert obj.m.shape == (8, 0)
+    assert obj.binary_meds.to_dict() == {}

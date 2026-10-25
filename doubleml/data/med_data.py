@@ -298,11 +298,15 @@ class DoubleMLMEDData(DoubleMLData):
             raise ValueError("Invalid mediation variable(s) m_cols: Contains duplicate values.")
         if not set(value).issubset(set(self.all_variables)):
             raise ValueError("Invalid mediation variable(s) m_cols. At least one mediation variable is no data column.")
-        self._m_cols = value
         if reset_value:
-            self._check_disjoint_sets()
-            self._set_m()
-            self._binary_meds = self._check_binary_mediators()
+            # validate the candidate first, assign only after every check passed
+            super()._check_disjoint_sets()
+            self._check_disjoint_sets_m_cols(value)
+            new_m = self._get_m(value, self._force_all_m_finite)
+            new_binary_meds = self._check_binary_mediators(value, self._force_all_m_finite)
+            self._m = new_m
+            self._binary_meds = new_binary_meds
+        self._m_cols = value
 
     @property
     def cluster_cols(self) -> Optional[list[str]]:
@@ -336,10 +340,13 @@ class DoubleMLMEDData(DoubleMLData):
                 )
         elif not isinstance(value, bool):
             raise TypeError("Invalid force_all_m_finite. force_all_m_finite must be True, False or 'allow-nan'.")
-        self._force_all_m_finite = value
         if reset_value:
-            self._set_m()
-            self._binary_meds = self._check_binary_mediators()
+            # validate the candidate first, assign only after every check passed
+            new_m = self._get_m(self.m_cols, value)
+            new_binary_meds = self._check_binary_mediators(self.m_cols, value)
+            self._m = new_m
+            self._binary_meds = new_binary_meds
+        self._force_all_m_finite = value
 
     @property
     def n_meds(self) -> int:
@@ -360,13 +367,20 @@ class DoubleMLMEDData(DoubleMLData):
         m_cols_set = set(self.m_cols)
         return [m_cols_set] + base_optional_col_sets
 
-    def _check_binary_mediators(self) -> pd.Series:
-        is_binary = pd.Series(dtype=bool, index=self.m_cols)
-        if self._force_all_m_finite is False:
+    def _check_binary_mediators(
+        self, m_cols: Optional[list[str]] = None, force_all_m_finite: Optional[Union[bool, str]] = None
+    ) -> pd.Series:
+        # candidate values let the setters validate before assigning; None falls back to the current attributes
+        if m_cols is None:
+            m_cols = self.m_cols
+        if force_all_m_finite is None:
+            force_all_m_finite = self._force_all_m_finite
+        is_binary = pd.Series(dtype=bool, index=m_cols)
+        if force_all_m_finite is False:
             # missing and infinite values may be present, so the mediators are not checked
             is_binary[:] = False
         else:
-            for m_var in self.m_cols:
+            for m_var in m_cols:
                 # for force_all_m_finite='allow-nan' only the observed values are checked, since type_of_target() rejects NaN
                 this_m = self.data.loc[:, m_var].dropna()
                 binary_m = this_m.size > 0 and type_of_target(this_m) == "binary"
@@ -378,9 +392,11 @@ class DoubleMLMEDData(DoubleMLData):
         super()._check_disjoint_sets()
         self._check_disjoint_sets_m_cols()
 
-    def _check_disjoint_sets_m_cols(self) -> None:
-        # Disjointedness check for mediator variables.
-        m_cols_set = set(self.m_cols)
+    def _check_disjoint_sets_m_cols(self, m_cols: Optional[list[str]] = None) -> None:
+        # Disjointedness check for mediator variables; a candidate m_cols is checked before it is assigned.
+        if m_cols is None:
+            m_cols = self.m_cols
+        m_cols_set = set(m_cols)
         y_col_set = {self.y_col}
         x_cols_set = set(self.x_cols)
         d_cols_set = set(self.d_cols)
@@ -403,7 +419,12 @@ class DoubleMLMEDData(DoubleMLData):
                 arg2="``m_cols``",
             )
 
+    def _get_m(self, m_cols: list[str], force_all_m_finite: Union[bool, str]) -> pd.DataFrame:
+        # validates the mediators for the given candidate values without assigning anything
+        m = self.data.loc[:, m_cols]
+        if force_all_m_finite:
+            assert_all_finite(m, allow_nan=force_all_m_finite == "allow-nan")
+        return m
+
     def _set_m(self) -> None:
-        if self._force_all_m_finite:
-            assert_all_finite(self.data.loc[:, self.m_cols], allow_nan=self._force_all_m_finite == "allow-nan")
-        self._m = self.data.loc[:, self.m_cols]
+        self._m = self._get_m(self.m_cols, self._force_all_m_finite)
