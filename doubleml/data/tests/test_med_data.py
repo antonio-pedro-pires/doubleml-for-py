@@ -634,3 +634,37 @@ def test_m_cols_empty_list_characterization(binary_meds_frame):
     assert obj.m_cols == []
     assert obj.m.shape == (8, 0)
     assert obj.binary_meds.to_dict() == {}
+
+
+@pytest.mark.ci
+@pytest.mark.parametrize("flag", ["foo", "Allow-NaN"])
+def test_constructor_rejects_invalid_force_all_m_finite_string(binary_meds_frame, flag):
+    """Test that the constructor rejects a string flag other than 'allow-nan'."""
+    with pytest.raises(ValueError, match="Invalid force_all_m_finite"):
+        DoubleMLMEDData(binary_meds_frame, "y", "d", ["mb"], x_cols=["x"], force_all_m_finite=flag)
+
+
+@pytest.mark.ci
+@pytest.mark.parametrize("flag", [1, None])
+def test_constructor_rejects_non_bool_force_all_m_finite(binary_meds_frame, flag):
+    """Test that the constructor rejects a flag that is neither a bool nor a string."""
+    with pytest.raises(TypeError, match="Invalid force_all_m_finite"):
+        DoubleMLMEDData(binary_meds_frame, "y", "d", ["mb"], x_cols=["x"], force_all_m_finite=flag)
+
+
+@pytest.mark.ci
+@pytest.mark.parametrize("flag", [True, False, "allow-nan"])
+def test_constructor_accepts_valid_force_all_m_finite(binary_meds_frame, flag):
+    """Test that the constructor stores a valid flag as passed, with the same type."""
+    obj = DoubleMLMEDData(binary_meds_frame, "y", "d", ["mb"], x_cols=["x"], force_all_m_finite=flag)
+    assert obj.force_all_m_finite == flag
+    assert type(obj.force_all_m_finite) is type(flag)
+
+
+@pytest.mark.ci
+def test_constructor_checks_force_all_m_finite_before_mediators(binary_meds_frame):
+    """Test that an invalid flag is reported before the mediators are checked for infinity."""
+    df = binary_meds_frame.copy()
+    df["m_inf"] = [np.inf] + [1.0] * 7
+    with pytest.raises(ValueError, match="Invalid force_all_m_finite"):
+        DoubleMLMEDData(df, "y", "d", ["m_inf"], x_cols=["x"], force_all_m_finite="foo")

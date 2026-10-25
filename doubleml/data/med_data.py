@@ -99,8 +99,10 @@ class DoubleMLMEDData(DoubleMLData):
         # we need to set m (needs _data) before call to the super __init__ because of the x_cols setter.
         self.m_cols = m_cols
 
-        # Need to set _force_all_m_finite before _set_m()
-        self._force_all_m_finite = force_all_m_finite
+        # Declare the type of _force_all_m_finite without a value, so the attribute does not exist yet and the setter
+        # only validates and assigns. It has to be set through the setter before _set_m().
+        self._force_all_m_finite: Union[bool, str]
+        self.force_all_m_finite = force_all_m_finite
         self._set_m()
 
         DoubleMLData.__init__(
