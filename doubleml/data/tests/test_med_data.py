@@ -527,7 +527,7 @@ def test_binary_meds_same_value_twice(binary_meds_frame):
     assert obj.binary_meds.to_dict() == {"mb": True}
 
 
-# TODO: DATA-Q1 - should a constant mediator count as binary? This pins today's behaviour.
+# a constant 0/1 mediator is binary, matching binary_treats; DATA-Q1 closed as not-a-bug
 @pytest.mark.ci
 def test_binary_meds_constant_mediator_is_binary(binary_meds_frame):
     """Test that a constant all-zero mediator counts as binary after the m_cols setter."""
