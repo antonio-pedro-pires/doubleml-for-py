@@ -776,7 +776,7 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
         M_hat_preds: Any = None,
         G_hat_preds: Any = None,
         nested_g_hat_preds: Any = None,
-    ) -> tuple[float, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray]:
         if self._outcome == "factual":
             u_hat = y - g_hat_preds
             propensity_score = _normalize_propensity_med(
@@ -786,12 +786,12 @@ class DoubleMLMED(LinearScoreMixin, DoubleML):
                 treatment_level=self.treatment_level,
                 m_preds=m_hat_preds,
             )
-            psi_a = -1.0
+            psi_a = -1.0 * np.ones_like(y)
             psi_b = np.multiply(propensity_score, u_hat) + g_hat_preds
         else:
             u_hat = y - G_hat_preds
             w_hat = G_hat_preds - nested_g_hat_preds
-            psi_a = -1.0
+            psi_a = -1.0 * np.ones_like(y)
             ps1, ps2 = _normalize_propensity_med(
                 self.normalize_ipw,
                 outcome=self._outcome,

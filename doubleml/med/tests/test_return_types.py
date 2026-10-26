@@ -65,6 +65,29 @@ def test_property_types_and_shapes(fitted_dml_obj):
     check_basic_predictions_and_targets(fitted_dml_obj, N_OBS, N_TREAT, N_REP)
 
 
+@pytest.mark.ci
+def test_score_elements_psi_a_has_obs_shape(fitted_dml_obj):
+    """Test that _score_elements returns psi_a as an array of shape (n_obs,) equal to -1, like psi_b."""
+    # The private method is called directly: _set_score_elements broadcasts a scalar psi_a into the stored
+    # (n_obs, n_rep, n_coefs) array (double_ml.py:1597), so no public path shows the difference.
+    preds = {name: values[:, 0, 0] for name, values in fitted_dml_obj.predictions.items()}
+    y = fitted_dml_obj._dml_data.y
+    if fitted_dml_obj.outcome == "factual":
+        psi_a, psi_b = fitted_dml_obj._score_elements(y, m_hat_preds=preds["ml_m"], g_hat_preds=preds["ml_g"])
+    else:
+        psi_a, psi_b = fitted_dml_obj._score_elements(
+            y,
+            m_hat_preds=preds["ml_m"],
+            M_hat_preds=preds["ml_M"],
+            G_hat_preds=preds["ml_G"],
+            nested_g_hat_preds=preds["ml_nested_g"],
+        )
+
+    assert isinstance(psi_a, np.ndarray)
+    assert psi_a.shape == psi_b.shape == (N_OBS,)
+    assert np.all(psi_a == -1.0)
+
+
 @pytest.fixture(scope="module")
 def fitted_meds_obj(dml_data, learner_linear, ps_processor_config):
     meds_obj = DoubleMLMEDS(
