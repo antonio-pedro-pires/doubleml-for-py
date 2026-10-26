@@ -625,15 +625,34 @@ def test_setter_works_after_failed_assignment(binary_meds_frame):
     assert obj.binary_meds.to_dict() == {"mc": False}
 
 
-# TODO: DATA-W6 - should an empty m_cols be rejected? This pins today's behaviour.
 @pytest.mark.ci
-def test_m_cols_empty_list_characterization(binary_meds_frame):
-    """Test that an empty m_cols is accepted today and yields an empty m and an empty binary_meds."""
+def test_m_cols_empty_list_failure_leaves_object_unchanged(binary_meds_frame):
+    """Test that a failed empty m_cols assignment (ValueError) leaves the object unchanged."""
     obj = DoubleMLMEDData(binary_meds_frame, "y", "d", ["mb"], x_cols=["x"])
-    obj.m_cols = []
-    assert obj.m_cols == []
-    assert obj.m.shape == (8, 0)
-    assert obj.binary_meds.to_dict() == {}
+    snapshot = _snapshot(obj)
+    with pytest.raises(
+        ValueError, match=r"Invalid mediation variable\(s\) m_cols: At least one mediation variable is required\."
+    ):
+        obj.m_cols = []
+    _assert_unchanged(obj, snapshot)
+
+
+@pytest.mark.ci
+def test_constructor_rejects_empty_m_cols(binary_meds_frame):
+    """Test that the constructor rejects an empty m_cols with a ValueError."""
+    with pytest.raises(
+        ValueError, match=r"Invalid mediation variable\(s\) m_cols: At least one mediation variable is required\."
+    ):
+        DoubleMLMEDData(binary_meds_frame, "y", "d", [], x_cols=["x"])
+
+
+@pytest.mark.ci
+def test_single_mediator_is_accepted(binary_meds_frame):
+    """Test that a single mediator is accepted at construction and through the setter."""
+    obj = DoubleMLMEDData(binary_meds_frame, "y", "d", ["mb"], x_cols=["x"])
+    obj.m_cols = ["mc"]
+    assert obj.n_meds == 1
+    assert obj.m_cols == ["mc"]
 
 
 @pytest.mark.ci

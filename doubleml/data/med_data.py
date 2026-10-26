@@ -298,6 +298,8 @@ class DoubleMLMEDData(DoubleMLData):
             )
         if not len(set(value)) == len(value):
             raise ValueError("Invalid mediation variable(s) m_cols: Contains duplicate values.")
+        if len(value) == 0:
+            raise ValueError("Invalid mediation variable(s) m_cols: At least one mediation variable is required.")
         if not set(value).issubset(set(self.all_variables)):
             raise ValueError("Invalid mediation variable(s) m_cols. At least one mediation variable is no data column.")
         if reset_value:
